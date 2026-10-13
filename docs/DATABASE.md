@@ -1,8 +1,10 @@
 # Database
 
 Database: **`CRM-Database`** (shared with ko-sales, Stockship, prasar, franchise).
-Vistaar owns only `vistaar_v2_*`. It never touches `leads_v2`, `contacts_v2`, `customers`,
-`addresses` or `agents_v2` — a partner is not a customer.
+Vistaar owns only `vistaar_v2_*`. A partner is not a customer: the partner is never written
+to `leads_v2`, `contacts_v2`, `customers`, `addresses` or `agents_v2`. The **farmers a partner
+adds** are — as org leads (`leads_v2` + `contacts_v2` + `addresses`, below), the way prasar
+writes its retailers.
 
 ## Owned (`vistaar_v2_*`)
 
@@ -13,7 +15,8 @@ Vistaar owns only `vistaar_v2_*`. It never touches `leads_v2`, `contacts_v2`, `c
 | `vistaar_v2_onboarding_configs` | cohort × version | `_id` `<cohort>@<version>`, `status` draft/published/archived, `steps[]`, `published_at/by` |
 | `vistaar_v2_cohorts` | partner type | `_id` key, `label{}`, `description{}`, `icon`, `sub_types[]`, `order`, `is_active` |
 | `vistaar_v2_sessions` | signed-in device | `_id` = SHA-256 of the refresh token, `agent_ref`, `expires_at` (TTL) |
-| `vistaar_v2_settings` | — (`_id: vistaar`) | `default_owner_agent_id`, `conflict_radius_km` |
+| `vistaar_v2_settings` | — (`_id: vistaar`) | `default_owner_agent_id`, `lead_owner_agent_id` (override owner of farmer leads; `null` = the Offline Head), `farmer_consent { version, text { en, hi } }` (`null` = built-in version 1), `conflict_radius_km` |
+| `vistaar_v2_leads` | farmer a partner holds (unique `pii_id`) | `_id` UUID, `pii_id`, `agent_id` (`VST-…`), `lead_id` (org `L-…`, `null` until written / contact-only person), `origin` `created`/`linked`, farmer copy `name`, `phone`, `village`, `district`, `state`, `pincode`, `crops[]`, `acreage`; `found_via`, `expected_value`, `stage` (prospect · contacted · interested · negotiation · won · lost), `stage_history[]` (last 50), `next_follow_up`, `lost_reason`, `activities[]` `{id, type, text, at, by}` (last 100), `consent {version, at}`, `ex_employee_declared_at`, `customer_at` (first order), timestamps |
 | `vistaar_v2_counters` | id series | `_id: agent_id`, `seq` |
 
 ### Indexes (declared on the schemas; listed in PROD-CHECKLIST)
@@ -22,6 +25,7 @@ Vistaar owns only `vistaar_v2_*`. It never touches `leads_v2`, `contacts_v2`, `c
 - onboarding_data: `{agent_ref}` unique · `{location: 2dsphere}`
 - onboarding_configs: `{cohort, version:-1}` unique · `{cohort, status}` unique partial `status: draft` (one draft per cohort)
 - sessions: `{agent_ref}` · `{expires_at}` TTL 0
+- leads: `{pii_id}` unique · `{agent_id, created_at:-1}` · `{agent_id, stage}` · `{agent_id, next_follow_up}` · `{created_at:-1}` · `{phone}`
 
 ## Shared — written
 ## Shared — written by this service with `source: 'vistaar'`
@@ -87,13 +91,58 @@ person again through `contact_id` → `contacts_v2.pii_id`, else
 `$inc: { count: 1 }` + `updated_at` on save of a new draft, never upserted.
 Nothing else in `app_counters` is touched.
 
+## Shared — farmer leads, written with `source: 'vistaar'`
+
+Farmers partners add (`POST /leads`, LEADS-APP.md). ko-sales' `/leads/upsert` is the
+reference; the rows are inserted directly, as prasar-backend does. Only **new** people get
+rows (`vistaar_v2_leads.origin: created`). A farmer who already has a lead or contact from
+another channel is only linked to the partner (`origin: linked`) — their org rows are never
+changed; a non-farmer is refused. A partner's re-submit updates only rows Vistaar wrote.
+The partner's row is written first (unique `pii_id`), the org rows after. No pipeline, LQS
+or webhook.
+
+### `leads_v2` — one per person (unique `pii_id`)
+
+| Field | Vistaar value |
+|---|---|
+| `lead_id` | `L-(100000 + n)`, `n` from `app_counters._id: 'leads'` (as ko-sales) |
+| `source` | `vistaar` |
+| `created_by` | the partner's `VST-` id |
+| `lead_owner` | `{ agent_id, agent_ref }` (`agent_ref` = the account's `agents_v2._id`, ObjectId) of the one active Offline Head (USR-1037), or `settings.lead_owner_agent_id` when set; `assigned_by` the same, `assigned_date` now |
+| `first_name` / `last_name` | name split at the first space, lower case (ko-sales casing) |
+| `state` | from the pincode, else the partner's state — upper case. `pin_code` = pincode or `''` |
+| `status` / `is_profiled` | `contact_created` / `true`; `contact_profile: 'farmer'`, `agent_category: 'vistaar'`. **No `profiled_at`** — with it the lead matches sales-operation's "Profiled Farmer" cohort and would be routed to telecallers (prasar's leads carry none either) |
+| everything else | ko-sales' schema defaults (`call_count` zeros, `pipeline_id: null`, `lqs: {}`, `tags: []`, `__v: 0`, …) |
+| re-submit | `$set` names, `state`, `pin_code`, `updated_by` / `last_updated_by` = `VST-…`, `updated_at` — filter `lead_id` + `source` |
+
+### `contacts_v2` — one per person (unique `pii_id`)
+
+`contact_id` `C0-n` (`app_counters._id: 'contacts'`), `profile: 'farmer'`,
+`profile_details.name`, `profile_category` = band, `farm_details { farm_area, farm_area_type:
+'Acre', sub_profile, crops: [{ crop_name }] }` (bands: ≤ 5 small, ≤ 30 medium, else super),
+`agent_category: 'vistaar'`, `source: 'vistaar'`, `last_updated_by: VST-…`, ko-sales'
+defaults for the rest. Re-submit: `$set` the name, band and `farm_details`.
+
+### `addresses` — one Vistaar row per person
+
+`address_id` `ADDR-n` (`app_counters._id: 'addresses'`), `pii_id`, `address_line` = `village`,
+`district`, `city` = district, `state`, `zipcode`, `country: 'India'`, `is_primary` (only when
+the person had none), `source: 'vistaar'`, `created_by: VST-…`; listed on
+`piis.addresses[]` (`$addToSet`). Re-submit updates that row only.
+
+### `app_counters` — `leads`, `contacts`, `addresses` (and `piis`)
+
+`$inc: { count: 1 }` + `updated_at`, never upserted. A taken id (counter behind) is retried
+with the next number, up to 3 times.
+
 ## Read-only, shared identity
 
 | Collection | Read by | Index used |
 |---|---|---|
 | `piis` | draft orders: phone of a `pii_id`; `pii_id` of a phone | `pii_id`, `phone_number` |
-| `leads_v2` | draft orders: customer name, `lead_id` | `pii_id` |
-| `contacts_v2` | draft orders: `contact_id` ↔ `pii_id` | `pii_id`, `contact_id` |
+| `leads_v2` | draft orders: customer name, `lead_id`; farmer lists (`source` + `created_by`) | `pii_id`, `source` |
+| `contacts_v2` | draft orders: `contact_id` ↔ `pii_id`; farm of a listed farmer | `pii_id`, `contact_id` |
+| `addresses` | the village of a listed farmer | `pii_id` |
 
 ## Read-only, other apps
 

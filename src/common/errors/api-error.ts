@@ -68,6 +68,14 @@ export const API_ERROR_CODES = [
   // draft orders
   'DRAFT_CART_EMPTY',
   'DRAFT_ID_UNAVAILABLE',
+  // Farmer leads. A partner adds farmers only, and each farmer once.
+  'PARTNER_NOT_APPROVED',
+  'SELF_LEAD',
+  'FARMER_TAKEN',
+  'NOT_A_FARMER',
+  'CONSENT_OUTDATED',
+  'LEADS_NOT_CONFIGURED',
+  'LEADS_UNAVAILABLE',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

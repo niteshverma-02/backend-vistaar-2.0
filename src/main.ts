@@ -84,8 +84,7 @@ async function bootstrap(): Promise<void> {
       new DocumentBuilder()
         .setTitle('Vistaar API')
         .setDescription(
-          'Backend for the Vistaar 2.0 partner app (Krishi Sahayak) and its ' +
-            'HO portal screens.',
+          'Backend for the Vistaar 2.0 app and its HO portal screens.',
         )
         .setVersion('2.0')
         .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' })

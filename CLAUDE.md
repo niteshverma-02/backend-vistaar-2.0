@@ -1,7 +1,7 @@
 # CLAUDE.md — working rules for this repo
 
-**What this is:** the v2 backend for Vistaar 2.0 — the Krishi Sahayak partner
-app and its HO portal screens. A rewrite, not a port: every collection this
+**What this is:** the v2 backend for Vistaar 2.0 — the Vistaar app and its
+HO portal screens. A rewrite, not a port: every collection this
 service owns is a new `vistaar_v2_*` collection, and every route is `/api/v2`.
 The old Vistaar (KSS app + `CRM-Backend`) keeps running on its own collections
 (`vistaaragents`, `vistaarfarmers`), which this service never writes.
@@ -9,7 +9,7 @@ The old Vistaar (KSS app + `CRM-Backend`) keeps running on its own collections
 **The database is shared production data.** `CRM-Database` is used by ko-sales,
 Stockship, prasar, franchise and others. Read anything; write only our own
 `vistaar_v2_*` collections, plus a new person and verified KYC documents on
-`piis` (see *Shared records*).
+`piis`, and the farmers partners add as org leads (see *Shared records*).
 
 Conventions follow `prasar-backend` (`CLAUDE.md` on its `beta` branch) and
 `franchise-offline-hub`, so the HO portal can talk to all three the same way.
@@ -105,10 +105,10 @@ aggregations for HO screens go in a `<x>.query-service.ts`.
 
 ## Shared records
 
-A Vistaar partner is **not a customer**: this service never writes `leads_v2`,
-`contacts_v2`, `customers`, `addresses` or `agents_v2`.
+A Vistaar partner is **not a customer**: the partner is never written to
+`leads_v2`, `contacts_v2`, `customers`, `addresses` or `agents_v2`.
 
-The one shared write is the person on `piis`: at the first OTP verify,
+The partner's one shared write is the person on `piis`: at the first OTP verify,
 `modules/spine/PiiService` finds the PII by phone (oldest first) or inserts a
 new one (`app_counters.piis` `$inc`, retry on collision, never `referral_id`).
 `pii_id` (`PII-n`) is the true link; we keep a copy of the phone and name only
@@ -117,8 +117,20 @@ for fast search. When HO verifies a KYC document whose form field has an
 entry shape, `source: 'vistaar'`, dotted `$set` only) — never over another
 portal's entry. Files live private in the org bucket under
 `KO-documents/<pii_id>/`. Partners carry role `USR-1040` (Vistaar Partner; head
-USR-1037) on `vistaar_v2_agents.user_role`. Farmers a partner registers later go through ko-sales
-`POST /leads/upsert`, not through here.
+USR-1037) on `vistaar_v2_agents.user_role`.
+
+**Exception — farmer leads** (TL, 2026-10-12): the farmers a partner adds are
+org leads, inserted directly the way prasar-backend writes its retailers, with
+ko-sales' `/leads/upsert` as the reference shape — `leads_v2` +
+`contacts_v2` + an `addresses` row (+ `piis.addresses[]`), ids from
+`app_counters` (`leads`, `contacts`, `addresses`). Always `source:
+'vistaar'` and `created_by: VST-…`; only for a person with no lead or
+contact yet (a farmer from another channel is only linked, in
+`vistaar_v2_leads`), and later updates filter on `source`, so another
+channel's records are never changed. Owner = the one active Offline Head
+(USR-1037) as `{agent_id, agent_ref}`, unless `settings.lead_owner_agent_id`
+names another. Never `profiled_at` (keeps the offline lead out of telecaller
+cohorts). No pipeline, LQS or webhook. See `docs/DATABASE.md`.
 
 Other apps' collections read here, read-only: `agents_v2` (HO role, owner
 names), `pincode_map_v2`, and `franchises` / `prasar_v2_retailers` /
@@ -152,10 +164,12 @@ upsert.
 | Forms | `vistaar_v2_onboarding_configs` | Per cohort and version; published versions immutable; one draft per cohort |
 | Cohorts | `vistaar_v2_cohorts` | HO-managed partner types |
 | Sessions | `vistaar_v2_sessions` | SHA-256 of refresh tokens, TTL |
-| Settings | `vistaar_v2_settings` | Default owner, conflict radius |
+| Settings | `vistaar_v2_settings` | Default owner, farmer-lead owner, farmer-consent wording (versioned), conflict radius |
+| Leads | `vistaar_v2_leads` | One row per farmer a partner holds (unique `pii_id`): holder, stage, follow-up, activity, consent; copy of the farmer basics for lists. The farmer is the org's `leads_v2` / `contacts_v2` |
 | Counters | `vistaar_v2_counters` | `VST-` series (not `app_counters`, not legacy `sequences`) |
 | cart | `carts` (shared, `source: 'vistaar'`) | B2B's row shape exactly, no `user_id`; `pii_id` = farmer (partner's own for shop stock), `_id` derived from the partner. See `docs/DATABASE.md` |
 | draft-order | `draft_orders` (shared, `entry_path: 'vistaar'`) | Existing shape + `reminder_sent`; partner in `agent_id`; id from `app_counters`. See `docs/DATABASE.md` |
+| leads | `leads_v2`, `contacts_v2`, `addresses` (shared, `source: 'vistaar'`) | Farmers partners add; new people only; `created_by` = `VST-…`. See `docs/DATABASE.md` |
 
 Auth: partners use our own HS256 token (`core/auth/partner-token.service.ts`);
 HO routes (`@Can(...)`, `/admin/*`) accept only the company SSO token and check a

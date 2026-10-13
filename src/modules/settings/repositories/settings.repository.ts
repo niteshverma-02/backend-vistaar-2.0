@@ -5,11 +5,16 @@ import { Model } from 'mongoose';
 import {
   SETTINGS_ID,
   Settings,
+  type FarmerConsent,
   type SettingsDocument,
 } from '../schemas/settings.schema';
 
+export type { FarmerConsent };
+
 export interface SettingsRecord {
   default_owner_agent_id: string | null;
+  lead_owner_agent_id: string | null;
+  farmer_consent: FarmerConsent;
   conflict_radius_km: number;
   updated_by?: string;
   updated_at?: Date;

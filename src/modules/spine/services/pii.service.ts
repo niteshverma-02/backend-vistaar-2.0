@@ -2,7 +2,18 @@ import { Injectable, Logger } from '@nestjs/common';
 
 import { unavailable } from '@common/errors/api-error';
 
+import {
+  AddressRepository,
+  type AddressFields,
+  type AddressRecord,
+} from '../repositories/address.repository';
+import {
+  OrgCounterRepository,
+  type OrgCounterKey,
+} from '../repositories/org-counter.repository';
 import { ORG_DOC_SOURCE, PiiRepository } from '../repositories/pii.repository';
+
+export type { AddressFields, AddressRecord, OrgCounterKey };
 
 export interface ResolvedPii {
   pii_id: string;
@@ -19,14 +30,91 @@ export interface OrgDocument {
 
 /**
  * The person behind a phone, on the org's identity layer — the only place
- * this service writes `piis`: it inserts a person nobody holds yet, and
- * mirrors HO-verified KYC documents into `documents.<type>`.
+ * this service writes `piis`: it inserts a person nobody holds yet, mirrors
+ * HO-verified KYC documents into `documents.<type>`, and files the addresses
+ * Vistaar records. Also hands out org id numbers from `app_counters`.
  */
 @Injectable()
 export class PiiService {
   private readonly logger = new Logger(PiiService.name);
 
-  constructor(private readonly piis: PiiRepository) {}
+  constructor(
+    private readonly piis: PiiRepository,
+    private readonly addresses: AddressRepository,
+    private readonly counters: OrgCounterRepository,
+  ) {}
+
+  /** The next number of an org id series (`L-`, `C0-`, `ADDR-`), shared with ko-sales. */
+  nextOrgNumber(key: OrgCounterKey): Promise<number> {
+    return this.counters.next(key);
+  }
+
+  /**
+   * The person's address as `source` filed it: updated in place when that row
+   * exists, otherwise a new `ADDR-n` row listed on `piis.addresses[]` —
+   * primary only when the person has no address yet. Rows other writers filed
+   * are never touched.
+   */
+  async saveAddress(
+    piiId: string,
+    fields: AddressFields,
+    meta: { source: string; by: string },
+  ): Promise<string> {
+    const row = {
+      address_line: fields.village,
+      village: fields.village,
+      district: fields.district,
+      city: fields.district ?? '',
+      state: fields.state,
+      zipcode: fields.pincode ?? '',
+    };
+    const own = await this.addresses.ownRow(piiId, meta.source);
+    if (own) {
+      await this.addresses.update(own.address_id, row);
+      return own.address_id;
+    }
+
+    const primary = !(await this.piis.hasAddresses(piiId));
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const addressId = `ADDR-${await this.counters.next('addresses')}`;
+      const inserted = await this.addresses.insert({
+        ...row,
+        address_id: addressId,
+        pii_id: piiId,
+        country: 'India',
+        is_primary: primary,
+        source: meta.source,
+        created_by: meta.by,
+      });
+      if (inserted) {
+        await this.piis.addAddressRef(piiId, addressId);
+        return addressId;
+      }
+      this.logger.warn(
+        `app_counters.addresses minted ${addressId}, already taken.`,
+      );
+    }
+    throw unavailable(
+      'IDENTITY_UNAVAILABLE',
+      'Could not save the address right now. Please try again.',
+    );
+  }
+
+  addressesBySource(
+    piiIds: readonly string[],
+    source: string,
+  ): Promise<Map<string, AddressRecord>> {
+    return this.addresses.bySource(piiIds, source);
+  }
+
+  /** The person on a phone, without creating one; same oldest-first rule as `resolve`. */
+  findIdByPhone(phone: string): Promise<string | null> {
+    return this.piis.findIdByPhone(phone);
+  }
+
+  phonesOf(piiIds: readonly string[]): Promise<Map<string, string>> {
+    return this.piis.phonesOf(piiIds);
+  }
 
   /**
    * Read-then-insert, like ko-sales' own `create`: there is no unique phone

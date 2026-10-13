@@ -48,6 +48,17 @@ export class AgentRepository {
     @InjectModel(Agent.name) private readonly model: Model<AgentDocument>,
   ) {}
 
+  /** Partners by `VST-` id — the names beside farmer leads. */
+  findByAgentIds(
+    agentIds: readonly string[],
+  ): Promise<Pick<AgentRecord, 'agent_id' | 'profile' | 'preview'>[]> {
+    return this.model
+      .find({ agent_id: { $in: agentIds } })
+      .select('agent_id profile preview')
+      .lean<Pick<AgentRecord, 'agent_id' | 'profile' | 'preview'>[]>()
+      .exec();
+  }
+
   /** The record an OTP request lands on — created once per number, then reused. */
   async upsertForOtp(phone: string, countryCode: string): Promise<AgentRecord> {
     const filter = { phone, country_code: countryCode };

@@ -1,7 +1,7 @@
 # Vistaar API v2
 
-Backend for **Vistaar 2.0** — the Krishi Sahayak partner app ("you place → we
-deliver → you earn") and its HO portal screens. A fresh rewrite: new `/api/v2`
+Backend for **Vistaar 2.0** — the Vistaar app ("you place → we deliver →
+you earn") and its HO portal screens. A fresh rewrite: new `/api/v2`
 routes and new `vistaar_v2_*` collections on the shared `CRM-Database`.
 
 Same stack and layout as `prasar-backend` and `franchise-offline-hub`:

@@ -34,6 +34,43 @@ export class PiiRepository {
     return doc?.pii_id ?? null;
   }
 
+  /** The first number on each person — what a list shows beside a name. */
+  async phonesOf(piiIds: readonly string[]): Promise<Map<string, string>> {
+    if (piiIds.length === 0) return new Map();
+    const docs = await this.piis
+      .find({ pii_id: { $in: piiIds } })
+      .select('pii_id phone_number')
+      .lean<{ pii_id: string; phone_number?: string[] }[]>()
+      .exec();
+    const phones = new Map<string, string>();
+    for (const doc of docs) {
+      const phone = doc.phone_number?.[0];
+      if (phone) phones.set(doc.pii_id, phone);
+    }
+    return phones;
+  }
+
+  async hasAddresses(piiId: string): Promise<boolean> {
+    const doc = await this.piis
+      .findOne({ pii_id: piiId, 'addresses.0': { $exists: true } })
+      .select('_id')
+      .lean()
+      .exec();
+    return doc !== null;
+  }
+
+  async addAddressRef(piiId: string, addressId: string): Promise<void> {
+    await this.piis
+      .updateOne(
+        { pii_id: piiId },
+        {
+          $addToSet: { addresses: addressId },
+          $set: { updated_at: new Date() },
+        },
+      )
+      .exec();
+  }
+
   async nextPiiNumber(): Promise<number> {
     const doc = await this.counters
       .findOneAndUpdate(

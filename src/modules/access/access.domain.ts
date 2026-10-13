@@ -7,8 +7,11 @@
  * `userroles` directory ko-sales owns). Only that field is read — not the
  * separate `user_roles[]` array, which is StockShip v3 / Sankalp's own RBAC.
  */
+/** Offline Head — the HO portal head, and the owner of farmer leads. */
+export const OFFLINE_HEAD_ROLE = 'USR-1037';
+
 export const HEAD_ROLE_CODES: ReadonlySet<string> = new Set([
-  'USR-1037', // Offline Head
+  OFFLINE_HEAD_ROLE,
   'USR-1000', // Super Admin
   'USR-1001', // Admin
 ]);
@@ -37,6 +40,8 @@ export const CAPABILITIES = {
   'config.write': ['head'],
   /** Publish a draft config — the app starts showing it at once. */
   'config.publish': ['head'],
+  /** Every partner's farmer leads. */
+  'leads.read': ['head'],
   /** Default owner, conflict radius. */
   'settings.write': ['head'],
 } as const satisfies Record<string, readonly Role[]>;

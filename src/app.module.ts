@@ -17,6 +17,7 @@ import { AuthModule } from '@modules/auth/auth.module';
 import { CartModule } from '@modules/cart/cart.module';
 import { DraftOrderModule } from '@modules/draft-order/draft-order.module';
 import { HealthModule } from '@modules/health/health.module';
+import { LeadsModule } from '@modules/leads/leads.module';
 import { OnboardingModule } from '@modules/onboarding/onboarding.module';
 import { PartnerDeskModule } from '@modules/partner-desk/partner-desk.module';
 import { SettingsModule } from '@modules/settings/settings.module';
@@ -74,6 +75,7 @@ import { UploadsModule } from '@modules/uploads/uploads.module';
     HealthModule,
     CartModule,
     DraftOrderModule,
+    LeadsModule,
   ],
   providers: [
     // Auth is global and opted out of with @Public(). Ahead of the throttler,

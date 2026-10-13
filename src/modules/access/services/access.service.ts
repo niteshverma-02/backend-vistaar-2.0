@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import type { AdminPrincipal } from '@common/interfaces/principal.interface';
 
 import {
+  OFFLINE_HEAD_ROLE,
   capabilitiesOf,
   roleOf,
   type Capability,
@@ -52,6 +53,15 @@ export class AccessService {
     });
     this.cache.set(key, { exp: admin.exp, access });
     return access;
+  }
+
+  /**
+   * The one active Offline Head (`USR-1037`) — `null` when there is none or
+   * more than one, since a single owner cannot be told apart then.
+   */
+  async offlineHead(): Promise<StaffRecord | null> {
+    const heads = await this.staff.findActiveByRole(OFFLINE_HEAD_ROLE, 2);
+    return heads.length === 1 && heads[0].agent_id ? heads[0] : null;
   }
 
   /** Staff by `agent_id`, for owner names and the owner picker. */

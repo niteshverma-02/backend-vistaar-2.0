@@ -36,6 +36,12 @@ db.vistaar_v2_onboarding_configs.createIndex({ cohort: 1, version: -1 }, { uniqu
 db.vistaar_v2_onboarding_configs.createIndex({ cohort: 1, status: 1 }, { unique: true, partialFilterExpression: { status: 'draft' } })
 db.vistaar_v2_sessions.createIndex({ agent_ref: 1 })
 db.vistaar_v2_sessions.createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 })
+db.vistaar_v2_leads.createIndex({ pii_id: 1 }, { unique: true })
+db.vistaar_v2_leads.createIndex({ agent_id: 1, created_at: -1 })
+db.vistaar_v2_leads.createIndex({ agent_id: 1, stage: 1 })
+db.vistaar_v2_leads.createIndex({ agent_id: 1, next_follow_up: 1 })
+db.vistaar_v2_leads.createIndex({ created_at: -1 })
+db.vistaar_v2_leads.createIndex({ phone: 1 })
 ```
 
 ⚠️ **Beta (2026-10-09): none of these exist** — the beta Mongo host is out of disk and every
@@ -46,6 +52,7 @@ race; onboarding create re-reads on a race; sessions are deleted on refresh (no 
 
 - Run `node dist/scripts/seed-onboarding.js --apply` once (or create cohorts/forms in the portal).
 - `PUT /admin/settings { default_owner_agent_id }` — the HO person who owns new signups.
+- Exactly one active **USR-1037 Offline Head** in `agents_v2` — the `lead_owner` of every farmer lead. Or `PUT /admin/settings { lead_owner_agent_id }` to name one. With neither, `POST /leads` answers 503.
 - Role **USR-1040 "Vistaar Partner"** in `userroles` (`{ UserRoleId, role_name, agent_categories: [], __v: 0 }`) — by the ko-sales owner (`POST /api/v1/agents/roles` takes max+1, so check the max is USR-1039 first). Not on beta yet either.
 - Forms published before 2026-10-09 by the seed: `seed-onboarding.js --apply --republish` (12-digit Aadhaar, `org_document`).
 
@@ -68,10 +75,21 @@ Nothing to build. The collection already has `draft_order_id` (unique),
 `agent_id` and `status`; every Vistaar query starts from `agent_id` (a
 partner's handful of drafts) or `draft_order_id`.
 
-### `piis`, `leads_v2`, `contacts_v2` (read-only)
+### `piis`, `leads_v2`, `contacts_v2`, `addresses`
 
-Nothing to build: the lookups use the existing `pii_id`, `phone_number` and
-`contact_id` indexes.
+Nothing to build: the lookups use the existing `pii_id`, `phone_number`,
+`contact_id` and `leads_v2.source` indexes (farmer lists filter `source` +
+`created_by`).
+
+## Farmer leads — before switching on
+
+- [ ] One active Offline Head (USR-1037) in `agents_v2`, or `lead_owner_agent_id` set
+- [ ] `vistaar_v2_leads` indexes built — `{pii_id}` unique is what keeps one farmer with one partner
+- [ ] Optional: HO sets the farmer-consent wording (`PUT /admin/settings { farmer_consent_text }`); until then the app's own sentence is version 1
+- [ ] Sales-operation asked to add source `vistaar` to its cohort and profiled-router exclusions (offline channel — never telecaller-routed)
+- [ ] `app_counters` has `leads`, `contacts`, `addresses` rows in production (always true: ko-sales writes them)
+- [ ] ko-sales / sales-operation told: `source: 'vistaar'` leads are inserted directly (no pipeline, no LQS, no webhook), `created_by` = `VST-…`
+- [ ] Optional: a `lead_sources` row `{ source_code: 'vistaar', display_name: 'Vistaar Agent' }` so CRM source filters list it (ko-sales adds one itself only for leads it writes)
 
 ## Draft orders — before switching on
 

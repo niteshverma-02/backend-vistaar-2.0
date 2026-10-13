@@ -125,8 +125,12 @@ document is copied to — ko-sales spellings, e.g. `adhar`, `pan`, `bank_details
 
 ## 5. Settings
 
-`GET /admin/settings` · `PUT /admin/settings { default_owner_agent_id?, conflict_radius_km? }`
-— the owner every new signup gets, and the nearby-check radius (0.5–50 km).
+`GET /admin/settings` · `PUT /admin/settings { default_owner_agent_id?, lead_owner_agent_id?, farmer_consent_text?, conflict_radius_km? }`
+— the owner every new signup gets, an override owner for the farmer leads partners add
+(LEADS-HO.md; unset = the Offline Head, USR-1037), and the nearby-check radius (0.5–50 km).
+Both owners must be active `agents_v2` accounts (`400 OWNER_NOT_FOUND`).
+`farmer_consent_text: { en, hi? }` — the consent partners tick per farmer; a change bumps
+`farmer_consent.version` (LEADS-HO.md).
 
 ## 6. Errors (HO)
 

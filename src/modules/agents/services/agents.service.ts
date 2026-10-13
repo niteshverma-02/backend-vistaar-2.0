@@ -23,6 +23,12 @@ export type {
   AgentListFilter,
 } from '../repositories/agent.repository';
 
+/** A partner as a list row names them. */
+export interface PartnerCard {
+  agent_id: string;
+  name: string | null;
+}
+
 /** How many cohorts / states the HO summary ranks. */
 const SUMMARY_TOP = 10;
 @Injectable()
@@ -86,6 +92,23 @@ export class AgentsService {
     const agent = await this.agents.findByAgentId(agentId.toUpperCase());
     if (!agent || !agent.otp_verified) throw notFound(`No partner ${agentId}.`);
     return agent;
+  }
+
+  /** `VST-` id → the partner's id and name, for the farmer-lead lists. */
+  async partnersByAgentIds(
+    agentIds: readonly string[],
+  ): Promise<Map<string, PartnerCard>> {
+    if (agentIds.length === 0) return new Map();
+    const rows = await this.agents.findByAgentIds(agentIds);
+    const cards = new Map<string, PartnerCard>();
+    for (const row of rows) {
+      if (!row.agent_id) continue;
+      cards.set(row.agent_id, {
+        agent_id: row.agent_id,
+        name: row.profile?.name ?? row.preview?.name ?? null,
+      });
+    }
+    return cards;
   }
 
   /**
