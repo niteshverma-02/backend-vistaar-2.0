@@ -6,6 +6,7 @@ import {
   holderOf,
   isFarmerProfile,
   leadDocOf,
+  releaseAtOf,
   splitName,
   stageMoveError,
   type FarmerInput,
@@ -152,5 +153,45 @@ describe('contactDocOf', () => {
       },
       source: 'vistaar',
     });
+  });
+});
+
+describe('releaseAtOf', () => {
+  const day = 86_400_000;
+  const at = (n: number) => new Date(Date.UTC(2026, 9, 1) + n * day);
+  const window = { lead_days: 15, customer_days: 45 };
+
+  it('runs a lead 15 days from the last work, a customer 45 from the last order', () => {
+    expect(
+      releaseAtOf({ created_at: at(0), last_worked_at: at(3) }, window),
+    ).toEqual(at(18));
+    expect(
+      releaseAtOf(
+        { created_at: at(0), customer_at: at(5), last_order_at: at(20) },
+        window,
+      ),
+    ).toEqual(at(65));
+  });
+
+  it('gives a partner who just took the farmer a whole window', () => {
+    expect(
+      releaseAtOf(
+        { created_at: at(0), last_worked_at: at(3), held_since: at(30) },
+        window,
+      ),
+    ).toEqual(at(45));
+    expect(releaseAtOf({ created_at: at(0) }, window)).toEqual(at(15));
+  });
+});
+
+describe('holderOf — released', () => {
+  const base = { lead: null, contact: null, agentId: 'VST-000001' };
+  it('frees another partner’s farmer only when released; mine stays mine', () => {
+    const link = { agent_id: 'VST-000002' };
+    expect(holderOf({ ...base, link, released: true })).toBe('released');
+    expect(holderOf({ ...base, link, released: false })).toBe('other_partner');
+    expect(
+      holderOf({ ...base, link: { agent_id: 'VST-000001' }, released: true }),
+    ).toBe('mine');
   });
 });

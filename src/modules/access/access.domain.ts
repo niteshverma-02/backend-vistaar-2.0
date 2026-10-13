@@ -42,6 +42,8 @@ export const CAPABILITIES = {
   'config.publish': ['head'],
   /** Every partner's farmer leads. */
   'leads.read': ['head'],
+  /** Move a farmer to another partner (PRD AD8). */
+  'leads.transfer': ['head'],
   /** Default owner, conflict radius. */
   'settings.write': ['head'],
   /** See the app's Home banners, scheduled and ended ones included. */

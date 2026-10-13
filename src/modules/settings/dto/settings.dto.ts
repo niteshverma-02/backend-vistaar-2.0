@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  IsInt,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -60,6 +61,32 @@ export class UpdateSettingsDto {
   @ValidateNested()
   @Type(() => ConsentTextDto)
   farmer_consent_text?: ConsentTextDto;
+
+  @ApiPropertyOptional({
+    example: 15,
+    minimum: 1,
+    maximum: 365,
+    description:
+      'Days without work (stage, follow-up, activity…) before another partner can take a lead',
+  })
+  @IsOptional()
+  @IsInt({ message: 'Lead release must be a whole number of days.' })
+  @Min(1, { message: 'Lead release must be at least 1 day.' })
+  @Max(365, { message: 'Lead release can be at most 365 days.' })
+  lead_release_days?: number;
+
+  @ApiPropertyOptional({
+    example: 45,
+    minimum: 1,
+    maximum: 365,
+    description:
+      'Days without an order before another partner can take a customer',
+  })
+  @IsOptional()
+  @IsInt({ message: 'Customer release must be a whole number of days.' })
+  @Min(1, { message: 'Customer release must be at least 1 day.' })
+  @Max(365, { message: 'Customer release can be at most 365 days.' })
+  customer_release_days?: number;
 
   @ApiPropertyOptional({ example: 5, minimum: 0.5, maximum: 50 })
   @IsOptional()

@@ -6,6 +6,7 @@ import {
   LEAD_STAGES,
   type ActivityType,
   type FoundVia,
+  type HoldEnd,
   type LeadStage,
 } from '../leads.domain';
 
@@ -23,6 +24,18 @@ export interface LeadActivity {
   text: string;
   at: Date;
   by: string;
+}
+
+/** A partner who held the farmer before. */
+export interface HolderMove {
+  agent_id: string;
+  from: Date;
+  to: Date;
+  reason: HoldEnd;
+  /** The partner who took over (`VST-…`), or the HO user's email (transfer). */
+  by: string;
+  /** HO's reason for a transfer. */
+  note?: string;
 }
 
 /**
@@ -81,6 +94,16 @@ export class VistaarLead {
 
   /** Set by the first order (won). */
   @Prop({ type: Date, default: null }) customer_at!: Date | null;
+  /** Set by every order (Customers epic): a customer's hold runs from it. */
+  @Prop({ type: Date, default: null }) last_order_at!: Date | null;
+
+  /** Since when this partner holds the farmer; `null` = since `created_at`. */
+  @Prop({ type: Date, default: null }) held_since!: Date | null;
+  /** The partner's last work on the lead: a save, stage, follow-up, expected value or activity. */
+  @Prop({ type: Date, default: null }) last_worked_at!: Date | null;
+  /** Earlier partners, oldest first (last 20). HO only. */
+  @Prop({ type: [SchemaTypes.Mixed], default: [] })
+  holder_history!: HolderMove[];
 
   created_at!: Date;
   updated_at!: Date;

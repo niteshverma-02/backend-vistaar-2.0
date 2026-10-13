@@ -15,6 +15,8 @@ export interface SettingsRecord {
   default_owner_agent_id: string | null;
   lead_owner_agent_id: string | null;
   farmer_consent: FarmerConsent;
+  lead_release_days: number;
+  customer_release_days: number;
   conflict_radius_km: number;
   updated_by?: string;
   updated_at?: Date;

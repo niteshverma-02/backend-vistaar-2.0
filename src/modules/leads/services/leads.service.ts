@@ -30,12 +30,14 @@ import type {
   AddFarmerDto,
   AdminLeadQueryDto,
   FarmerLeadQueryDto,
+  TransferLeadDto,
   UpdateLeadDto,
 } from '../dto/lead.dto';
 import {
   EX_EMPLOYEE_COHORT,
   LEAD_SOURCE,
   MAX_ACTIVITIES,
+  MAX_HOLDER_HISTORY,
   MAX_STAGE_HISTORY,
   STAGE_LABELS,
   contactDocOf,
@@ -45,12 +47,15 @@ import {
   isOpenStage,
   leadDocOf,
   leadUpdateOf,
+  releaseAtOf,
   stageMoveError,
   titleCase,
   type FarmerInput,
+  type HoldEnd,
   type Holder,
   type LeadOwner,
   type LeadStage,
+  type ReleaseWindow,
 } from '../leads.domain';
 import { OrgLeadsRepository } from '../repositories/org-leads.repository';
 import {
@@ -59,7 +64,11 @@ import {
   type VistaarLeadBrief,
   type VistaarLeadRecord,
 } from '../repositories/vistaar-leads.repository';
-import type { LeadActivity, StageMove } from '../schemas/vistaar-lead.schema';
+import type {
+  HolderMove,
+  LeadActivity,
+  StageMove,
+} from '../schemas/vistaar-lead.schema';
 
 /** A lead as the app and the HO portal see it. */
 export type LeadView = Omit<
@@ -67,6 +76,8 @@ export type LeadView = Omit<
   '_id' | 'consent' | 'ex_employee_declared_at'
 > & {
   consent_version: number;
+  /** From then another partner may take the farmer, unless worked (or ordered for) before. */
+  releases_at: Date;
 };
 
 export interface LeadDetail extends LeadView {
@@ -84,9 +95,21 @@ export interface PartnerLeadView extends LeadView {
   partner: PartnerCard | null;
 }
 
+/** HO's view of one farmer: the lead, its partner and the partners before. */
+export interface AdminLeadDetail extends LeadDetail {
+  partner: PartnerCard | null;
+  holder_history: HolderMove[];
+}
+
 /** What the Add-lead screen shows before saving. */
 export type CheckStatus =
-  'new' | 'yours' | 'other_partner' | 'katyayani' | 'not_farmer' | 'self';
+  | 'new'
+  | 'yours'
+  | 'other_partner'
+  | 'released'
+  | 'katyayani'
+  | 'not_farmer'
+  | 'self';
 
 const COUNTRY_CODE = '+91';
 /** Tries before giving up on ids the shared counter hands out already taken. */
@@ -98,6 +121,7 @@ const CHECK_STATUS: Record<Holder, CheckStatus> = {
   none: 'new',
   mine: 'yours',
   other_partner: 'other_partner',
+  released: 'released',
   katyayani: 'katyayani',
   not_farmer: 'not_farmer',
 };
@@ -124,21 +148,35 @@ function istDayStart(now: Date): Date {
   return new Date(ist.getTime() - IST_OFFSET_MS);
 }
 
-function viewOf(row: VistaarLeadBrief): LeadView {
+function viewOf(
+  row: VistaarLeadBrief & { holder_history?: unknown },
+  window: ReleaseWindow,
+): LeadView {
   const {
     _id: _row,
     consent,
     ex_employee_declared_at: _declared,
+    holder_history: _before,
     ...view
   } = row;
-  return { ...view, consent_version: consent.version };
+  return {
+    ...view,
+    consent_version: consent.version,
+    releases_at: releaseAtOf(row, window),
+  };
 }
 
-function detailOf(row: VistaarLeadRecord): LeadDetail {
+function detailOf(row: VistaarLeadRecord, window: ReleaseWindow): LeadDetail {
+  const {
+    stage_history: history,
+    activities,
+    holder_history: _before,
+    ...brief
+  } = row;
   return {
-    ...viewOf(row),
-    stage_history: row.stage_history ?? [],
-    activities: [...(row.activities ?? [])].reverse(),
+    ...viewOf(brief, window),
+    stage_history: history ?? [],
+    activities: [...(activities ?? [])].reverse(),
   };
 }
 
@@ -212,8 +250,10 @@ export class LeadsService {
     const known = await this.piis.findIdByPhone(phone);
     if (known === partner.pii_id) throw selfLead();
     const found = known ? await this.found(known) : null;
+    const lapse = await this.lapseOf(found?.link ?? null, by, now);
     const holder = holderOf({
       link: found?.link ?? null,
+      released: lapse !== null,
       lead: found?.lead ?? null,
       contact: found?.contact ?? null,
       agentId: by,
@@ -221,8 +261,12 @@ export class LeadsService {
     if (holder === 'other_partner') throw taken();
     if (holder === 'not_farmer') throw notFarmer();
 
+    // Taking over a farmer another partner let go: the org's records stay theirs.
     const origin =
-      found?.link?.origin ?? (holder === 'katyayani' ? 'linked' : 'created');
+      holder === 'released'
+        ? 'linked'
+        : (found?.link?.origin ??
+          (holder === 'katyayani' ? 'linked' : 'created'));
     // A missing owner refuses before anything is written.
     const owner =
       origin === 'created' && !found?.lead ? await this.leadOwner() : null;
@@ -235,52 +279,50 @@ export class LeadsService {
     const note = dto.note ? [this.activity('note', dto.note, by, now)] : [];
 
     let result: SavedLead['result'];
-    const claimed = found?.link
-      ? false
-      : await this.rows.insert({
-          _id: randomUUID(),
-          pii_id: piiId,
-          agent_id: by,
-          lead_id: found?.lead?.lead_id ?? null,
-          origin,
+    const released = holder === 'released' ? found?.link : null;
+    if (released && lapse) {
+      const fresh = this.freshHold(released.stage, by, by, now);
+      const saved = await this.rows.takeOver(piiId, released, {
+        $set: {
+          ...fresh,
           ...copy,
+          origin,
           found_via: dto.found_via ?? null,
           expected_value: dto.expected_value ?? null,
-          stage: 'prospect',
-          stage_history: [{ from: null, to: 'prospect', at: now, by }],
-          next_follow_up: followUp,
-          lost_reason: null,
+          next_follow_up: isOpenStage(fresh.stage) ? followUp : null,
           activities: note,
           consent: { version: consent.version, at: now },
           ex_employee_declared_at: dto.ex_employee_declared ? now : null,
-          customer_at: null,
-        });
-    if (claimed) {
-      result = origin === 'created' ? 'created' : 'linked';
-    } else {
-      const saved = await this.rows.update(piiId, by, {
-        $set: {
-          ...copy,
-          ...(dto.found_via && { found_via: dto.found_via }),
-          ...(dto.expected_value !== undefined && {
-            expected_value: dto.expected_value,
-          }),
-          ...(followUp && { next_follow_up: followUp }),
-          consent: { version: consent.version, at: now },
-          ...(dto.ex_employee_declared && { ex_employee_declared_at: now }),
         },
-        ...(note.length && {
-          $push: { activities: { $each: note, $slice: -MAX_ACTIVITIES } },
-        }),
+        $push: {
+          holder_history: {
+            $each: [this.holdEnd(released, lapse, by, now)],
+            $slice: -MAX_HOLDER_HISTORY,
+          },
+        },
       });
-      // The row exists but is not this partner's: another one claimed first.
+      // The holder worked the farmer (or someone else took them) meanwhile.
       if (!saved) throw taken();
-      result = 'updated';
+      result = 'linked';
+    } else {
+      result = await this.claimOrUpdate({
+        found: found?.link ?? null,
+        piiId,
+        by,
+        origin,
+        leadId: found?.lead?.lead_id ?? null,
+        copy,
+        dto,
+        followUp,
+        note,
+        consentVersion: consent.version,
+        now,
+      });
     }
 
     const row = await this.rows.findByPii(piiId);
     if (!row) throw notFound('Farmer not found.');
-    if (row.origin === 'created') {
+    if (row.origin === 'created' && row.agent_id === by) {
       const leadId = await this.writeOrgRecords(
         farmer,
         piiId,
@@ -294,7 +336,70 @@ export class LeadsService {
         row.lead_id = leadId;
       }
     }
-    return { ...detailOf(row), result };
+    return { ...detailOf(row, await this.window()), result };
+  }
+
+  /** A new row for the farmer, or the partner's own row refreshed. */
+  private async claimOrUpdate(input: {
+    found: VistaarLeadRecord | null;
+    piiId: string;
+    by: string;
+    origin: 'created' | 'linked';
+    leadId: string | null;
+    copy: ReturnType<typeof farmerCopyOf>;
+    dto: AddFarmerDto;
+    followUp: Date | null;
+    note: LeadActivity[];
+    consentVersion: number;
+    now: Date;
+  }): Promise<SavedLead['result']> {
+    const { found, piiId, by, origin, copy, dto, followUp, note, now } = input;
+    const consent = { version: input.consentVersion, at: now };
+    const claimed = found
+      ? false
+      : await this.rows.insert({
+          _id: randomUUID(),
+          pii_id: piiId,
+          agent_id: by,
+          lead_id: input.leadId,
+          origin,
+          ...copy,
+          found_via: dto.found_via ?? null,
+          expected_value: dto.expected_value ?? null,
+          stage: 'prospect',
+          stage_history: [{ from: null, to: 'prospect', at: now, by }],
+          next_follow_up: followUp,
+          lost_reason: null,
+          activities: note,
+          consent,
+          ex_employee_declared_at: dto.ex_employee_declared ? now : null,
+          customer_at: null,
+          last_order_at: null,
+          held_since: now,
+          last_worked_at: now,
+          holder_history: [],
+        });
+    if (claimed) return origin === 'created' ? 'created' : 'linked';
+
+    const saved = await this.rows.update(piiId, by, {
+      $set: {
+        ...copy,
+        ...(dto.found_via && { found_via: dto.found_via }),
+        ...(dto.expected_value !== undefined && {
+          expected_value: dto.expected_value,
+        }),
+        ...(followUp && { next_follow_up: followUp }),
+        consent,
+        ...(dto.ex_employee_declared && { ex_employee_declared_at: now }),
+        last_worked_at: now,
+      },
+      ...(note.length && {
+        $push: { activities: { $each: note, $slice: -MAX_ACTIVITIES } },
+      }),
+    });
+    // The row exists but is not this partner's: another one claimed first.
+    if (!saved) throw taken();
+    return 'updated';
   }
 
   async listMine(
@@ -310,8 +415,15 @@ export class LeadsService {
         ? new Date(istDayStart(now).getTime() + DAY_MS - 1)
         : undefined,
     };
-    const { items, total } = await this.rows.listByUrgency(filter, query, now);
-    return new PageResult(items.map(viewOf), total, query);
+    const [{ items, total }, window] = await Promise.all([
+      this.rows.listByUrgency(filter, query, now),
+      this.window(),
+    ]);
+    return new PageResult(
+      items.map((r) => viewOf(r, window)),
+      total,
+      query,
+    );
   }
 
   /** The leads screen's cards and Home "follow-ups due" (Lovable Leads.tsx). */
@@ -338,7 +450,7 @@ export class LeadsService {
   }
 
   async getMine(partner: PartnerRef, piiId: string): Promise<LeadDetail> {
-    return detailOf(await this.mine(partner, piiId));
+    return detailOf(await this.mine(partner, piiId), await this.window());
   }
 
   /** Stage, follow-up, lost reason, expected value — only what is sent. */
@@ -407,7 +519,10 @@ export class LeadsService {
     if (dto.expected_value !== undefined)
       set.expected_value = dto.expected_value;
 
-    if (Object.keys(set).length === 0) return detailOf(row);
+    const window = await this.window();
+    if (Object.keys(set).length === 0) return detailOf(row, window);
+    // Any change is work on the lead: it renews the partner's hold.
+    set.last_worked_at = now;
     const saved = await this.rows.update(
       row.pii_id,
       by,
@@ -420,7 +535,7 @@ export class LeadsService {
         'This lead changed meanwhile — reload it.',
       );
     }
-    return detailOf(saved);
+    return detailOf(saved, window);
   }
 
   /** Call / visit / WhatsApp / note on the lead's log. */
@@ -429,22 +544,22 @@ export class LeadsService {
     piiId: string,
     dto: AddActivityDto,
   ): Promise<LeadDetail> {
+    const now = new Date();
     const saved = await this.rows.update(
       piiId.toUpperCase(),
       partner.agent_id,
       {
+        $set: { last_worked_at: now },
         $push: {
           activities: {
-            $each: [
-              this.activity(dto.type, dto.text, partner.agent_id, new Date()),
-            ],
+            $each: [this.activity(dto.type, dto.text, partner.agent_id, now)],
             $slice: -MAX_ACTIVITIES,
           },
         },
       },
     );
     if (!saved) throw notFound('Farmer not found.');
-    return detailOf(saved);
+    return detailOf(saved, await this.window());
   }
 
   async list(query: AdminLeadQueryDto): Promise<PageResult<PartnerLeadView>> {
@@ -459,13 +574,16 @@ export class LeadsService {
       from: query.from ? new Date(query.from) : undefined,
       to,
     };
-    const { items, total } = await this.rows.listRecent(filter, query);
+    const [{ items, total }, window] = await Promise.all([
+      this.rows.listRecent(filter, query),
+      this.window(),
+    ]);
     const partners = await this.agents.partnersByAgentIds([
       ...new Set(items.map((r) => r.agent_id)),
     ]);
     return new PageResult(
       items.map((r) => ({
-        ...viewOf(r),
+        ...viewOf(r, window),
         partner: partners.get(r.agent_id) ?? null,
       })),
       total,
@@ -492,13 +610,84 @@ export class LeadsService {
     };
   }
 
-  async get(
-    piiId: string,
-  ): Promise<LeadDetail & { partner: PartnerCard | null }> {
+  async get(piiId: string): Promise<AdminLeadDetail> {
     const row = await this.rows.findByPii(piiId.toUpperCase());
     if (!row) throw notFound('Farmer not found.');
-    const partners = await this.agents.partnersByAgentIds([row.agent_id]);
-    return { ...detailOf(row), partner: partners.get(row.agent_id) ?? null };
+    return this.adminDetailOf(row);
+  }
+
+  /**
+   * HO moves a farmer to another partner (PRD AD8) — e.g. the partner left,
+   * or the farmer asked. The new partner starts over, as on a release; the
+   * farmer's consent was given to Katyayani and stays.
+   */
+  async transfer(
+    piiId: string,
+    dto: TransferLeadDto,
+    by: string,
+  ): Promise<AdminLeadDetail> {
+    const row = await this.rows.findByPii(piiId.toUpperCase());
+    if (!row) throw notFound('Farmer not found.');
+    const target = dto.agent_id.toUpperCase();
+    if (target === row.agent_id) {
+      throw badRequest(
+        'VALIDATION_FAILED',
+        'This farmer is already with that partner.',
+      );
+    }
+    const agent = await this.agents.requireByAgentId(target);
+    if (agent.stage !== 'approved' || !agent.is_active) {
+      throw badRequest(
+        'PARTNER_NOT_APPROVED',
+        'Pick an approved partner — this one is not approved, or is blocked.',
+      );
+    }
+    const now = new Date();
+    const fresh = this.freshHold(row.stage, target, by, now);
+    const saved = await this.rows.takeOver(row.pii_id, row, {
+      $set: {
+        ...fresh,
+        origin: 'linked',
+        found_via: null,
+        expected_value: null,
+        activities: [
+          this.activity(
+            'note',
+            `Moved to you by Katyayani: ${dto.reason}`,
+            by,
+            now,
+          ),
+        ],
+        ex_employee_declared_at: null,
+      },
+      $push: {
+        holder_history: {
+          $each: [this.holdEnd(row, 'transferred', by, now, dto.reason)],
+          $slice: -MAX_HOLDER_HISTORY,
+        },
+      },
+    });
+    if (!saved) {
+      throw conflict(
+        'STAGE_CHANGED',
+        'This lead changed meanwhile — reload it and try again.',
+      );
+    }
+    return this.adminDetailOf(saved);
+  }
+
+  private async adminDetailOf(
+    row: VistaarLeadRecord,
+  ): Promise<AdminLeadDetail> {
+    const [partners, window] = await Promise.all([
+      this.agents.partnersByAgentIds([row.agent_id]),
+      this.window(),
+    ]);
+    return {
+      ...detailOf(row, window),
+      partner: partners.get(row.agent_id) ?? null,
+      holder_history: row.holder_history ?? [],
+    };
   }
 
   private async mine(
@@ -522,7 +711,69 @@ export class LeadsService {
 
   private async holder(piiId: string, agentId: string): Promise<Holder> {
     const { link, lead, contact } = await this.found(piiId);
-    return holderOf({ link, lead, contact, agentId });
+    const lapse = await this.lapseOf(link, agentId, new Date());
+    return holderOf({ link, released: lapse !== null, lead, contact, agentId });
+  }
+
+  /**
+   * Why another partner's hold on this farmer has ended, or `null` while it
+   * stands: no work (or order) in the release window, or that partner is
+   * blocked. Nothing is changed here; the next partner to add them takes over.
+   */
+  private async lapseOf(
+    link: VistaarLeadRecord | null,
+    agentId: string,
+    now: Date,
+  ): Promise<HoldEnd | null> {
+    if (!link || link.agent_id === agentId) return null;
+    if (releaseAtOf(link, await this.window()) <= now) return 'released';
+    return (await this.agents.isOutOfWork(link.agent_id))
+      ? 'partner_blocked'
+      : null;
+  }
+
+  private async window(): Promise<ReleaseWindow> {
+    const s = await this.settings.get();
+    return {
+      lead_days: s.lead_release_days,
+      customer_days: s.customer_release_days,
+    };
+  }
+
+  /** The new partner starts over; a customer stays a customer. */
+  private freshHold(
+    previous: LeadStage,
+    agentId: string,
+    by: string,
+    now: Date,
+  ) {
+    const stage: LeadStage = previous === 'won' ? 'won' : 'prospect';
+    return {
+      agent_id: agentId,
+      stage,
+      stage_history: [{ from: null, to: stage, at: now, by }],
+      next_follow_up: null,
+      lost_reason: null,
+      held_since: now,
+      last_worked_at: now,
+    };
+  }
+
+  private holdEnd(
+    row: VistaarLeadRecord,
+    reason: HoldEnd,
+    by: string,
+    now: Date,
+    note?: string,
+  ): HolderMove {
+    return {
+      agent_id: row.agent_id,
+      from: row.held_since ?? row.created_at,
+      to: now,
+      reason,
+      by,
+      ...(note && { note }),
+    };
   }
 
   /**

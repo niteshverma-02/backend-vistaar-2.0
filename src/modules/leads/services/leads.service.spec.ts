@@ -35,7 +35,19 @@ const dto: AddFarmerDto = {
   consent_version: 1,
 };
 
-/** Just enough of `vistaar_v2_leads` to run the claim, update and race paths for real. */
+const DAY = 86_400_000;
+const daysAgo = (n: number) => new Date(Date.now() - n * DAY);
+
+/** Applies `$set` / `$push` (with `$slice`) as Mongo would, and stamps `updated_at`. */
+function apply(row: Row, upd: Update): Row {
+  Object.assign(row, upd.$set ?? {});
+  for (const [key, value] of Object.entries(upd.$push ?? {}))
+    row[key] = [...((row[key] as unknown[]) ?? []), ...value.$each];
+  row.updated_at = new Date();
+  return { ...row };
+}
+
+/** Just enough of `vistaar_v2_leads` to run the claim, update, takeover and race paths for real. */
 function fakeRows(seed: Row[] = []) {
   const rows = new Map<string, Row>(seed.map((r) => [r.pii_id, { ...r }]));
   return {
@@ -48,9 +60,26 @@ function fakeRows(seed: Row[] = []) {
     ),
     insert: jest.fn((row: Row) => {
       if (rows.has(row.pii_id)) return Promise.resolve(false);
-      rows.set(row.pii_id, { ...row });
+      const now = new Date();
+      rows.set(row.pii_id, { ...row, created_at: now, updated_at: now });
       return Promise.resolve(true);
     }),
+    takeOver: jest.fn(
+      (
+        pii: string,
+        from: { agent_id: string; updated_at: Date },
+        upd: Update,
+      ) => {
+        const row = rows.get(pii);
+        if (
+          !row ||
+          row.agent_id !== from.agent_id ||
+          (row.updated_at as Date).getTime() !== from.updated_at.getTime()
+        )
+          return Promise.resolve(null);
+        return Promise.resolve(apply(row, upd));
+      },
+    ),
     update: jest.fn(
       (
         pii: string,
@@ -62,10 +91,7 @@ function fakeRows(seed: Row[] = []) {
         if (!row || row.agent_id !== agent) return Promise.resolve(null);
         if (expect.stage && row.stage !== expect.stage)
           return Promise.resolve(null);
-        Object.assign(row, upd.$set ?? {});
-        for (const [key, value] of Object.entries(upd.$push ?? {}))
-          row[key] = [...((row[key] as unknown[]) ?? []), ...value.$each];
-        return Promise.resolve({ ...row });
+        return Promise.resolve(apply(row, upd));
       },
     ),
   };
@@ -81,9 +107,14 @@ function setup(
     head?: boolean;
     seed?: Row[];
     leadInserts?: InsertResult[];
+    /** Partners whose account is blocked. */
+    blocked?: string[];
   } = {},
 ) {
   const agents = {
+    isOutOfWork: jest.fn((id: string) =>
+      Promise.resolve((opts.blocked ?? []).includes(id)),
+    ),
     requireByAgentId: jest.fn().mockResolvedValue({
       stage: opts.stage ?? 'approved',
       is_active: true,
@@ -96,6 +127,8 @@ function setup(
     get: jest.fn().mockResolvedValue({
       lead_owner_agent_id: null,
       farmer_consent: { version: 1, text: { en: 'consent' } },
+      lead_release_days: 15,
+      customer_release_days: 45,
     }),
   };
   const access = {
@@ -178,6 +211,9 @@ const myRow = (extra: Partial<Row> = {}): Row => ({
   stage_history: [],
   activities: [],
   consent: { version: 1, at: new Date() },
+  created_at: daysAgo(1),
+  updated_at: daysAgo(1),
+  last_worked_at: daysAgo(1),
   ...extra,
 });
 
@@ -390,5 +426,171 @@ describe('LeadsService.holds', () => {
     expect(await service.holds(ME.agent_id, 'PII-10')).toBe(true);
     expect(await service.holds(ME.agent_id, 'PII-11')).toBe(false);
     expect(await service.holds(ME.agent_id, 'PII-404')).toBe(false);
+  });
+});
+
+describe('LeadsService — release and transfer', () => {
+  const OTHER = 'VST-000002';
+  const theirs = (extra: Record<string, unknown> = {}) =>
+    myRow({
+      agent_id: OTHER,
+      stage: 'negotiation',
+      activities: [{ id: 'a1', type: 'note', text: 'their note' }],
+      held_since: daysAgo(40),
+      ...extra,
+    });
+  const theirLead = { lead_id: 'L-5', source: 'vistaar', created_by: OTHER };
+
+  it('takes over a farmer the other partner left unworked for 15 days', async () => {
+    const { service, org, rows } = setup({
+      known: 'PII-9',
+      seed: [theirs({ last_worked_at: daysAgo(16), updated_at: daysAgo(16) })],
+      lead: theirLead,
+    });
+    expect((await service.check(ME, dto.phone)).status).toBe('released');
+
+    const saved = await service.upsert(ME, dto);
+    expect(saved).toMatchObject({
+      result: 'linked',
+      origin: 'linked',
+      agent_id: ME.agent_id,
+      lead_id: 'L-5',
+      stage: 'prospect',
+      activities: [],
+    });
+    expect(rows.rows.get('PII-9')?.holder_history).toEqual([
+      expect.objectContaining({
+        agent_id: OTHER,
+        reason: 'released',
+        by: ME.agent_id,
+      }),
+    ]);
+    // The org's lead and contact stay the first partner's.
+    expect(org.insertLead).not.toHaveBeenCalled();
+    expect(org.updateLead).not.toHaveBeenCalled();
+    expect(org.updateContact).not.toHaveBeenCalled();
+  });
+
+  it('keeps a farmer worked within 15 days with their partner', async () => {
+    const { service } = setup({
+      known: 'PII-9',
+      seed: [theirs({ last_worked_at: daysAgo(14) })],
+      lead: theirLead,
+    });
+    expect((await service.check(ME, dto.phone)).status).toBe('other_partner');
+    expect(await codeOf(service.upsert(ME, dto))).toBe('FARMER_TAKEN');
+  });
+
+  it("frees a blocked partner's farmers at once", async () => {
+    const { service, rows } = setup({
+      known: 'PII-9',
+      seed: [theirs()],
+      lead: theirLead,
+      blocked: [OTHER],
+    });
+    await service.upsert(ME, dto);
+    expect(rows.rows.get('PII-9')).toMatchObject({
+      agent_id: ME.agent_id,
+      holder_history: [expect.objectContaining({ reason: 'partner_blocked' })],
+    });
+  });
+
+  it('loses the takeover when the partner worked the farmer meanwhile', async () => {
+    const { service, rows } = setup({
+      known: 'PII-9',
+      seed: [theirs({ last_worked_at: daysAgo(16) })],
+      lead: theirLead,
+    });
+    rows.takeOver.mockResolvedValueOnce(null);
+    expect(await codeOf(service.upsert(ME, dto))).toBe('FARMER_TAKEN');
+  });
+
+  it('keeps a customer won, released 45 days after the last order', async () => {
+    const customer = {
+      stage: 'won',
+      customer_at: daysAgo(100),
+      held_since: daysAgo(100),
+      last_worked_at: daysAgo(1),
+    };
+    const kept = setup({
+      known: 'PII-9',
+      seed: [theirs({ ...customer, last_order_at: daysAgo(44) })],
+      lead: theirLead,
+    });
+    expect(await codeOf(kept.service.upsert(ME, dto))).toBe('FARMER_TAKEN');
+
+    const freed = setup({
+      known: 'PII-9',
+      seed: [theirs({ ...customer, last_order_at: daysAgo(46) })],
+      lead: theirLead,
+    });
+    const saved = await freed.service.upsert(ME, dto);
+    expect(saved).toMatchObject({ stage: 'won', agent_id: ME.agent_id });
+    expect(saved.customer_at).toEqual(customer.customer_at);
+  });
+
+  it('renews the hold on any work, and shows when it lapses', async () => {
+    const { service, rows } = setup({
+      seed: [myRow({ last_worked_at: daysAgo(10) })],
+    });
+    const before = Date.now();
+    const saved = await service.update(ME, 'PII-9', { expected_value: 900 });
+    const worked = rows.rows.get('PII-9')?.last_worked_at as Date;
+    expect(worked.getTime()).toBeGreaterThanOrEqual(before);
+    expect(saved.releases_at.getTime()).toBe(worked.getTime() + 15 * DAY);
+
+    await service.addActivity(ME, 'PII-9', { type: 'call', text: 'Called' });
+    expect(
+      (rows.rows.get('PII-9')?.last_worked_at as Date).getTime(),
+    ).toBeGreaterThanOrEqual(worked.getTime());
+  });
+
+  it('lets HO move a farmer to another approved partner', async () => {
+    const seeded = myRow({ stage: 'interested' });
+    const { service, rows } = setup({ seed: [seeded] });
+    const moved = await service.transfer(
+      'PII-9',
+      { agent_id: OTHER, reason: 'Partner left' },
+      'ho@katyayaniorganics.com',
+    );
+    expect(moved).toMatchObject({
+      agent_id: OTHER,
+      origin: 'linked',
+      stage: 'prospect',
+      holder_history: [
+        expect.objectContaining({
+          agent_id: ME.agent_id,
+          reason: 'transferred',
+          by: 'ho@katyayaniorganics.com',
+          note: 'Partner left',
+        }),
+      ],
+    });
+    expect(moved.activities[0].text).toContain('Partner left');
+    // The farmer's consent was given to Katyayani: it moves with them.
+    expect(rows.rows.get('PII-9')?.consent).toEqual(seeded.consent);
+  });
+
+  it('refuses a transfer to the same or an unapproved partner', async () => {
+    const same = setup({ seed: [myRow()] });
+    expect(
+      await codeOf(
+        same.service.transfer(
+          'PII-9',
+          { agent_id: ME.agent_id, reason: 'x' },
+          'ho',
+        ),
+      ),
+    ).toBe('VALIDATION_FAILED');
+    const pending = setup({ seed: [myRow()], stage: 'kyc_review' });
+    expect(
+      await codeOf(
+        pending.service.transfer(
+          'PII-9',
+          { agent_id: OTHER, reason: 'x' },
+          'ho',
+        ),
+      ),
+    ).toBe('PARTNER_NOT_APPROVED');
   });
 });

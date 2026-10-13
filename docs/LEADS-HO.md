@@ -1,15 +1,21 @@
 # Farmer leads — HO portal
 
-> **Updated 2026-10-13.** No route or field changed since the first version. Added: what
-> *one farmer, one partner* means for the screen (see *Rules*).
+> **Updated 2026-10-13 (2) — release and transfer.** New: `POST /admin/leads/:piiId/transfer`
+> (capability `leads.transfer`); on every lead `releases_at`, `held_since`,
+> `last_worked_at`, `last_order_at`; on the detail `holder_history`; settings
+> `lead_release_days` (15) and `customer_release_days` (45). See *Release and transfer*.
+> Nothing removed.
+>
+> *Earlier on 2026-10-13:* what *one farmer, one partner* means for the screen (*Rules*).
 
 **For the HO portal dev.** The Vistaar screens of the HO portal are being remade; this is
 what the new **Leads** screen and its settings are built on. PRD: §6.6 admin counterpart,
 C2 / C4 / C9, §10 (consent), AD8 (ownership), AD12 (joins by id). App side: LEADS-APP.md.
 
 **Base URL:** `{VISTAAR_API}/api/v2` · bearer = the portal's **SSO** token · capability
-`leads.read` (heads: USR-1037 Offline Head, USR-1000 / 1001). **Read-only**: HO watches;
-partners add and work their farmers in the app. There is no HO "add farmer" — only a
+`leads.read` (heads: USR-1037 Offline Head, USR-1000 / 1001). HO watches, and can move a
+farmer to another partner (`leads.transfer`); partners add and work their farmers in the
+app. There is no HO "add farmer" — only a
 partner standing with the farmer can take the farmer's consent (PRD §10).
 
 Every answer is the envelope `{ success, data }`; lists are
@@ -23,8 +29,9 @@ Every answer is the envelope `{ success, data }`; lists are
 |---|---|---|
 | GET | `/admin/leads` | `Page<LeadRow>`, newest first — filters below |
 | GET | `/admin/leads/summary` | `LeadSummary` |
-| GET | `/admin/leads/:piiId` | `LeadDetail` — the row + `stage_history` + `activities` |
-| GET / PUT | `/admin/settings` | `farmer_consent`, `lead_owner_agent_id` (see *Settings*) |
+| GET | `/admin/leads/:piiId` | `AdminLeadDetail` — the row + `stage_history` + `activities` + `holder_history` |
+| POST | `/admin/leads/:piiId/transfer` | `{ agent_id: "VST-…", reason }` → `AdminLeadDetail` — move the farmer to another approved partner |
+| GET / PUT | `/admin/settings` | `farmer_consent`, `lead_owner_agent_id`, `lead_release_days`, `customer_release_days` (see *Settings*) |
 | GET | `/admin/agents?stage=approved` | partners, for the partner filter (ONBOARDING-HO.md) |
 
 ### `GET /admin/leads` filters
@@ -68,6 +75,10 @@ interface LeadRow {
   lost_reason: string | null;
   consent_version: number;        // consent wording version the farmer agreed to
   customer_at: string | null;     // first order (Customers epic)
+  last_order_at: string | null;   // last order (Customers epic)
+  held_since: string | null;      // since when this partner holds the farmer (null = created_at)
+  last_worked_at: string | null;  // the partner's last work on the lead
+  releases_at: string;            // from then another partner may take the farmer
   created_at: string;
   updated_at: string;
 }
@@ -75,6 +86,16 @@ interface LeadRow {
 interface LeadDetail extends LeadRow {
   stage_history: { from: LeadStage | null; to: LeadStage; at: string; by: string }[]; // oldest first
   activities: { id: string; type: LeadActivityType; text: string; at: string; by: string }[]; // newest first, last 100
+}
+
+interface AdminLeadDetail extends LeadDetail {
+  holder_history: {                // partners who held the farmer before, oldest first (last 20)
+    agent_id: string;              // the earlier partner
+    from: string; to: string;
+    reason: "released" | "partner_blocked" | "transferred";
+    by: string;                    // VST-… who took over, or the HO user's email (transfer)
+    note?: string;                 // HO's reason (transfer)
+  }[];
 }
 
 interface LeadSummary {
@@ -89,10 +110,13 @@ interface LeadSummary {
 interface Settings {               // GET /admin/settings — the lead fields
   lead_owner_agent_id: string | null;
   farmer_consent: { version: number; text: { en: string; hi?: string } };
+  lead_release_days: number;       // default 15
+  customer_release_days: number;   // default 45
 }
 ```
 
-`by` in history / activities = the partner's `VST-…`, or `system` (the first order).
+`by` in history / activities = the partner's `VST-…`, `system` (the first order), or the HO
+user's email (a transfer note).
 
 ## Screen: Leads
 
@@ -126,7 +150,8 @@ between (`from` / `to`). Keep them in the URL so a filtered list can be shared.
 | Village | `village`, sub-line `district` |
 | State | `state` |
 | Added | `created_at` |
-| Optional | `pincode`, `origin`, `found_via`, `expected_value` |
+| Releases | `releases_at` — "in N days"; amber within 3 days, red when past (free for another partner) |
+| Optional | `pincode`, `origin`, `found_via`, `expected_value`, `held_since` |
 
 **Export:** page through `/admin/leads?…&limit=200` until `has_more` is false; CSV of the
 table's columns.
@@ -134,13 +159,20 @@ table's columns.
 **Drawer** (`/admin/leads/:piiId`):
 
 - **Header:** name, village · district · state, stage tag. Actions: call, WhatsApp,
-  "Partner's farmers" (sets `agent_id`), open the partner (`/admin/agents/:agentId`).
+  "Partner's farmers" (sets `agent_id`), open the partner (`/admin/agents/:agentId`),
+  **"Move to another partner"** (only with `leads.transfer`): pick an approved partner
+  (`/admin/agents?stage=approved`) + a reason (required, ≤ 200) → `POST …/transfer`;
+  confirm first ("The new partner starts over at Prospect").
 - **Details:** Farmer ID (`pii_id`), Org lead (`lead_id`, `—` when none), Phone,
   Partner, Village, District, State, Pincode, Crops (tags), Land, How found
   (`found_via`), Expected first order, Next follow-up, Origin, Consent (version
   `consent_version`), Added on, Became customer (`customer_at`).
 - **Stage & activity:** `stage_history` as a timeline (from → to, when, by), then
   `activities` newest first (type icon, text, when, by).
+- **Partners before:** `holder_history`, newest on top — partner, from → to, why
+  (Released · Partner blocked · Moved by HO + `note`). Hide when empty.
+- **Hold:** "With this partner since `held_since` · last work `last_worked_at` · releases
+  `releases_at`".
 
 Empty states: no farmers yet ("Farmers partners add in the app appear here"); nothing
 matches (offer reset).
@@ -154,6 +186,8 @@ only what changed:
 |---|---|
 | `farmer_consent_text: { en, hi? }` | "Farmer consent" — English (required) and Hindi text areas, ≤ 600 chars each; show `farmer_consent.version`. New words make a new version: partners must tick the new wording before their next add (the app gets `409 CONSENT_OUTDATED` and reloads it); leads keep the version they were given under. The app picks it up within a minute. Confirm before saving — it changes what every partner shows farmers |
 | `lead_owner_agent_id` | "Farmer-lead owner (override)" — an active `A0-…` account; empty = the Offline Head (below). `400 OWNER_NOT_FOUND` if it is not an active account |
+| `lead_release_days` | "Release a lead after N days without work" — whole number 1–365, default 15 |
+| `customer_release_days` | "Release a customer after N days without an order" — whole number 1–365, default 45 |
 
 ## Labels
 
@@ -173,10 +207,13 @@ partner never sets it).
 |---|---|---|
 | `UNAUTHORIZED` | 401 | SSO token missing / expired — sign in again |
 | `NO_ADMIN_ACCESS` | 403 | the account has no Vistaar role |
-| `ROLE_NOT_ALLOWED` | 403 | the role is not a head (no `leads.read` / `settings.write`) |
+| `ROLE_NOT_ALLOWED` | 403 | the role is not a head (no `leads.read` / `leads.transfer` / `settings.write`) |
 | `NOT_FOUND` | 404 | no partner holds this farmer |
 | `VALIDATION_FAILED` | 400 | a bad filter or setting — `details[0]` |
 | `OWNER_NOT_FOUND` | 400 | settings: the owner is not an active account |
+| `PARTNER_NOT_APPROVED` | 400 | transfer: the partner picked is not approved, or is blocked |
+| `VALIDATION_FAILED` | 400 | transfer: already with that partner, or no reason |
+| `STAGE_CHANGED` | 409 | transfer: the lead changed meanwhile — reload and try again |
 
 ## Lead owner
 
@@ -193,8 +230,7 @@ still works. Owning a lead gives no access; partners never reach `/admin/*`.
   one partner; a partner has any number of farmers. So every row in `/admin/leads` is one
   farmer with exactly one `partner` — the same farmer never shows twice. The first partner
   to add the farmer has them; another partner trying the same mobile is refused, and only
-  the holding partner can order for the farmer. Moving a farmer to another partner (e.g.
-  the partner left): HO transfer tool, later (PRD AD8).
+  the holding partner can order for the farmer. Not forever — see *Release and transfer*.
 - Farmers only: a number registered as a retailer / business is refused.
 - A Katyayani farmer from another channel can be taken by a partner (PRD C9): only the
   partner's row is written; the org's lead and contact are never changed.
@@ -206,6 +242,26 @@ still works. Owning a lead gives no access; partners never reach `/admin/*`.
   router exclusions.
 - No ko-sales pipeline, LQS or webhook — as prasar's direct insert.
 
+## Release and transfer
+
+A partner keeps a farmer only while working them (user's rule, 2026-10-13):
+
+| Farmer | Free for another partner after | Setting |
+|---|---|---|
+| Lead (no order yet) | 15 days with no work | `lead_release_days` |
+| Customer (has ordered) | 45 days with no order | `customer_release_days` |
+| Any, partner blocked | at once | — |
+
+- Work = the partner saving the lead again, a stage / follow-up / expected-value change, or
+  a logged call, visit, WhatsApp or note. A far follow-up date does not keep the farmer.
+- Nothing runs at `releases_at`: the farmer stays with the partner (and any work renews
+  it) until another partner adds them. That partner then holds the farmer, starting at
+  Prospect (a customer stays Won); the earlier partner goes into `holder_history`.
+- **Transfer** (PRD AD8): HO moves a farmer by hand, any time — e.g. the partner left or the
+  farmer asked. Same fresh start; the reason is kept in `holder_history.note` and as the
+  first note the new partner sees. The farmer's consent moves with them.
+- The org's lead (`leads_v2`: `created_by`, owner) never changes on a release or transfer.
+
 ## Not in v2 yet
 
 | | When |
@@ -213,5 +269,5 @@ still works. Owning a lead gives no access; partners never reach `/admin/*`.
 | Charts by day / crop / village / state | summary facets — backend, on request |
 | Partners with no farmer yet | backend, on request |
 | Lead → customer page link | Customers epic |
-| Move a farmer to another partner | HO transfer tool (PRD AD8) |
+| A partner asking HO for a farmer ("request transfer") | later |
 | Ex-employee lock list | HRMS (PRD AD8) |

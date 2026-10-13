@@ -23,6 +23,8 @@ const DEFAULTS: SettingsRecord = {
   default_owner_agent_id: null,
   lead_owner_agent_id: null,
   farmer_consent: FIRST_CONSENT,
+  lead_release_days: 15,
+  customer_release_days: 45,
   conflict_radius_km: 5,
 };
 const CACHE_MS = 60_000;

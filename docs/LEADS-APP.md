@@ -4,9 +4,12 @@
 Only an **approved** partner can add farmers. Screens: Add lead, Leads (list / board), Lead
 detail, Home "follow-ups due" (PRD C2, C4, C9, H5).
 
-> **Updated 2026-10-13.** No route or field changed since the first version. Added: *One
-> farmer, one partner*, *From the app's `Lead` model* (field mapping) and *Ordering for a
-> lead* (the cart now accepts every farmer you hold, linked ones too).
+> **Updated 2026-10-13 (2) — a farmer is released when not worked.** New on the lead:
+> `releases_at`, `held_since`, `last_worked_at`, `last_order_at`. New `GET /leads/check`
+> status `released`. See *One farmer, one partner* and *Keeping a farmer*. Nothing removed.
+>
+> *Earlier on 2026-10-13:* added *From the app's `Lead` model* (field mapping) and
+> *Ordering for a lead* (the cart accepts every farmer you hold, linked ones too).
 
 A partner adds **farmers only**. One farmer belongs to **one partner**. A lead becomes a
 customer — stage `won` — with its first order; the partner never sets `won`.
@@ -22,7 +25,33 @@ partner can have any number of farmers (PRD C2, R1).
 - Only A can order for that farmer; for B the cart answers `404 NOT_FOUND`.
 - Two partners saving the same farmer at the same second: one wins, the other gets
   `FARMER_TAKEN`.
-- Moving a farmer to another partner is done by HO (later), never from the app.
+- **Not forever:** if A does not work the farmer, they are released (below) and B can add
+  them — `GET /leads/check` then says `released`, and B's save takes the farmer over.
+- HO can also move a farmer to another partner (e.g. a partner left). Never from the app.
+
+## Keeping a farmer
+
+A partner keeps a farmer only while working them (user's rule, 2026-10-13; HO can change
+the days):
+
+| Farmer | Released after |
+|---|---|
+| Lead (no order yet) | **15 days** with no work |
+| Customer (has ordered) | **45 days** with no order |
+| Any, if the partner is blocked | at once |
+
+- **Work** = saving the lead again, a stage change, a follow-up or expected-value change
+  (`PATCH`), or a logged call / visit / WhatsApp / note. Opening the lead is not work. A
+  follow-up date far ahead does **not** keep the farmer — only logged work does.
+- `releases_at` on every lead says when. Nothing happens at that moment: the farmer stays
+  yours, and any work renews it, until another partner adds them after it.
+- Once another partner takes the farmer, they leave your lists and your cart (`404`).
+- The new partner starts fresh at Prospect (a customer stays `won`) and does not see your
+  notes.
+
+**Show in the app:** "Releases in N days" on a lead when `releases_at` is within 3 days
+(red when past); and when a follow-up being set is later than `releases_at`, warn: "Log a
+call or visit before <date> or another partner can take this farmer."
 
 ## Routes
 
@@ -76,6 +105,7 @@ The Flutter `Lead` (`features/customers/domain/entities/lead.dart`) maps like th
 | `yours` | already your lead — save updates them ("Already in your leads") |
 | `katyayani` | a Katyayani farmer (app, KKD…) no partner holds — save makes them yours |
 | `other_partner` | another partner's farmer — save is refused |
+| `released` | was another partner's, not worked in time — save makes them yours (result `linked`) |
 | `not_farmer` | registered as a retailer / business — save is refused |
 | `self` | your own number |
 
@@ -104,7 +134,8 @@ already hold updates the farmer (name, village, crops, acreage, and any of `foun
 `expected_value`, `next_follow_up`, `note` sent) — so an offline sync can safely resend.
 
 Answer `200` — the lead (shape below) plus `result`: `created` (new to Katyayani) ·
-`linked` (an existing Katyayani farmer, now yours) · `updated` (yours already).
+`linked` (an existing Katyayani farmer, or a released one, now yours) · `updated` (yours
+already).
 
 ## The lead
 
@@ -119,6 +150,10 @@ Answer `200` — the lead (shape below) plus `result`: `created` (new to Katyaya
   "stage": "prospect",              // prospect | contacted | interested | negotiation | won | lost
   "next_follow_up": "2026-10-15T04:30:00.000Z", "lost_reason": null,
   "consent_version": 1, "customer_at": null,
+  "held_since": "…",                // since when you hold this farmer
+  "last_worked_at": "…",            // your last work on it
+  "last_order_at": null,            // last order (customers)
+  "releases_at": "2026-10-28T…Z",   // another partner may take it from then, unless you work it
   "created_at": "…", "updated_at": "…",
   // GET /leads/:piiId, PATCH, activities, POST only:
   "stage_history": [{ "from": null, "to": "prospect", "at": "…", "by": "VST-000001" }],

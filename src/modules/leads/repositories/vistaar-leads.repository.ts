@@ -13,7 +13,7 @@ export type VistaarLeadRecord = VistaarLead;
 /** A list row: the record without its history. */
 export type VistaarLeadBrief = Omit<
   VistaarLead,
-  'activities' | 'stage_history'
+  'activities' | 'stage_history' | 'holder_history'
 >;
 
 export interface LeadListFilter {
@@ -31,7 +31,7 @@ export interface LeadListFilter {
   phone?: string;
 }
 
-const BRIEF = { activities: 0, stage_history: 0 } as const;
+const BRIEF = { activities: 0, stage_history: 0, holder_history: 0 } as const;
 
 const escapeRegex = (value: string): string =>
   value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -87,6 +87,30 @@ export class VistaarLeadsRepository {
     return this.model
       .findOneAndUpdate(
         { pii_id: piiId, agent_id: agentId, ...expect },
+        update,
+        { returnDocument: 'after' },
+      )
+      .lean<VistaarLeadRecord | null>()
+      .exec();
+  }
+
+  /**
+   * Moves the farmer to another partner, only if the row is exactly as the
+   * caller read it — any write since (the holder's work, an order, another
+   * takeover) renews or ends the hold, so `null` = it changed meanwhile.
+   */
+  takeOver(
+    piiId: string,
+    from: { agent_id: string; updated_at: Date },
+    update: UpdateQuery<VistaarLeadDocument>,
+  ): Promise<VistaarLeadRecord | null> {
+    return this.model
+      .findOneAndUpdate(
+        {
+          pii_id: piiId,
+          agent_id: from.agent_id,
+          updated_at: from.updated_at,
+        },
         update,
         { returnDocument: 'after' },
       )

@@ -18,7 +18,7 @@ Gate screens and buttons on `capabilities`, never on role names.
 | `agents.decide` | approve, reject, request changes, block, unblock, reopen |
 | `agents.assign` | change a partner's owner |
 | `config.read` / `config.write` / `config.publish` | cohorts and forms |
-| `settings.write` | default owner, conflict radius |
+| `settings.write` | default owner, conflict radius, farmer-lead settings (LEADS-HO.md) |
 | `content.read` / `content.write` | Home banners (`docs/BANNERS-HO.md`) |
 
 Today every capability goes to **USR-1037 (Offline Head), USR-1000 (Super Admin), USR-1001 (Admin)**
@@ -126,7 +126,7 @@ document is copied to — ko-sales spellings, e.g. `adhar`, `pan`, `bank_details
 
 ## 5. Settings
 
-`GET /admin/settings` · `PUT /admin/settings { default_owner_agent_id?, lead_owner_agent_id?, farmer_consent_text?, conflict_radius_km? }`
+`GET /admin/settings` · `PUT /admin/settings { default_owner_agent_id?, lead_owner_agent_id?, farmer_consent_text?, lead_release_days?, customer_release_days?, conflict_radius_km? }`
 — the owner every new signup gets, an override owner for the farmer leads partners add
 (LEADS-HO.md; unset = the Offline Head, USR-1037), and the nearby-check radius (0.5–50 km).
 Both owners must be active `agents_v2` accounts (`400 OWNER_NOT_FOUND`).

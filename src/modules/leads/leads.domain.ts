@@ -32,6 +32,9 @@ export const AREA_UNIT = 'Acre';
 export const MAX_CROPS = 10;
 export const MAX_ACTIVITIES = 100;
 export const MAX_STAGE_HISTORY = 50;
+export const MAX_HOLDER_HISTORY = 20;
+
+const DAY_MS = 24 * 3600 * 1000;
 
 /** The cohort whose partners declare they did not handle the farmer at Katyayani (PRD C6). */
 export const EX_EMPLOYEE_COHORT = 'ex_employee';
@@ -93,27 +96,70 @@ export interface FarmerInput {
  * - `none` — nobody: Vistaar creates the farmer;
  * - `mine` — this partner: an update;
  * - `other_partner` — another partner holds them;
+ * - `released` — another partner held them, but the hold lapsed or that
+ *   partner is blocked: this partner takes them over;
  * - `katyayani` — a farmer from another channel (app, KKD, telecalling) not
  *   held by a partner: linked to this partner, the org's records untouched (C9);
  * - `not_farmer` — registered as a retailer, dealer, … (farmers only).
  */
 export type Holder =
-  'none' | 'mine' | 'other_partner' | 'katyayani' | 'not_farmer';
+  'none' | 'mine' | 'other_partner' | 'released' | 'katyayani' | 'not_farmer';
+
+/** Why a farmer left a partner. */
+export type HoldEnd = 'released' | 'partner_blocked' | 'transferred';
 
 export function holderOf(found: {
   link: { agent_id: string } | null;
+  /** The link's hold has lapsed, or its partner is blocked. */
+  released?: boolean;
   lead: { source?: string | null; created_by?: string | null } | null;
   contact: { profile?: string | null } | null;
   agentId: string;
 }): Holder {
   const { link, lead, contact, agentId } = found;
-  if (link) return link.agent_id === agentId ? 'mine' : 'other_partner';
+  if (link) {
+    if (link.agent_id === agentId) return 'mine';
+    return found.released ? 'released' : 'other_partner';
+  }
   // A Vistaar lead whose partner row is missing still belongs to its creator.
   if (lead?.source === LEAD_SOURCE) {
     return lead.created_by === agentId ? 'mine' : 'other_partner';
   }
   if (contact && !isFarmerProfile(contact.profile)) return 'not_farmer';
   return lead || contact ? 'katyayani' : 'none';
+}
+
+/** Days a partner keeps a farmer without working them (HO settings). */
+export interface ReleaseWindow {
+  /** A lead: days since the last work — save, stage, follow-up, activity. */
+  lead_days: number;
+  /** A customer: days since the last order. */
+  customer_days: number;
+}
+
+/**
+ * When the partner's hold on a farmer lapses (user, 2026-10-13). Nothing
+ * happens at that moment: the farmer stays theirs, and any work renews the
+ * hold, until another partner adds the farmer after it.
+ */
+export function releaseAtOf(
+  row: {
+    last_worked_at?: Date | null;
+    last_order_at?: Date | null;
+    customer_at?: Date | null;
+    held_since?: Date | null;
+    created_at: Date;
+  },
+  window: ReleaseWindow,
+): Date {
+  // A partner who just took the farmer over gets a whole window.
+  const since = (row.held_since ?? row.created_at).getTime();
+  if (row.customer_at) {
+    const lastOrder = (row.last_order_at ?? row.customer_at).getTime();
+    return new Date(Math.max(lastOrder, since) + window.customer_days * DAY_MS);
+  }
+  const lastWork = row.last_worked_at?.getTime() ?? since;
+  return new Date(Math.max(lastWork, since) + window.lead_days * DAY_MS);
 }
 
 /** No profile yet, or a farmer one. */

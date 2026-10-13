@@ -33,6 +33,17 @@ export class Settings {
   @Prop({ type: SchemaTypes.Mixed, default: null })
   farmer_consent!: FarmerConsent | null;
 
+  /**
+   * One farmer, one partner — but not forever (user, 2026-10-13): a lead with
+   * no work for this many days, or a customer with no order for
+   * `customer_release_days`, can be taken by another partner.
+   */
+  @Prop({ type: Number, default: 15 })
+  lead_release_days!: number;
+
+  @Prop({ type: Number, default: 45 })
+  customer_release_days!: number;
+
   /** How far the approval screen looks for existing network, in km. */
   @Prop({ type: Number, default: 5 })
   conflict_radius_km!: number;

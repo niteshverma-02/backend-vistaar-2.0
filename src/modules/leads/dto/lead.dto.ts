@@ -206,6 +206,25 @@ export class AddActivityDto {
   text!: string;
 }
 
+/** HO moves a farmer to another partner (PRD AD8). */
+export class TransferLeadDto {
+  @ApiProperty({
+    example: 'VST-000002',
+    description: 'The approved partner who gets the farmer',
+  })
+  @Matches(/^VST-\d+$/i, {
+    message: 'Pick a partner, for example VST-000002.',
+  })
+  agent_id!: string;
+
+  @ApiProperty({ example: 'VST-000001 left the programme' })
+  @Transform(trim)
+  @IsString()
+  @IsNotEmpty({ message: 'Write why the farmer is moved.' })
+  @MaxLength(200)
+  reason!: string;
+}
+
 export class CheckPhoneQueryDto {
   @ApiProperty({ example: MOBILE_EXAMPLE })
   @IsString()

@@ -139,6 +139,12 @@ export class AgentsService {
     return agent;
   }
 
+  /** Blocked, switched off or gone: the partner's farmers are free for others. */
+  async isOutOfWork(agentId: string): Promise<boolean> {
+    const agent = await this.agents.findByAgentId(agentId.toUpperCase());
+    return !agent || agent.stage === 'blocked' || !agent.is_active;
+  }
+
   /** `VST-` id → the partner's id and name, for the farmer-lead lists. */
   async partnersByAgentIds(
     agentIds: readonly string[],
