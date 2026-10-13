@@ -65,8 +65,9 @@ A Vistaar row is **a B2B cart row** — the same fields, names and types as the
 rows already there (checked 2026-10-09), nothing Vistaar-only. Only the values
 say whose it is. There is **no `user_id`**, as on B2B's rows (user's decision,
 2026-10-09): the partner is only in the `_id`. Every query filters on `_id` +
-`source`, so no service reads or writes another's carts. One cart per partner
-(two partners ordering for one farmer have two carts); there are no saved /
+`source`, so no service reads or writes another's carts. One cart per partner;
+its customer must be a farmer the partner holds in `vistaar_v2_leads` (one farmer, one
+partner — so a farmer is only ever in their own partner's cart). There are no saved /
 draft carts here — those, and their `reminder_sent`, are `draft_orders`.
 
 | Field | Vistaar value |
@@ -148,6 +149,11 @@ another channel is only linked to the partner (`origin: linked`) — their org r
 changed; a non-farmer is refused. A partner's re-submit updates only rows Vistaar wrote.
 The partner's row is written first (unique `pii_id`), the org rows after. No pipeline, LQS
 or webhook.
+
+**Which partner a farmer belongs to is `vistaar_v2_leads.agent_id`, never
+`leads_v2.lead_owner`.** The owner is HO staff (it must be an `agents_v2` account, and
+ko-sales' upsert refuses any other); partners are not staff. The cart's "Ordering for" and
+draft orders check the partner through `LeadsService.holds()`.
 
 ### `leads_v2` — one per person (unique `pii_id`)
 

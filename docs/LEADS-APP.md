@@ -4,8 +4,25 @@
 Only an **approved** partner can add farmers. Screens: Add lead, Leads (list / board), Lead
 detail, Home "follow-ups due" (PRD C2, C4, C9, H5).
 
+> **Updated 2026-10-13.** No route or field changed since the first version. Added: *One
+> farmer, one partner*, *From the app's `Lead` model* (field mapping) and *Ordering for a
+> lead* (the cart now accepts every farmer you hold, linked ones too).
+
 A partner adds **farmers only**. One farmer belongs to **one partner**. A lead becomes a
 customer — stage `won` — with its first order; the partner never sets `won`.
+
+## One farmer, one partner
+
+A farmer (one mobile number = one person) can be with only **one** Vistaar partner; a
+partner can have any number of farmers (PRD C2, R1).
+
+- Partner A adds a mobile → that farmer is A's.
+- Partner B checks the same mobile → `GET /leads/check` says `other_partner`: tell B before
+  they fill the form. If B saves anyway → `409 FARMER_TAKEN`.
+- Only A can order for that farmer; for B the cart answers `404 NOT_FOUND`.
+- Two partners saving the same farmer at the same second: one wins, the other gets
+  `FARMER_TAKEN`.
+- Moving a farmer to another partner is done by HO (later), never from the app.
 
 ## Routes
 
@@ -22,6 +39,34 @@ customer — stage `won` — with its first order; the partner never sets `won`.
 
 `pii_id` is the lead's id everywhere — the cart's "Ordering for" takes the same id
 (`PUT /cart/customer`). "Place first order" = set the cart customer to the lead's `pii_id`.
+
+### Ordering for a lead
+
+`PUT /cart/customer { "pii_id": "<lead's pii_id>" }` (CART-APP.md) accepts **every farmer in
+your `GET /leads`** — ones you created and Katyayani farmers you linked — in any stage.
+Any other `pii_id` is `404 NOT_FOUND` ("This customer could not be found."). The "Ordering
+for" picker should list your leads (and later your customers) from `GET /leads`.
+
+### From the app's `Lead` model
+
+The Flutter `Lead` (`features/customers/domain/entities/lead.dart`) maps like this:
+
+| App (`Lead`) | API | Note |
+|---|---|---|
+| `id` | `pii_id` | the id in every route |
+| `name`, `phone`, `village` | `name`, `phone`, `village` | required on save |
+| `district` | `district` | may be `null` → show `""` |
+| `crop` | `crops[0]` | send `crops: [crop]`; more crops may follow |
+| `acreage` | `acreage` | acres, > 0 |
+| `source` (`LeadSource`) | `found_via` | same wire values; may be `null` if never sent |
+| `stage` (`LeadStage`) | `stage` | same wire values |
+| `expectedValue` | `expected_value` | `null` → `0` |
+| `nextFollowUp` | `next_follow_up` | send local time with `+05:30`; answers come in UTC (`…Z`) |
+| `lostReason` | `lost_reason` | |
+| `createdAt` | `created_at` | |
+| `activities` (`LeadActivity`) | `activities` | only in `GET /leads/:piiId` and write answers; list rows have none. Types `call` · `visit` · `whatsapp` · `note` · `stage_change` |
+| consent tick | `consent_version` | the `version` from `GET /leads/consent`; show its `text` (`hi` when the app is in Hindi) |
+| ex-employee declaration | `ex_employee_declared` | send `true` when the partner's cohort is `ex_employee` |
 
 ### `GET /leads/check?phone=`
 

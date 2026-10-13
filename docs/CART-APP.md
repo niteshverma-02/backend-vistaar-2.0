@@ -54,8 +54,9 @@ response and never computes totals itself. The customer's name is not stored on
 the cart — show it from the app's own customer list by `pii_id`.
 
 The customer must be one of the partner's own farmers: a `pii_id` from the
-partner's leads (`GET /leads`, LEADS-APP.md) — "Place first order" on a lead sets
-it. Any other `pii_id` — unknown or someone else's — is the same `404 NOT_FOUND`
+partner's leads (`GET /leads`, LEADS-APP.md), created or linked, in any stage —
+"Place first order" on a lead sets it (*updated 2026-10-13*: this replaced the
+earlier `leads_v2.lead_owner` rule, which no lead could meet). Any other `pii_id` — unknown or someone else's — is the same `404 NOT_FOUND`
 ("This customer could not be found."), and the cart is left as it was. The
 partner's own `pii_id` is accepted and means shop stock, like `null`.
 

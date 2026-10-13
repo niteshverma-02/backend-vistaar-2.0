@@ -1,5 +1,8 @@
 # Farmer leads — HO portal
 
+> **Updated 2026-10-13.** No route or field changed since the first version. Added: what
+> *one farmer, one partner* means for the screen (see *Rules*).
+
 **For the HO portal dev.** The Vistaar screens of the HO portal are being remade; this is
 what the new **Leads** screen and its settings are built on. PRD: §6.6 admin counterpart,
 C2 / C4 / C9, §10 (consent), AD8 (ownership), AD12 (joins by id). App side: LEADS-APP.md.
@@ -186,8 +189,12 @@ still works. Owning a lead gives no access; partners never reach `/admin/*`.
 
 ## Rules
 
-- One farmer, one partner (`vistaar_v2_leads.pii_id` is unique). Moving a farmer to
-  another partner: HO transfer tool, later (PRD AD8).
+- **One farmer, one partner** (PRD C2, R1): a farmer (one mobile = one person) is with only
+  one partner; a partner has any number of farmers. So every row in `/admin/leads` is one
+  farmer with exactly one `partner` — the same farmer never shows twice. The first partner
+  to add the farmer has them; another partner trying the same mobile is refused, and only
+  the holding partner can order for the farmer. Moving a farmer to another partner (e.g.
+  the partner left): HO transfer tool, later (PRD AD8).
 - Farmers only: a number registered as a retailer / business is refused.
 - A Katyayani farmer from another channel can be taken by a partner (PRD C9): only the
   partner's row is written; the org's lead and contact are never changed.
