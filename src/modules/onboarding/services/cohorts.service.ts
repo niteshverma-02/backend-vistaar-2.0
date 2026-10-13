@@ -36,7 +36,9 @@ export class CohortsService {
     if (!cohort || (activeOnly && !cohort.is_active)) {
       throw badRequest(
         'COHORT_NOT_FOUND',
-        `No ${activeOnly ? 'active ' : ''}partner type "${key}".`,
+        activeOnly
+          ? 'This partner type is not open right now. Please choose another one.'
+          : 'This partner type could not be found.',
       );
     }
     return cohort;
@@ -44,11 +46,15 @@ export class CohortsService {
 
   async create(dto: CreateCohortDto, by: string): Promise<Cohort> {
     if (!dto.label?.en)
-      throw badRequest('VALIDATION_FAILED', 'label.en is required.');
+      throw badRequest(
+        'VALIDATION_FAILED',
+        'Please add an English name for the partner type.',
+        ['Please add an English name for the partner type.'],
+      );
     if (await this.cohorts.find(dto.key))
       throw conflict(
         'COHORT_EXISTS',
-        `Partner type "${dto.key}" already exists.`,
+        `A partner type with the ID "${dto.key}" already exists. Please use another ID.`,
       );
     this.active = null;
     return this.cohorts.create({
@@ -66,10 +72,14 @@ export class CohortsService {
 
   async update(key: string, dto: UpdateCohortDto, by: string): Promise<Cohort> {
     if (dto.label && !dto.label.en)
-      throw badRequest('VALIDATION_FAILED', 'label.en is required.');
+      throw badRequest(
+        'VALIDATION_FAILED',
+        'Please add an English name for the partner type.',
+        ['Please add an English name for the partner type.'],
+      );
     this.active = null;
     const updated = await this.cohorts.update(key, { ...dto, updated_by: by });
-    if (!updated) throw notFound(`No partner type "${key}".`);
+    if (!updated) throw notFound('This partner type could not be found.');
     return updated;
   }
 
@@ -82,7 +92,7 @@ export class CohortsService {
     ) {
       throw conflict(
         'COHORT_IN_USE',
-        'This partner type has a form or applicants. Deactivate it instead.',
+        'This partner type already has a form or applicants, so it cannot be deleted. Please turn it off instead.',
       );
     }
     this.active = null;

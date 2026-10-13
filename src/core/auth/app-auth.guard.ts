@@ -37,7 +37,7 @@ export class AppAuthGuard implements CanActivate {
       .switchToHttp()
       .getRequest<AuthedRequest & { headers: Record<string, unknown> }>();
     const token = bearer(request.headers.authorization);
-    if (!token) throw new UnauthorizedException('Missing bearer token.');
+    if (!token) throw new UnauthorizedException('Please log in to continue.');
 
     if (this.reflector.getAllAndOverride<boolean>(IS_ADMIN_KEY, targets)) {
       let admin;
@@ -46,18 +46,24 @@ export class AppAuthGuard implements CanActivate {
       } catch (error) {
         if (error instanceof SsoUnavailableError) {
           throw new ServiceUnavailableException(
-            'Sign-in service is unavailable. Try again shortly.',
+            'Login is not working right now. Please try again in a few minutes.',
           );
         }
         throw error;
       }
-      if (!admin) throw new UnauthorizedException('Invalid or expired token.');
+      if (!admin)
+        throw new UnauthorizedException(
+          'You have been signed out. Please log in again.',
+        );
       request.user = admin;
       return true;
     }
 
     const partner = this.partnerTokens.verify(token);
-    if (!partner) throw new UnauthorizedException('Invalid or expired token.');
+    if (!partner)
+      throw new UnauthorizedException(
+        'You have been signed out. Please log in again.',
+      );
     request.user = partner;
     return true;
   }

@@ -125,9 +125,12 @@ export class DraftOrderService {
     if (cart.items.length === 0) {
       throw conflict(
         'DRAFT_CART_EMPTY',
-        'Add a product before saving the cart.',
+        'Your cart is empty. Please add a product before saving.',
       );
     }
+
+    // Re-checked here: a cart may still name a customer set before the check.
+    await this.cart.requireCustomer(partner, cart.pii_id);
 
     const [catalog, customer] = await Promise.all([
       this.catalog.variants(

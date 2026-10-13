@@ -32,6 +32,12 @@ export const envSchema = z.object({
   /** `CRM-Database`, shared with ko-sales and every other portal. */
   MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
   MONGODB_DB_NAME: z.string().min(1).default('CRM-Database'),
+  /** Connections per process. Many processes × this must stay under the server's limit. */
+  MONGODB_MAX_POOL_SIZE: z.coerce.number().int().min(1).max(500).default(50),
+  MONGODB_MIN_POOL_SIZE: z.coerce.number().int().min(0).max(100).default(5),
+
+  /** `pnpm start:cluster`: worker processes; 0 = one per CPU core. */
+  WEB_CONCURRENCY: z.coerce.number().int().min(0).max(64).default(0),
 
   /** Comma-separated. Empty = no browser origin allowed (the mobile app still
    *  works — native clients send no Origin header). `*` = any. */
@@ -107,13 +113,19 @@ export type Env = z.infer<typeof envSchema>;
  * Test numbers are a back door by design, so they may exist only where no
  * real partner signs in.
  */
-const refinedEnvSchema = envSchema.refine(
-  (env) => env.NODE_ENV !== 'production' || env.OTP_TEST_NUMBERS.trim() === '',
-  {
-    message: 'OTP_TEST_NUMBERS must be empty in production',
-    path: ['OTP_TEST_NUMBERS'],
-  },
-);
+const refinedEnvSchema = envSchema
+  .refine(
+    (env) =>
+      env.NODE_ENV !== 'production' || env.OTP_TEST_NUMBERS.trim() === '',
+    {
+      message: 'OTP_TEST_NUMBERS must be empty in production',
+      path: ['OTP_TEST_NUMBERS'],
+    },
+  )
+  .refine((env) => env.MONGODB_MIN_POOL_SIZE <= env.MONGODB_MAX_POOL_SIZE, {
+    message: 'MONGODB_MIN_POOL_SIZE must not exceed MONGODB_MAX_POOL_SIZE',
+    path: ['MONGODB_MIN_POOL_SIZE'],
+  });
 
 export function validateEnv(raw: Record<string, unknown>): Env {
   const parsed = refinedEnvSchema.safeParse(raw);
@@ -152,4 +164,17 @@ export function resolveCorsOrigin(raw: string): true | string[] | false {
   if (origins.includes('*')) return true;
 
   return origins.length > 0 ? origins : false;
+}
+
+/**
+ * `pnpm start:cluster` decides its worker count before Nest (and its
+ * ConfigModule) exists, so it reads this one variable here. Set it in the
+ * process environment; `.env` is loaded by each worker, not the primary.
+ */
+export function clusterWorkerCount(cpus: number): number {
+  const parsed = envSchema.shape.WEB_CONCURRENCY.safeParse(
+    process.env.WEB_CONCURRENCY,
+  );
+  const wanted = parsed.success ? parsed.data : 0;
+  return wanted > 0 ? wanted : Math.max(1, cpus);
 }

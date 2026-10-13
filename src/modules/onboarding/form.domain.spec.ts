@@ -142,8 +142,10 @@ describe('configErrors', () => {
         ],
       },
     ]).join(' | ');
-    expect(errors).toMatch(/org_document "pan" is used twice/);
-    expect(errors).toMatch(/only a document field has an org_document/);
+    expect(errors).toMatch(/already uses the KYC document type "pan"/);
+    expect(errors).toMatch(
+      /only a document field can have a KYC document type/,
+    );
   });
 
   it('catches duplicate keys, bad types and unknown visibility targets', () => {
@@ -170,9 +172,9 @@ describe('configErrors', () => {
       },
     ];
     const errors = configErrors(bad).join('\n');
-    expect(errors).toMatch(/"state" is used twice/);
-    expect(errors).toMatch(/"nope" is not one of/);
-    expect(errors).toMatch(/unknown field "ghost"/);
+    expect(errors).toMatch(/field ID "state" is already used/);
+    expect(errors).toMatch(/"nope" is not a field type/);
+    expect(errors).toMatch(/field that does not exist \("ghost"\)/);
   });
 });
 
@@ -232,7 +234,7 @@ describe('checkValue', () => {
       ),
     ).toEqual({
       ok: false,
-      error: 'crops.0.crop is required',
+      error: 'Crops (entry 1): Crop is required.',
     });
     expect(checkValue(crops, [{ crop: 'Wheat', extra: 1 }], ctx).ok).toBe(
       false,
@@ -252,7 +254,7 @@ describe('must_accept', () => {
     expect(checkValue(consent, true, ctx).ok).toBe(true);
     expect(checkValue(consent, false, ctx)).toEqual({
       ok: false,
-      error: 'agree must be accepted',
+      error: 'Please accept "Agree" to continue.',
     });
   });
 });

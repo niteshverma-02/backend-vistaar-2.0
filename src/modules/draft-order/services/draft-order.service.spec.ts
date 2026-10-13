@@ -1,6 +1,8 @@
 import { HttpException } from '@nestjs/common';
 import { Types } from 'mongoose';
 
+import { notFound } from '@common/errors/api-error';
+
 import type { CartView } from '@modules/cart/dto/cart-view.dto';
 import type { CartService } from '@modules/cart/services/cart.service';
 import type { CatalogVariant } from '@modules/catalog/catalog.domain';
@@ -115,6 +117,7 @@ describe('DraftOrderService', () => {
     cartService = {
       get: jest.fn(() => Promise.resolve(cart)),
       replace: jest.fn(() => Promise.resolve(cartView())),
+      requireCustomer: jest.fn(() => Promise.resolve()),
     } as unknown as jest.Mocked<CartService>;
 
     const catalog = {
@@ -127,6 +130,21 @@ describe('DraftOrderService', () => {
   });
 
   describe('save', () => {
+    it("never reads or writes a customer the partner's cart may not name", async () => {
+      cartService.requireCustomer.mockRejectedValueOnce(
+        notFound('This customer could not be found.'),
+      );
+
+      await expect(service.save(OWNER, TOKEN)).rejects.toMatchObject({
+        status: 404,
+      });
+
+      expect(cartService.requireCustomer).toHaveBeenCalledWith(OWNER, 'PII-1');
+      expect(customers.byPiiId).not.toHaveBeenCalled();
+      expect(drafts.nextCount).not.toHaveBeenCalled();
+      expect(drafts.insert).not.toHaveBeenCalled();
+    });
+
     it('starts a new draft with the next DFT id, customer copied in', async () => {
       const view = await service.save(OWNER, TOKEN);
 

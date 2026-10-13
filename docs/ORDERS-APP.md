@@ -1,0 +1,102 @@
+# Orders — mobile app contract
+
+The partner's placed orders, for the Flutter app's **Orders**, **Order
+details** and **Order tracking** screens. Replaces the device-local
+`OrdersRepository` seed.
+
+Orders live in Stockship's `orders_v2`, the same collection every channel
+sells through. A Vistaar order is one with `source: 'vistaar'` and the
+partner's `VST-` id in `agent`. This module **only reads**; placing an order
+(checkout) is not built yet.
+
+All routes are under `/api/v2/orders` and answer `{ "success": true, "data": … }`.
+Header: `Authorization: Bearer <Vistaar access token>` — that decides whose
+orders come back. No `x-b2b-token` is needed.
+
+## Routes
+
+| Method | Path | Returns |
+|---|---|---|
+| `GET` | `/orders?page=1&limit=50&status=shipped` | `PageResult<OrderView>`, newest first. `limit` ≤ 200; `status` optional |
+| `GET` | `/orders/:id` | `OrderView` |
+
+`:id` is the order's `order_id` (`KSK-341382`); case does not matter. An id with `/` (`ORD/K0-150/41350`) is sent URL-encoded: `/orders/ORD%2FK0-150%2F41350`.
+
+`status` is one of `placed`, `punched`, `shipped`, `delivered`, `cancelled`,
+`returned` — the app's `OrderStatus` minus `draft` (drafts are
+`/draft-orders`).
+
+## `OrderView`
+
+```json
+{
+  "id": "KSK-341382",
+  "status": "shipped",
+  "order_status": "in_transit",
+  "customer_id": "PII-273762",
+  "customer_name": "Kondappa",
+  "customer_phone": "8712404712",
+  "items": [
+    {
+      "sku": "K-489", "product_name": "AZODHARMA (AZOXYSTROBIN 18.2 % + DIFENOCONAZOLE 11.4 %)",
+      "product_image": "https://…/Azozolenew.webp", "size_label": "250 ML",
+      "quantity": 1, "unit_price": 545, "line_total": 545, "is_free": false
+    }
+  ],
+  "item_count": 1,
+  "subtotal": 545,
+  "discount": 0,
+  "coins_used": 0,
+  "delivery_charge": 0,
+  "total": 545,
+  "payment_mode": "cod",
+  "cod_amount": 545,
+  "prepaid_amount": 0,
+  "delivery_address": "7/40/1 Bc colony, Kanaganapalle, ANDHRA PRADESH 515641",
+  "awb": "1234567890",
+  "courier": "Delhivery Surface",
+  "tracking_steps": [
+    { "status": "Order placed", "description": "Order received by Katyayani", "timestamp": "2026-10-12T08:56:44.994Z", "completed": true },
+    { "status": "Confirmed", "description": "Order punched at warehouse", "timestamp": "…", "completed": true },
+    { "status": "Shipped", "description": "Handed to courier", "timestamp": "…", "completed": true },
+    { "status": "Out for delivery", "description": "With delivery partner", "timestamp": null, "completed": false },
+    { "status": "Delivered", "description": "Delivered to customer", "timestamp": null, "completed": false }
+  ],
+  "created_at": "2026-10-12T08:56:40.000Z"
+}
+```
+
+- `status` is the app's stage; `order_status` is Stockship's raw value (about
+  50 of them, e.g. `in transit` / `in_transit`), for support only. An unknown
+  raw value reads as `placed`.
+- `customer_id: null` = the partner's own shop stock; `customer_name` is then
+  `"Self (shop stock)"`.
+- `tracking_steps` are the app's `initialTrackingSteps`. A step is done when
+  the order reached it or anything after it; a done step can have
+  `timestamp: null` when Stockship skipped it. A cancelled or returned order
+  shows only the steps it reached, then a final `Cancelled` / `Returned` step.
+- `payment_mode` is Stockship's: `cod`, `prepaid`, `partial`, `credit`. The
+  app's `online` = `prepaid`.
+- `product_name` / `product_image` / `size_label` come from `products_v2`; a sku
+  not found there shows the sku as its name and no image.
+- Commission is not on the order — it will come from the commission module.
+
+### Maps to the app's `Order`
+
+| App field | API |
+|---|---|
+| `id` | `id` |
+| `customerId` / `customerName` | `customer_id` / `customer_name` |
+| `lines[]` `productId, name, image, size, quantity, price` | `items[]` `sku, product_name, product_image, size_label, quantity, unit_price` |
+| `subtotal`, `discount`, `coinsUsed`, `total` | same, snake_case |
+| `paymentMode` | `payment_mode` (`prepaid` → `online`) |
+| `status` | `status` |
+| `createdAt`, `deliveryAddress`, `awb`, `courier`, `trackingSteps` | same, snake_case |
+
+## Errors (`error.code`)
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `VALIDATION_FAILED` | bad `status`, `page`, or an `:id` that is not an order id |
+| 401 | `UNAUTHORIZED` | no or expired Vistaar token |
+| 404 | `NOT_FOUND` | no such order, or it is another partner's |

@@ -18,7 +18,7 @@ export class AddCartItemDto {
     example: 'K-350',
     description: 'Pack sku (a variant, not the bulk sku).',
   })
-  @Matches(SKU_PATTERN, { message: 'sku is not a valid pack sku.' })
+  @Matches(SKU_PATTERN, { message: 'This product pack is not valid.' })
   sku!: string;
 
   @ApiPropertyOptional({
@@ -51,7 +51,7 @@ export class UpdateCartItemDto {
 
 export class SkuParamDto {
   @ApiProperty({ example: 'K-350' })
-  @Matches(SKU_PATTERN, { message: 'sku is not a valid pack sku.' })
+  @Matches(SKU_PATTERN, { message: 'This product pack is not valid.' })
   sku!: string;
 }
 
@@ -67,6 +67,8 @@ export class SetCartCustomerDto {
       "The customer's `pii_id` the cart is for; `null` for the partner's own shop stock.",
   })
   @ValidateIf((o: SetCartCustomerDto) => o.pii_id !== null)
-  @Matches(PII_ID_PATTERN, { message: 'pii_id must look like PII-123.' })
+  @Matches(PII_ID_PATTERN, {
+    message: 'This customer is not valid. Please choose the customer again.',
+  })
   pii_id!: string | null;
 }

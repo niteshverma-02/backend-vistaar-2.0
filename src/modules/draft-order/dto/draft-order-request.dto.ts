@@ -8,7 +8,9 @@ const DRAFT_ORDER_ID_PATTERN = /^DFT-\d{1,12}$/;
 
 export class DraftOrderParamDto {
   @ApiProperty({ example: 'DFT-96' })
-  @Matches(DRAFT_ORDER_ID_PATTERN, { message: 'id must look like DFT-123.' })
+  @Matches(DRAFT_ORDER_ID_PATTERN, {
+    message: 'This draft order number is not valid.',
+  })
   id!: string;
 }
 

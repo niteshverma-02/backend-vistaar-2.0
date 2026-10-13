@@ -79,7 +79,7 @@ export class AuthService {
     if (!agent) {
       throw badRequest(
         'OTP_NOT_REQUESTED',
-        'Request an OTP for this number first.',
+        'Please ask for an OTP for this number first.',
       );
     }
 
@@ -105,14 +105,14 @@ export class AuthService {
     if (!session)
       throw unauthorized(
         'SESSION_INVALID',
-        'Session expired. Please sign in again.',
+        'You have been signed out. Please log in again.',
       );
 
     const agent = await this.agents.require(session.agent_ref);
     if (!agent.otp_verified || !agent.is_active) {
       throw unauthorized(
         'SESSION_INVALID',
-        'Session expired. Please sign in again.',
+        'You have been signed out. Please log in again.',
       );
     }
     this.refuseBlocked(agent);
@@ -134,7 +134,10 @@ export class AuthService {
   ): Promise<SessionDto> {
     if (!agent.agent_id || !agent.pii_id) {
       // Unreachable once verification completed; a guard against a half-written row.
-      throw unauthorized('SESSION_INVALID', 'Please sign in again.');
+      throw unauthorized(
+        'SESSION_INVALID',
+        'You have been signed out. Please log in again.',
+      );
     }
     const refreshToken = randomBytes(32).toString('base64url');
     const now = new Date();
@@ -170,7 +173,7 @@ export class AuthService {
     if (!phone)
       throw badRequest(
         'INVALID_PHONE',
-        'Enter a valid 10-digit mobile number.',
+        'Please enter a valid 10-digit mobile number.',
       );
     return phone;
   }
@@ -181,14 +184,14 @@ export class AuthService {
       throw apiError(
         HttpStatus.NOT_FOUND,
         'ACCOUNT_NOT_FOUND',
-        'No Vistaar account with this number. Tap Join Vistaar to sign up.',
+        'There is no Vistaar account with this number. Tap Join Vistaar to sign up.',
       );
     }
     if (check === 'exists') {
       throw apiError(
         HttpStatus.CONFLICT,
         'ACCOUNT_EXISTS',
-        'This number already has a Vistaar account. Log in instead.',
+        'This number already has a Vistaar account. Please log in instead.',
       );
     }
   }
@@ -198,7 +201,7 @@ export class AuthService {
       throw apiError(
         HttpStatus.FORBIDDEN,
         'ACCOUNT_BLOCKED',
-        'This account is blocked. Contact Katyayani support.',
+        'Your account is blocked. Please contact Katyayani support.',
       );
     }
   }

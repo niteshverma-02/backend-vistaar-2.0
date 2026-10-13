@@ -41,7 +41,7 @@ export class SettingsService {
       if (!owner?.is_active) {
         throw badRequest(
           'OWNER_NOT_FOUND',
-          'The default owner must be an active account in agents_v2.',
+          'No active staff member was found with this ID. Please check the default owner.',
         );
       }
     }

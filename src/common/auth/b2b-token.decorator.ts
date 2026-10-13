@@ -23,7 +23,9 @@ export const B2bToken = createParamDecorator(
     const header = request.headers[B2B_TOKEN_HEADER];
     const token = typeof header === 'string' ? header.trim() : '';
     if (!token) {
-      throw new UnauthorizedException('Sign in again to continue.');
+      throw new UnauthorizedException(
+        'Your session has ended. Please sign in again.',
+      );
     }
     return token;
   },

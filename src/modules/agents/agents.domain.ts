@@ -68,3 +68,33 @@ export const TRANSITIONS: Record<
 
 export const canMove = (action: StageAction, stage: Stage): boolean =>
   TRANSITIONS[action].from.includes(stage);
+
+/** A stage as HO staff say it, to finish "This partner is …". */
+export const STAGE_LABELS: Record<Stage, string> = {
+  signed_up: 'signed up but has not started the form',
+  onboarding: 'still filling the form',
+  kyc_review: 'in KYC review',
+  changes_requested: 'waiting to make the changes asked for',
+  approved: 'already approved',
+  rejected: 'rejected',
+  blocked: 'blocked',
+};
+
+/** An action as HO staff say it, to finish "You cannot … this partner". */
+export type RefusedAction = StageAction | 'unblock' | 'edit';
+
+export const ACTION_LABELS: Record<RefusedAction, string> = {
+  start_onboarding: 'start onboarding for',
+  submit: 'submit the form for',
+  request_changes: 'ask for changes from',
+  approve: 'approve',
+  reject: 'reject',
+  reopen: 'reopen',
+  block: 'block',
+  unblock: 'unblock',
+  edit: 'edit the form of',
+};
+
+/** Why a stage move was refused, in words HO staff use. */
+export const stageRefusal = (action: RefusedAction, stage: Stage): string =>
+  `You cannot ${ACTION_LABELS[action]} this partner right now. This partner is ${STAGE_LABELS[stage]}.`;

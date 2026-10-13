@@ -139,32 +139,40 @@ export function configErrors(steps: StepDef[]): string[] {
   const stepIds = new Set<string>();
 
   steps.forEach((step, i) => {
-    const at = `steps.${i}`;
+    const at = `Step ${i + 1}${titled(step.title?.en)}`;
     if (!KEY.test(step.step_id ?? ''))
-      errors.push(`${at}.step_id must be lowercase letters, digits, _`);
+      errors.push(
+        `${at}: the step ID can use only small letters, numbers and _.`,
+      );
     if (stepIds.has(step.step_id))
-      errors.push(`${at}.step_id "${step.step_id}" is used twice`);
+      errors.push(
+        `${at}: the step ID "${step.step_id}" is already used by another step.`,
+      );
     stepIds.add(step.step_id);
-    if (!step.title?.en) errors.push(`${at}.title.en is required`);
+    if (!step.title?.en) errors.push(`${at}: add an English title.`);
     if (!Array.isArray(step.fields)) {
-      errors.push(`${at}.fields must be a list`);
+      errors.push(`${at}: add the fields of this step.`);
       return;
     }
     step.fields.forEach((field, j) => {
-      const fat = `${at}.fields.${j}`;
+      const fat = `${at}, field ${j + 1}${titled(field.label?.en)}`;
       errors.push(...fieldErrors(field, fat, false));
       if (keys.has(field.key))
-        errors.push(`${fat}.key "${field.key}" is used twice`);
+        errors.push(
+          `${fat}: the field ID "${field.key}" is already used by another field.`,
+        );
       keys.set(field.key, field);
       if (field.maps_to) {
         if (mapped.has(field.maps_to))
-          errors.push(`${fat}.maps_to "${field.maps_to}" is used twice`);
+          errors.push(
+            `${fat}: another field already saves to "${field.maps_to}" on the partner profile.`,
+          );
         mapped.add(field.maps_to);
       }
       if (field.org_document) {
         if (orgDocs.has(field.org_document))
           errors.push(
-            `${fat}.org_document "${field.org_document}" is used twice`,
+            `${fat}: another field already uses the KYC document type "${field.org_document}".`,
           );
         orgDocs.add(field.org_document);
       }
@@ -174,7 +182,7 @@ export function configErrors(steps: StepDef[]): string[] {
   for (const [key, field] of keys) {
     if (field.visible_if && !keys.has(field.visible_if.field)) {
       errors.push(
-        `${key}.visible_if refers to unknown field "${field.visible_if.field}"`,
+        `Field "${key}" is shown or hidden by a field that does not exist ("${field.visible_if.field}").`,
       );
     }
   }
@@ -184,52 +192,68 @@ export function configErrors(steps: StepDef[]): string[] {
 function fieldErrors(field: FieldDef, at: string, nested: boolean): string[] {
   const errors: string[] = [];
   if (!KEY.test(field.key ?? ''))
-    errors.push(`${at}.key must be lowercase letters, digits, _`);
+    errors.push(
+      `${at}: the field ID can use only small letters, numbers and _.`,
+    );
   if (!FIELD_TYPES.includes(field.type)) {
     errors.push(
-      `${at}.type "${String(field.type)}" is not one of ${FIELD_TYPES.join(', ')}`,
+      `${at}: "${String(field.type)}" is not a field type. Use one of: ${FIELD_TYPES.join(', ')}.`,
     );
     return errors;
   }
   if (nested && !NESTED_TYPES.has(field.type))
-    errors.push(`${at}.type "${field.type}" is not allowed inside a group`);
-  if (!field.label?.en) errors.push(`${at}.label.en is required`);
+    errors.push(`${at}: a ${field.type} field cannot go inside a group.`);
+  if (!field.label?.en) errors.push(`${at}: add an English label.`);
   if (typeof field.required !== 'boolean')
-    errors.push(`${at}.required must be true or false`);
+    errors.push(`${at}: choose whether this field is required.`);
   if (
     (field.type === 'select' || field.type === 'multi_select') &&
     !field.options?.length
   ) {
-    errors.push(`${at}.options are required for ${field.type}`);
+    errors.push(`${at}: add the options to choose from.`);
   }
   if (field.validation?.regex) {
     try {
       new RegExp(field.validation.regex);
     } catch {
-      errors.push(`${at}.validation.regex is not a valid pattern`);
+      errors.push(`${at}: the format check (pattern) is not valid.`);
     }
   }
   if (field.maps_to && !isMapsTo(field.maps_to))
-    errors.push(`${at}.maps_to "${String(field.maps_to)}" is not allowed`);
+    errors.push(
+      `${at}: "${String(field.maps_to)}" is not a partner profile field it can save to.`,
+    );
   if (field.maps_to === 'location' && field.type !== 'location')
-    errors.push(`${at}: only a location field maps to location`);
+    errors.push(`${at}: only a location field can save to the location.`);
   if (field.type === 'location' && field.required)
-    errors.push(`${at}: a location (GPS) field cannot be required`);
+    errors.push(`${at}: a GPS location field cannot be required.`);
   if (field.org_document !== undefined) {
     if (field.type !== 'document')
-      errors.push(`${at}: only a document field has an org_document`);
+      errors.push(`${at}: only a document field can have a KYC document type.`);
     else if (!KEY.test(field.org_document))
-      errors.push(`${at}.org_document "${field.org_document}" is not a key`);
+      errors.push(
+        `${at}: the KYC document type "${field.org_document}" can use only small letters, numbers and _.`,
+      );
   }
   if (field.type === 'object' || field.type === 'object_list') {
     if (!field.fields?.length)
-      errors.push(`${at}.fields are required for ${field.type}`);
+      errors.push(`${at}: add the fields of this group.`);
     field.fields?.forEach((sub, k) =>
-      errors.push(...fieldErrors(sub, `${at}.fields.${k}`, true)),
+      errors.push(
+        ...fieldErrors(
+          sub,
+          `${at}, sub-field ${k + 1}${titled(sub.label?.en)}`,
+          true,
+        ),
+      ),
     );
   }
   return errors;
 }
+
+/** ` (Shop name)` after a position, so HO can find the field in the builder. */
+const titled = (label: string | undefined): string =>
+  label?.trim() ? ` (${label.trim()})` : '';
 
 const isMapsTo = (value: string): value is MapsTo =>
   (MAPS_TO as readonly string[]).includes(value) ||
@@ -247,6 +271,10 @@ export type Checked =
   { ok: true; value: unknown } | { ok: false; error: string };
 
 const fail = (error: string): Checked => ({ ok: false, error });
+
+/** What the partner sees the field called — the key is not theirs to read. */
+const nameOf = (field: FieldDef): string =>
+  field.label?.en?.trim() || field.key.replace(/_/g, ' ');
 const ok = (value: unknown): Checked => ({ ok: true, value });
 
 export function checkValue(
@@ -255,88 +283,90 @@ export function checkValue(
   ctx: ValueContext,
 ): Checked {
   const v = field.validation ?? {};
+  const name = nameOf(field);
   switch (field.type) {
     case 'text':
     case 'textarea': {
-      if (typeof value !== 'string') return fail(`${field.key} must be text`);
+      if (typeof value !== 'string') return fail(`Please enter ${name}.`);
       const text = value.trim();
       const max = v.max_length ?? (field.type === 'text' ? 300 : 2000);
       if (text.length < (v.min_length ?? 0))
-        return fail(`${field.key} must be at least ${v.min_length} characters`);
+        return fail(
+          `${name} must be at least ${v.min_length} characters long.`,
+        );
       if (text.length > max)
-        return fail(`${field.key} must be at most ${max} characters`);
+        return fail(`${name} can be at most ${max} characters long.`);
       if (v.regex && !new RegExp(v.regex).test(text))
-        return fail(`${field.key} is not in the expected format`);
+        return fail(`${name} is not in the right format. Please check it.`);
       return ok(text);
     }
     case 'number': {
       if (typeof value !== 'number' || !Number.isFinite(value))
-        return fail(`${field.key} must be a number`);
+        return fail(`Please enter a number for ${name}.`);
       if (v.min !== undefined && value < v.min)
-        return fail(`${field.key} must be at least ${v.min}`);
+        return fail(`${name} must be at least ${v.min}.`);
       if (v.max !== undefined && value > v.max)
-        return fail(`${field.key} must be at most ${v.max}`);
+        return fail(`${name} can be at most ${v.max}.`);
       return ok(value);
     }
     case 'boolean':
       if (typeof value !== 'boolean') {
-        return fail(`${field.key} must be true or false`);
+        return fail(`Please answer ${name}.`);
       }
       return v.must_accept && !value
-        ? fail(`${field.key} must be accepted`)
+        ? fail(`Please accept "${name}" to continue.`)
         : ok(value);
     case 'date':
       return typeof value === 'string' &&
         DATE.test(value) &&
         !Number.isNaN(Date.parse(value))
         ? ok(value)
-        : fail(`${field.key} must be a date like 2026-10-09`);
+        : fail(`Please enter a valid date for ${name}.`);
     case 'phone': {
       const digits =
         typeof value === 'string' ? value.replace(/\D/g, '').slice(-10) : '';
       return /^[6-9]\d{9}$/.test(digits)
         ? ok(digits)
-        : fail(`${field.key} must be a 10-digit mobile number`);
+        : fail(`Please enter a valid 10-digit mobile number for ${name}.`);
     }
     case 'email':
       return typeof value === 'string' &&
         EMAIL.test(value.trim()) &&
         value.length <= 120
         ? ok(value.trim().toLowerCase())
-        : fail(`${field.key} must be an email address`);
+        : fail(`Please enter a valid email address for ${name}.`);
     case 'pincode':
       return typeof value === 'string' && /^\d{6}$/.test(value.trim())
         ? ok(value.trim())
-        : fail(`${field.key} must be a 6-digit pincode`);
+        : fail(`Please enter a valid 6-digit pincode for ${name}.`);
     case 'select':
       return typeof value === 'string' &&
         (field.options ?? []).some((o) => o.value === value)
         ? ok(value)
-        : fail(`${field.key} must be one of the listed options`);
+        : fail(`Please choose ${name} from the list.`);
     case 'multi_select': {
       const allowed = new Set((field.options ?? []).map((o) => o.value));
       if (
         !Array.isArray(value) ||
         !value.every((x) => typeof x === 'string' && allowed.has(x))
       ) {
-        return fail(`${field.key} must be a list of the listed options`);
+        return fail(`Please choose ${name} from the list.`);
       }
       const unique = [...new Set(value as string[])];
       if (v.max_items !== undefined && unique.length > v.max_items)
-        return fail(`${field.key} allows at most ${v.max_items}`);
+        return fail(`You can choose at most ${v.max_items} for ${name}.`);
       return ok(unique);
     }
     case 'file': {
       const path = filePath(value);
-      if (!path)
-        return fail(`${field.key} must be an uploaded file ({ path })`);
+      if (!path) return fail(`Please upload ${name}.`);
       return ownPath(path, ctx)
         ? ok({ path })
-        : fail(`${field.key} must be a file you uploaded`);
+        : fail(`Please upload ${name} again.`);
     }
     case 'document': {
       if (!value || typeof value !== 'object' || Array.isArray(value)) {
-        return fail(`${field.key} must be { files: [path], number? }`);
+        return fail(`Please upload ${name}.`);
       }
       const doc = value as Record<string, unknown>;
       const files = Array.isArray(doc.files) ? doc.files : [];
@@ -346,18 +376,22 @@ export function checkValue(
         files.length > maxFiles ||
         !files.every((f) => typeof f === 'string')
       ) {
-        return fail(`${field.key} needs 1 to ${maxFiles} uploaded files`);
+        return fail(
+          maxFiles === 1
+            ? `Please upload one photo or file of ${name}.`
+            : `Please upload 1 to ${maxFiles} photos or files of ${name}.`,
+        );
       }
       if (!files.every((f) => ownPath(f, ctx)))
-        return fail(`${field.key} must use files you uploaded`);
+        return fail(`Please upload ${name} again.`);
       const number =
         typeof doc.number === 'string'
           ? doc.number.trim().toUpperCase()
           : undefined;
       if (v.number_required && !number)
-        return fail(`${field.key} needs the document number`);
+        return fail(`Please enter the ${name} number.`);
       if (number && v.regex && !new RegExp(v.regex).test(number))
-        return fail(`${field.key} number is not in the expected format`);
+        return fail(`The ${name} number is not correct. Please check it.`);
       return ok({
         files: [...new Set(files)],
         ...(number ? { number } : {}),
@@ -365,12 +399,14 @@ export function checkValue(
     }
     case 'location': {
       if (!value || typeof value !== 'object')
-        return fail(`${field.key} must be { lat, lng }`);
+        return fail(`Could not read ${name}. Please capture it again.`);
       const loc = value as Record<string, unknown>;
       const lat = Number(loc.lat);
       const lng = Number(loc.lng);
       if (!isIndiaFix(lat, lng))
-        return fail(`${field.key} is not a location in India`);
+        return fail(
+          `${name} must be a place in India. Please capture it again.`,
+        );
       const accuracy =
         typeof loc.accuracy === 'number' && loc.accuracy >= 0
           ? loc.accuracy
@@ -389,24 +425,25 @@ export function checkValue(
     }
     case 'object': {
       if (!value || typeof value !== 'object' || Array.isArray(value))
-        return fail(`${field.key} must be a group of values`);
-      return checkGroup(field, value as RawData, ctx, field.key);
+        return fail(`${name} is not filled in correctly.`);
+      return checkGroup(field, value as RawData, ctx, name);
     }
     case 'object_list': {
-      if (!Array.isArray(value)) return fail(`${field.key} must be a list`);
+      if (!Array.isArray(value))
+        return fail(`${name} is not filled in correctly.`);
       const max = v.max_items ?? 20;
       if (value.length > max)
-        return fail(`${field.key} allows at most ${max} rows`);
+        return fail(`You can add at most ${max} entries for ${name}.`);
       const rows: RawData[] = [];
       for (let i = 0; i < value.length; i++) {
         const row: unknown = value[i];
         if (!row || typeof row !== 'object' || Array.isArray(row))
-          return fail(`${field.key}.${i} must be a group of values`);
+          return fail(`${name} (entry ${i + 1}) is not filled in correctly.`);
         const checked = checkGroup(
           field,
           row as RawData,
           ctx,
-          `${field.key}.${i}`,
+          `${name} (entry ${i + 1})`,
         );
         if (!checked.ok) return checked;
         rows.push(checked.value as RawData);
@@ -426,15 +463,15 @@ function checkGroup(
   const subs = new Map((field.fields ?? []).map((f) => [f.key, f]));
   for (const [key, raw] of Object.entries(group)) {
     const sub = subs.get(key);
-    if (!sub) return fail(`${at}.${key} is not a field of this group`);
+    if (!sub) return fail(`${at} has a value that does not belong to it.`);
     if (raw === null || raw === undefined || raw === '') continue;
     const checked = checkValue(sub, raw, ctx);
-    if (!checked.ok) return fail(`${at}.${checked.error}`);
+    if (!checked.ok) return fail(`${at}: ${checked.error}`);
     out[key] = checked.value;
   }
   for (const sub of subs.values()) {
     if (sub.required && isEmpty(out[sub.key]))
-      return fail(`${at}.${sub.key} is required`);
+      return fail(`${at}: ${nameOf(sub)} is required.`);
   }
   return ok(out);
 }
