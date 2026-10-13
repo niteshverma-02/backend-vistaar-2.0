@@ -68,6 +68,38 @@ export const API_ERROR_CODES = [
   // draft orders
   'DRAFT_CART_EMPTY',
   'DRAFT_ID_UNAVAILABLE',
+  // banners. HO is told the size to use, not just that the file failed.
+  'IMAGE_SIZE_NOT_ALLOWED',
+  'IMAGE_NOT_FOUND',
+  // a reorder named a different set of banners than the book now holds (409)
+  'BANNERS_CHANGED',
+  // testimonials: the bulk / family is not in Stockship's catalogue.
+  'PRODUCT_NOT_FOUND',
+  // attendance. All 409: the day's stored state, not the request, is what refused it.
+  'ALREADY_PUNCHED_IN',
+  'NOT_PUNCHED_IN',
+  'PUNCH_LIMIT_REACHED',
+  'ATTENDANCE_CHANGED',
+  // stories and crop calendar: HO content keys are unique (409).
+  'FESTIVAL_EXISTS',
+  'SAMPLE_EXISTS',
+  'DESIGN_EXISTS',
+  'TEMPLATE_EXISTS',
+  'CROP_EXISTS',
+  'FAQ_EXISTS',
+  'FAQ_SECTION_EXISTS',
+  'FAQ_SECTION_IN_USE',
+  // events. All 409: the event's stored state refused it.
+  'EVENT_FULL',
+  'EVENT_CLOSED',
+  'EVENT_SEATS_TAKEN',
+  // terms and conditions: the active T&C cannot be deleted (409); no free TOC-n (503).
+  'TERMS_IN_USE',
+  'TERMS_ID_UNAVAILABLE',
+  // a version's document was not written in the portal's editor (409).
+  'TERMS_NOT_EDITABLE',
+  // info pages: one row per page, so a second create is a 409.
+  'INFO_PAGE_EXISTS',
   // Farmer leads. A partner adds farmers only, and each farmer once.
   'PARTNER_NOT_APPROVED',
   'SELF_LEAD',

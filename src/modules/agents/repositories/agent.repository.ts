@@ -28,6 +28,8 @@ export interface AgentListFilter {
   state?: string;
   district?: string;
   owner_agent_id?: string;
+  /** Exactly these `VST-` ids — naming the rows of another module's report. */
+  agent_ids?: string[];
   /** Name (preview), phone prefix, `VST-` id or `PII-` id. */
   q?: string;
   from?: Date;
@@ -304,6 +306,7 @@ export class AgentRepository {
     if (filter.stage) query.stage = filter.stage;
     if (filter.cohort) query.cohort = filter.cohort;
     if (filter.owner_agent_id) query.owner_agent_id = filter.owner_agent_id;
+    if (filter.agent_ids) query.agent_id = { $in: filter.agent_ids };
     if (filter.state) query['preview.state'] = filter.state.toUpperCase();
     if (filter.district)
       query['preview.district'] = new RegExp(

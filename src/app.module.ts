@@ -8,19 +8,30 @@ import { AppAuthGuard } from '@core/auth/app-auth.guard';
 import { AuthCoreModule } from '@core/auth/auth-core.module';
 import { AllExceptionsFilter } from '@core/filters/all-exceptions.filter';
 import { EnvelopeInterceptor } from '@core/interceptors/envelope.interceptor';
+import { HTTP_LOG_OPTIONS } from '@core/logging/http-log.config';
 import { THROTTLE_OPTIONS } from '@core/throttle/throttle.config';
 import { validateEnv, type Env } from '@config/env.schema';
 import { DatabaseModule } from '@database/database.module';
 import { AccessModule } from '@modules/access/access.module';
 import { AgentsModule } from '@modules/agents/agents.module';
+import { AttendanceModule } from '@modules/attendance/attendance.module';
 import { AuthModule } from '@modules/auth/auth.module';
+import { BannersModule } from '@modules/banners/banners.module';
+import { TestimonialsModule } from '@modules/testimonials/testimonials.module';
 import { CartModule } from '@modules/cart/cart.module';
+import { CropCalendarModule } from '@modules/crop-calendar/crop-calendar.module';
 import { DraftOrderModule } from '@modules/draft-order/draft-order.module';
+import { EventsModule } from '@modules/events/events.module';
+import { FaqsModule } from '@modules/faqs/faqs.module';
 import { HealthModule } from '@modules/health/health.module';
+import { InfoPagesModule } from '@modules/info-pages/info-pages.module';
 import { LeadsModule } from '@modules/leads/leads.module';
 import { OnboardingModule } from '@modules/onboarding/onboarding.module';
+import { OrdersModule } from '@modules/orders/orders.module';
 import { PartnerDeskModule } from '@modules/partner-desk/partner-desk.module';
 import { SettingsModule } from '@modules/settings/settings.module';
+import { StoriesModule } from '@modules/stories/stories.module';
+import { TermsModule } from '@modules/terms/terms.module';
 import { UploadsModule } from '@modules/uploads/uploads.module';
 
 @Module({
@@ -35,6 +46,7 @@ import { UploadsModule } from '@modules/uploads/uploads.module';
       inject: [ConfigService],
       useFactory: (config: ConfigService<Env, true>) => ({
         pinoHttp: {
+          ...HTTP_LOG_OPTIONS,
           level: config.get('LOG_LEVEL', { infer: true }),
           transport:
             config.get('NODE_ENV', { infer: true }) === 'development'
@@ -75,6 +87,16 @@ import { UploadsModule } from '@modules/uploads/uploads.module';
     HealthModule,
     CartModule,
     DraftOrderModule,
+    OrdersModule,
+    BannersModule,
+    TestimonialsModule,
+    AttendanceModule,
+    CropCalendarModule,
+    EventsModule,
+    StoriesModule,
+    TermsModule,
+    FaqsModule,
+    InfoPagesModule,
     LeadsModule,
   ],
   providers: [

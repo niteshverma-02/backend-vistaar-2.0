@@ -15,7 +15,9 @@ export const CurrentPartnerId = createParamDecorator(
   (_data: unknown, context: ExecutionContext): string => {
     const user = context.switchToHttp().getRequest<AuthedRequest>().user;
     if (user?.kind !== 'partner' || !user.agent_id) {
-      throw new UnauthorizedException('Sign in again to continue.');
+      throw new UnauthorizedException(
+        'Your session has ended. Please sign in again.',
+      );
     }
     return user.agent_id;
   },
@@ -33,7 +35,9 @@ export const CurrentPartner = createParamDecorator(
   (_data: unknown, context: ExecutionContext): PartnerRef => {
     const user = context.switchToHttp().getRequest<AuthedRequest>().user;
     if (user?.kind !== 'partner' || !user.agent_id || !user.pii_id) {
-      throw new UnauthorizedException('Sign in again to continue.');
+      throw new UnauthorizedException(
+        'Your session has ended. Please sign in again.',
+      );
     }
     return { agent_id: user.agent_id, pii_id: user.pii_id };
   },

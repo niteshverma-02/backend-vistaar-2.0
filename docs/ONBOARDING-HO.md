@@ -19,6 +19,7 @@ Gate screens and buttons on `capabilities`, never on role names.
 | `agents.assign` | change a partner's owner |
 | `config.read` / `config.write` / `config.publish` | cohorts and forms |
 | `settings.write` | default owner, conflict radius |
+| `content.read` / `content.write` | Home banners (`docs/BANNERS-HO.md`) |
 
 Today every capability goes to **USR-1037 (Offline Head), USR-1000 (Super Admin), USR-1001 (Admin)**
 (`agents_v2.user_role`, read once per token). Others get `403 NO_ADMIN_ACCESS`; a role

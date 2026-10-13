@@ -41,7 +41,12 @@ import {
  * before login: the Join Vistaar wizard (PRD A2, the app design) is filled
  * first and verified by OTP last. Nothing in them is personal; per-IP limit.
  */
-const PUBLIC_READ = { default: { limit: 60, ttl: 60_000 } };
+/**
+ * Per IP: phones on one mobile tower share a carrier address (CGNAT), and
+ * these reads are cached and cheap — so the limit is generous. The OTP
+ * routes keep their own tight per-IP and per-number limits.
+ */
+const PUBLIC_READ = { default: { limit: 600, ttl: 60_000 } };
 
 @ApiTags('app · onboarding')
 @ApiBearerAuth()
@@ -88,7 +93,11 @@ export class OnboardingController {
   async config(
     @Query('cohort') cohort?: string,
   ): Promise<Pick<OnboardingConfig, '_id' | 'cohort' | 'version' | 'steps'>> {
-    if (!cohort) throw badRequest('COHORT_REQUIRED', 'Pass ?cohort=');
+    if (!cohort)
+      throw badRequest(
+        'COHORT_REQUIRED',
+        'Please choose how you want to work with Katyayani first.',
+      );
     const { _id, version, steps } = await this.configs.requirePublished(cohort);
     return {
       _id,

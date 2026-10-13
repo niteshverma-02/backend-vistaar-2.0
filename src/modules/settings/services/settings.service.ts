@@ -53,15 +53,17 @@ export class SettingsService {
   }
 
   async update(dto: UpdateSettingsDto, by: string): Promise<SettingsRecord> {
-    const owners = [dto.default_owner_agent_id, dto.lead_owner_agent_id].filter(
-      (id): id is string => !!id,
-    );
-    const staff = await this.access.staffByIds(owners);
-    for (const id of owners) {
+    const owners: [string, string | undefined][] = [
+      ['default owner', dto.default_owner_agent_id],
+      ['farmer-lead owner', dto.lead_owner_agent_id],
+    ];
+    const named = owners.filter((o): o is [string, string] => !!o[1]);
+    const staff = await this.access.staffByIds(named.map(([, id]) => id));
+    for (const [label, id] of named) {
       if (!staff.get(id)?.is_active) {
         throw badRequest(
           'OWNER_NOT_FOUND',
-          `${id} must be an active account in agents_v2.`,
+          `No active staff member was found with ID ${id}. Please check the ${label}.`,
         );
       }
     }

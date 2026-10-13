@@ -8,6 +8,8 @@ import { SettingsService } from '@modules/settings/services/settings.service';
 import {
   STAGES,
   TRANSITIONS,
+  stageRefusal,
+  type RefusedAction,
   type Stage,
   type StageAction,
 } from '../agents.domain';
@@ -29,10 +31,24 @@ export interface PartnerCard {
   name: string | null;
 }
 
+const COHORT_TTL_MS = 60_000;
+/** ~100 bytes an entry: ~10 MB at the cap. */
+const COHORT_CACHE_MAX = 100_000;
+
 /** How many cohorts / states the HO summary ranks. */
 const SUMMARY_TOP = 10;
 @Injectable()
 export class AgentsService {
+  /**
+   * Cohort by agent `_id` or `VST-` id. Banners, events and My Story need only
+   * the cohort on every open; it changes about once in a partner's life (at
+   * signup), so a minute of staleness on another instance is fine.
+   */
+  private readonly cohortCache = new Map<
+    string,
+    { cohort: string | null; at: number }
+  >();
+
   constructor(
     private readonly agents: AgentRepository,
     private readonly counters: CountersService,
@@ -84,13 +100,42 @@ export class AgentsService {
 
   async require(id: string): Promise<AgentRecord> {
     const agent = await this.agents.findById(id);
-    if (!agent) throw notFound('Partner not found.');
+    if (!agent) throw notFound('This partner could not be found.');
     return agent;
+  }
+
+  /** The partner's cohort (cached ≤ 60 s); 404 when there is no such partner. */
+  async cohortById(id: string): Promise<string | null> {
+    return this.cachedCohort(`id:${id}`, () => this.require(id));
+  }
+
+  /** The partner's cohort by `VST-` id (cached ≤ 60 s); 404 for an unverified partner. */
+  async cohortByAgentId(agentId: string): Promise<string | null> {
+    return this.cachedCohort(`vst:${agentId.toUpperCase()}`, () =>
+      this.requireByAgentId(agentId),
+    );
+  }
+
+  private async cachedCohort(
+    key: string,
+    load: () => Promise<AgentRecord>,
+  ): Promise<string | null> {
+    const hit = this.cohortCache.get(key);
+    if (hit && Date.now() - hit.at < COHORT_TTL_MS) return hit.cohort;
+    const cohort = (await load()).cohort ?? null;
+    this.cohortCache.delete(key);
+    this.cohortCache.set(key, { cohort, at: Date.now() });
+    if (this.cohortCache.size > COHORT_CACHE_MAX) {
+      const oldest = this.cohortCache.keys().next().value;
+      if (oldest !== undefined) this.cohortCache.delete(oldest);
+    }
+    return cohort;
   }
 
   async requireByAgentId(agentId: string): Promise<AgentRecord> {
     const agent = await this.agents.findByAgentId(agentId.toUpperCase());
-    if (!agent || !agent.otp_verified) throw notFound(`No partner ${agentId}.`);
+    if (!agent || !agent.otp_verified)
+      throw notFound('This partner could not be found.');
     return agent;
   }
 
@@ -210,6 +255,8 @@ export class AgentsService {
   }
 
   setPreview(id: string, cohort: string, preview: AgentPreview): Promise<void> {
+    // The `VST-` key for this partner expires within the minute on its own.
+    this.cohortCache.delete(`id:${id}`);
     return this.agents.setPreview(id, cohort, preview);
   }
 
@@ -219,7 +266,7 @@ export class AgentsService {
     by: string,
   ): Promise<AgentRecord> {
     const updated = await this.agents.setOwner(agent._id, ownerAgentId, by);
-    if (!updated) throw notFound('Partner not found.');
+    if (!updated) throw notFound('This partner could not be found.');
     return updated;
   }
 
@@ -264,11 +311,11 @@ export class AgentsService {
     return this.agents.near(point, radiusKm, excludeId, limit);
   }
 
-  private stageError(action: string, stage: Stage) {
+  private stageError(action: RefusedAction, stage: Stage) {
     return apiError(
       HttpStatus.CONFLICT,
       'STAGE_NOT_ALLOWED',
-      `Cannot ${action.replace('_', ' ')} a partner who is ${stage.replace('_', ' ')}.`,
+      stageRefusal(action, stage),
     );
   }
 }

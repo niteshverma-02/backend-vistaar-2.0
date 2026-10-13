@@ -27,7 +27,20 @@ describe('validateEnv', () => {
       OTP_API_URL: 'https://utils.ko-tech.in',
       B2B_MARKETPLACE_CODE: 'MKTP-1',
       CATALOG_CACHE_TTL_SECONDS: 60,
+      MONGODB_MAX_POOL_SIZE: 50,
+      MONGODB_MIN_POOL_SIZE: 5,
+      WEB_CONCURRENCY: 0,
     });
+  });
+
+  it('refuses a minimum pool above the maximum', () => {
+    expect(() =>
+      validateEnv({
+        ...BASE,
+        MONGODB_MAX_POOL_SIZE: '10',
+        MONGODB_MIN_POOL_SIZE: '20',
+      }),
+    ).toThrow(/MONGODB_MIN_POOL_SIZE/);
   });
 
   it('refuses OTP test numbers in production', () => {

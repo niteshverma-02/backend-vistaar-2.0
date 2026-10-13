@@ -95,7 +95,7 @@ export class DeskService {
     if (!(DESK_SORTS as readonly string[]).includes(sortKey)) {
       throw badRequest(
         'VALIDATION_FAILED',
-        `sort must be one of ${DESK_SORTS.join(', ')} (prefix - for newest first).`,
+        'This list cannot be sorted that way. Please sort by created, updated or decided date.',
       );
     }
     const to = query.to ? new Date(query.to) : undefined;
@@ -315,7 +315,7 @@ export class DeskService {
     if (!owner?.is_active)
       throw badRequest(
         'OWNER_NOT_FOUND',
-        'The owner must be an active account in agents_v2.',
+        'No active staff member was found with this ID. Please check the owner.',
       );
     return this.withAgent(agentId, (a) =>
       this.agents.setOwner(a, ownerAgentId, by),

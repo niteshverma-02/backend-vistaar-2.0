@@ -3,7 +3,7 @@ import type { UpdateQuery } from 'mongoose';
 
 import { apiError, badRequest, conflict } from '@common/errors/api-error';
 import type { GeoPoint } from '@common/utils/geo.util';
-import { PARTNER_EDITABLE } from '@modules/agents/agents.domain';
+import { PARTNER_EDITABLE, stageRefusal } from '@modules/agents/agents.domain';
 import {
   AgentsService,
   type AgentRecord,
@@ -39,6 +39,14 @@ import { ConfigsService } from './configs.service';
 
 const MAX_KEYS_PER_SAVE = 100;
 const MAX_RETRIES = 3;
+
+/** Field keys as the form names them — `Aadhaar card, PAN card`. */
+function labelsOf(steps: StepDef[], keys: string[]): string {
+  const fields = fieldIndex(steps);
+  return keys
+    .map((key) => fields.get(key)?.label?.en?.trim() || key.replace(/_/g, ' '))
+    .join(', ');
+}
 
 export interface OnboardingView {
   onboarding_id: string;
@@ -113,7 +121,7 @@ export class OnboardingService {
     if (Object.keys(input.data).length > MAX_KEYS_PER_SAVE) {
       throw badRequest(
         'VALIDATION_FAILED',
-        `Save at most ${MAX_KEYS_PER_SAVE} fields at a time.`,
+        'Too many answers were sent at once. Please save one step at a time.',
       );
     }
 
@@ -121,7 +129,10 @@ export class OnboardingService {
     let config: OnboardingConfig;
     if (!doc) {
       if (!input.cohort)
-        throw badRequest('COHORT_REQUIRED', 'Choose your partner type first.');
+        throw badRequest(
+          'COHORT_REQUIRED',
+          'Please choose how you want to work with Katyayani first.',
+        );
       await this.cohorts.require(input.cohort);
       config = await this.configs.requirePublished(input.cohort);
       doc = await this.onboarding.create({
@@ -160,11 +171,14 @@ export class OnboardingService {
     const agent = await this.agents.require(agentRef);
     if (agent.stage !== 'onboarding' && agent.stage !== 'changes_requested') {
       if (agent.stage === 'signed_up')
-        throw badRequest('COHORT_REQUIRED', 'Fill the form before submitting.');
+        throw badRequest(
+          'COHORT_REQUIRED',
+          'Please fill the form before submitting it.',
+        );
       throw apiError(
         HttpStatus.CONFLICT,
         'ONBOARDING_LOCKED',
-        'Your application is already submitted.',
+        'Your application is already submitted. Katyayani will review it soon.',
       );
     }
     const doc = await this.requireDoc(agent);
@@ -174,7 +188,7 @@ export class OnboardingService {
     if (missing.length) {
       throw badRequest(
         'REQUIRED_FIELDS_MISSING',
-        'Some required fields are empty.',
+        `Please fill in: ${labelsOf(config.steps, missing)}.`,
         missing,
       );
     }
@@ -221,7 +235,7 @@ export class OnboardingService {
       throw apiError(
         HttpStatus.CONFLICT,
         'STAGE_NOT_ALLOWED',
-        `Cannot edit a partner who is ${agent.stage}.`,
+        stageRefusal('edit', agent.stage),
       );
     }
     const doc = await this.requireDoc(agent);
@@ -273,14 +287,16 @@ export class OnboardingService {
       throw apiError(
         HttpStatus.CONFLICT,
         'STAGE_NOT_ALLOWED',
-        'Documents are reviewed only while the application is in KYC review.',
+        'Documents can be checked only while the application is in KYC review.',
       );
     }
     if (decision === 'rejected' && !reason?.trim()) {
       throw badRequest(
         'VALIDATION_FAILED',
-        'Say why the document is rejected.',
-        ['reason is required to reject'],
+        'Please write why the document is rejected, so the partner knows what to fix.',
+        [
+          'Please write why the document is rejected, so the partner knows what to fix.',
+        ],
       );
     }
     const doc = await this.requireDoc(agent);
@@ -289,13 +305,13 @@ export class OnboardingService {
     if (field?.type !== 'document')
       throw badRequest(
         'NOT_A_DOCUMENT',
-        `"${key}" is not a KYC document on this form.`,
+        `${field?.label?.en ?? 'This field'} is not a KYC document on this form.`,
       );
     const value = doc.raw_data[key];
     if (value === undefined || value === null)
       throw badRequest(
         'DOCUMENT_MISSING',
-        `The partner has not uploaded "${key}".`,
+        `The partner has not uploaded ${field.label?.en ?? 'this document'} yet.`,
       );
 
     const entry: DocumentReview = {
@@ -349,7 +365,7 @@ export class OnboardingService {
       throw apiError(
         HttpStatus.CONFLICT,
         'STAGE_NOT_ALLOWED',
-        'Changes can be requested only during KYC review.',
+        'Changes can be asked for only while the application is in KYC review.',
       );
     }
     const doc = await this.requireDoc(agent);
@@ -360,10 +376,13 @@ export class OnboardingService {
       if (!fields.has(key))
         throw badRequest(
           'UNKNOWN_FIELD',
-          `"${key}" is not a field of this form.`,
+          'One of the fields is not on this form. Please reload the page and try again.',
         );
       if (typeof note !== 'string' || !note.trim())
-        throw badRequest('VALIDATION_FAILED', `Write a note for "${key}".`);
+        throw badRequest(
+          'VALIDATION_FAILED',
+          `Please write a note for ${fields.get(key)?.label?.en ?? 'each field'}.`,
+        );
       notes[key] = note.trim().slice(0, 300);
     }
     for (const [key, review] of Object.entries(doc.documents_review ?? {})) {
@@ -373,7 +392,7 @@ export class OnboardingService {
     if (Object.keys(notes).length === 0) {
       throw badRequest(
         'VALIDATION_FAILED',
-        'Name at least one field to change, or reject a document first.',
+        'Please pick at least one field for the partner to change, or reject a document first.',
       );
     }
     await this.withRetry(doc, () => ({
@@ -402,7 +421,7 @@ export class OnboardingService {
       throw apiError(
         HttpStatus.CONFLICT,
         'DOCUMENTS_NOT_VERIFIED',
-        'Verify every required document first.',
+        `Please verify these documents first: ${labelsOf(config.steps, pending)}.`,
         pending,
       );
     }
@@ -440,14 +459,14 @@ export class OnboardingService {
       throw apiError(
         HttpStatus.FORBIDDEN,
         'ACCOUNT_BLOCKED',
-        'This account is blocked.',
+        'Your account is blocked. Please contact Katyayani support.',
       );
     }
     if (!PARTNER_EDITABLE.has(agent.stage)) {
       throw apiError(
         HttpStatus.CONFLICT,
         'ONBOARDING_LOCKED',
-        'Your application is with Katyayani for review.',
+        'Your application is with Katyayani for review. You cannot change it now.',
       );
     }
   }
@@ -457,7 +476,7 @@ export class OnboardingService {
     if (!doc)
       throw badRequest(
         'COHORT_REQUIRED',
-        'This partner has not started onboarding.',
+        'The application form has not been started yet.',
       );
     return doc;
   }
@@ -493,7 +512,7 @@ export class OnboardingService {
         throw apiError(
           HttpStatus.CONFLICT,
           'ONBOARDING_LOCKED',
-          'The partner type cannot change after submitting.',
+          'You cannot change how you work with Katyayani after submitting the form.',
         );
       }
       return { doc, config: pinned };
@@ -560,21 +579,21 @@ export class OnboardingService {
     if (unknown.length)
       throw badRequest(
         'UNKNOWN_FIELD',
-        'Some fields are not on this form.',
+        'This form has changed. Please close it, open it again and try once more.',
         unknown,
       );
     if (locked.length) {
       throw apiError(
         HttpStatus.CONFLICT,
         'FIELD_NOT_EDITABLE',
-        'Only the fields Katyayani asked about can change now.',
+        'You can change only the details Katyayani asked you to fix.',
         locked,
       );
     }
     if (errors.length)
       throw badRequest(
         'VALIDATION_FAILED',
-        'Some values are not valid.',
+        errors[0] ?? 'Some answers are not correct. Please check them.',
         errors,
       );
     return changes;
@@ -640,7 +659,7 @@ export class OnboardingService {
     }
     throw conflict(
       'VERSION_CONFLICT',
-      'The form was changed at the same time. Please try again.',
+      'Your form was being saved from another place at the same time. Please try again.',
     );
   }
 

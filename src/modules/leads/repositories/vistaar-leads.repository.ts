@@ -53,6 +53,14 @@ export class VistaarLeadsRepository {
       .exec();
   }
 
+  /** Rides the unique `{pii_id}` index; reads no more than the `_id`. */
+  async isHeldBy(piiId: string, agentId: string): Promise<boolean> {
+    const row = await this.model
+      .exists({ pii_id: piiId, agent_id: agentId })
+      .exec();
+    return row !== null;
+  }
+
   /** `false` when the farmer already has a row — the unique `pii_id` decides a race. */
   async insert(
     row: Omit<VistaarLead, 'created_at' | 'updated_at'>,

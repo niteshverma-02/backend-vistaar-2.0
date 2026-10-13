@@ -51,7 +51,9 @@ export class PageQueryDto {
     description: '`field` ascending, `-field` descending.',
   })
   @IsString()
-  @Matches(SORT_PATTERN, { message: 'sort must be `field` or `-field`.' })
+  @Matches(SORT_PATTERN, {
+    message: 'This list cannot be sorted that way. Please choose another sort.',
+  })
   sort = '-created_at';
 
   get skip(): number {

@@ -67,18 +67,4 @@ export class AddressRepository {
       )
       .exec();
   }
-
-  /** Each person's row filed by `source`. `pii_id` is indexed. */
-  async bySource(
-    piiIds: readonly string[],
-    source: string,
-  ): Promise<Map<string, AddressRecord>> {
-    if (piiIds.length === 0) return new Map();
-    const rows = await this.model
-      .find({ pii_id: { $in: piiIds }, source })
-      .select('address_id pii_id village district state zipcode')
-      .lean<AddressRecord[]>()
-      .exec();
-    return new Map(rows.map((r) => [r.pii_id, r]));
-  }
 }

@@ -4,9 +4,13 @@ import { ConfigService } from '@nestjs/config';
 import { tooMany, unauthorized, unavailable } from '@common/errors/api-error';
 import type { Env } from '@config/env.schema';
 
-import { SlidingWindowLimiter } from './otp-rate-limiter';
+import { OtpAttemptRepository } from '../repositories/otp-attempt.repository';
 
 const TEN_MINUTES = 10 * 60 * 1000;
+/** 3 SMS per number per 10 minutes, sends and resends together. */
+const SEND_LIMIT = 3;
+/** 5 guesses per number per 10 minutes — a 4-digit code has 10,000. */
+const VERIFY_LIMIT = 5;
 const SUCCESS_MESSAGE = 'OTP verified successfully';
 
 /**
@@ -26,12 +30,11 @@ export class OtpService {
   private readonly testNumbers: ReadonlySet<string>;
   private readonly testCode?: string;
 
-  /** 3 SMS per number per 10 minutes, sends and resends together. */
-  private readonly sends = new SlidingWindowLimiter(3, TEN_MINUTES);
-  /** 5 guesses per number per 10 minutes — a 4-digit code has 10,000. */
-  private readonly verifies = new SlidingWindowLimiter(5, TEN_MINUTES);
-
-  constructor(config: ConfigService<Env, true>) {
+  constructor(
+    config: ConfigService<Env, true>,
+    /** Shared by every server process, so the limits hold with many. */
+    private readonly attempts: OtpAttemptRepository,
+  ) {
     this.base = config.get('OTP_API_URL', { infer: true }).replace(/\/+$/, '');
     this.timeoutMs = config.get('OTP_TIMEOUT_MS', { infer: true });
     this.testNumbers = new Set(
@@ -49,11 +52,16 @@ export class OtpService {
     countryCode: string,
     resend: boolean,
   ): Promise<void> {
-    const wait = this.sends.take(phone);
+    const wait = await this.attempts.take(
+      `send:${phone}`,
+      SEND_LIMIT,
+      TEN_MINUTES,
+      new Date(),
+    );
     if (wait) {
       throw tooMany(
         'OTP_LIMIT',
-        `Too many OTP requests. Try again in ${wait} seconds.`,
+        `You have asked for too many OTPs. Please wait ${wait} seconds and try again.`,
         [`retry_after_seconds=${wait}`],
       );
     }
@@ -69,26 +77,34 @@ export class OtpService {
       );
       throw unavailable(
         'OTP_UNAVAILABLE',
-        'Could not send the OTP right now. Please try again.',
+        'We could not send the OTP right now. Please try again in a minute.',
       );
     }
   }
 
   /** Resolves on a correct OTP; throws `OTP_INVALID` (401) or `OTP_UNAVAILABLE` (503). */
   async verify(phone: string, countryCode: string, otp: string): Promise<void> {
-    const wait = this.verifies.take(phone);
+    const wait = await this.attempts.take(
+      `verify:${phone}`,
+      VERIFY_LIMIT,
+      TEN_MINUTES,
+      new Date(),
+    );
     if (wait) {
       throw tooMany(
         'OTP_LIMIT',
-        `Too many attempts. Try again in ${wait} seconds.`,
+        `Too many wrong tries. Please wait ${wait} seconds and try again.`,
         [`retry_after_seconds=${wait}`],
       );
     }
 
     if (this.isTestNumber(phone)) {
       if (this.testCode && otp === this.testCode)
-        return this.verifies.reset(phone);
-      throw unauthorized('OTP_INVALID', 'The OTP is incorrect.');
+        return this.attempts.reset(`verify:${phone}`);
+      throw unauthorized(
+        'OTP_INVALID',
+        'The OTP is wrong. Please check it and try again.',
+      );
     }
 
     const res = await this.post('/otp/verify', {
@@ -99,7 +115,7 @@ export class OtpService {
     if (!res || res.status >= 500) {
       throw unavailable(
         'OTP_UNAVAILABLE',
-        'Could not check the OTP right now. Please try again.',
+        'We could not check the OTP right now. Please try again in a minute.',
       );
     }
     const verdict = verdictOf(res.ok, res.body);
@@ -109,12 +125,14 @@ export class OtpService {
           `OTP verify passed on HTTP ${res.status} without an otp_verified flag: ${shapeOf(res.body)}`,
         );
       }
-      this.verifies.reset(phone);
+      await this.attempts.reset(`verify:${phone}`);
       return;
     }
     throw unauthorized(
       'OTP_INVALID',
-      providerMessage(res.body) ?? 'The OTP is incorrect or expired.',
+      /expire/i.test(providerMessage(res.body) ?? '')
+        ? 'This OTP has expired. Please ask for a new OTP.'
+        : 'The OTP is wrong. Please check it and try again.',
     );
   }
 
@@ -185,7 +203,10 @@ function shapeOf(body: unknown): string {
   });
 }
 
-/** "OTP expired" and the like, from `{ data: { message } }`. */
+/**
+ * "OTP expired" and the like, from `{ data: { message } }`. Read, never
+ * shown: the provider's wording ("OTP not match") is not for a partner.
+ */
 function providerMessage(body: unknown): string | null {
   if (!body || typeof body !== 'object') return null;
   const data = (body as Record<string, unknown>).data;

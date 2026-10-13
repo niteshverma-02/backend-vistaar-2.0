@@ -50,7 +50,7 @@ export class ConfigsService {
       throw apiError(
         HttpStatus.CONFLICT,
         'CONFIG_NOT_PUBLISHED',
-        'This partner type has no published form yet.',
+        'The form for this partner type is not ready yet. Please try again later.',
       );
     }
     return config;
@@ -62,7 +62,7 @@ export class ConfigsService {
     const hit = this.byVersion.get(key);
     if (hit) return hit;
     const config = await this.configs.version(cohort, version);
-    if (!config) throw notFound(`Form ${key} not found.`);
+    if (!config) throw notFound('This form version could not be found.');
     if (config.status !== 'draft') this.remember(config);
     return config;
   }
@@ -111,18 +111,24 @@ export class ConfigsService {
     const from =
       (await this.configs.latestPublished(source)) ??
       (await this.configs.draft(source));
-    if (!from) throw notFound(`Partner type "${source}" has no form to copy.`);
+    if (!from) throw notFound('That partner type has no form to copy yet.');
     return this.saveDraft(cohort, from.steps, `Copied from ${from._id}`, by);
   }
 
   async publish(cohort: string, by: string): Promise<OnboardingConfig> {
     const draft = await this.configs.draft(cohort);
-    if (!draft) throw badRequest('NO_DRAFT', 'There is no draft to publish.');
+    if (!draft)
+      throw badRequest(
+        'NO_DRAFT',
+        'There is no draft to publish. Please make changes to the form first.',
+      );
     const errors = configErrors(draft.steps);
     if (errors.length) {
       throw badRequest(
         'CONFIG_INVALID',
-        `The form has ${errors.length} problem(s).`,
+        errors.length === 1
+          ? `Please fix this before publishing: ${errors[0]}`
+          : `Please fix these ${errors.length} problems before publishing. First: ${errors[0]}`,
         errors.slice(0, 50),
       );
     }
@@ -130,7 +136,7 @@ export class ConfigsService {
     if (!published)
       throw badRequest(
         'NO_DRAFT',
-        'The draft was already published or discarded.',
+        'This draft was already published or discarded. Please reload the page.',
       );
     await this.configs.archiveOlder(cohort, published.version, by);
     this.latest.delete(cohort);
@@ -140,7 +146,10 @@ export class ConfigsService {
 
   async discardDraft(cohort: string): Promise<{ deleted: true }> {
     if (!(await this.configs.deleteDraft(cohort)))
-      throw badRequest('NO_DRAFT', 'There is no draft to discard.');
+      throw badRequest(
+        'NO_DRAFT',
+        'There is no draft to discard. Please reload the page.',
+      );
     return { deleted: true };
   }
 
@@ -165,11 +174,14 @@ function asSteps(raw: unknown[]): StepDef[] {
   if (bad !== -1) {
     throw badRequest(
       'CONFIG_INVALID',
-      `steps.${bad} must be an object with a fields list.`,
+      `Step ${bad + 1} is not set up correctly. Please add its fields and try again.`,
     );
   }
   if (JSON.stringify(raw).length > 512 * 1024) {
-    throw badRequest('CONFIG_INVALID', 'The form is too large.');
+    throw badRequest(
+      'CONFIG_INVALID',
+      'The form is too large. Please remove some steps or fields.',
+    );
   }
   return raw as StepDef[];
 }

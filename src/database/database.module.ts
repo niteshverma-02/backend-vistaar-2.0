@@ -23,6 +23,11 @@ import { IndexSyncService } from './index-sync.service';
         // Fail a query fast rather than hanging a partner's request for
         // the driver's 30s default while the phone is on a weak connection.
         serverSelectionTimeoutMS: 5_000,
+
+        // Set, not left to the driver's 100: with one process per core, the
+        // sum over processes is what the Mongo server has to hold.
+        maxPoolSize: config.get('MONGODB_MAX_POOL_SIZE', { infer: true }),
+        minPoolSize: config.get('MONGODB_MIN_POOL_SIZE', { infer: true }),
       }),
     }),
   ],

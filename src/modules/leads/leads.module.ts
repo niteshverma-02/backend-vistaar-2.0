@@ -39,5 +39,6 @@ import { LeadsService } from './services/leads.service';
   ],
   controllers: [LeadsController, AdminLeadsController],
   providers: [OrgLeadsRepository, VistaarLeadsRepository, LeadsService],
+  exports: [LeadsService],
 })
 export class LeadsModule {}

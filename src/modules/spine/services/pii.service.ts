@@ -100,20 +100,9 @@ export class PiiService {
     );
   }
 
-  addressesBySource(
-    piiIds: readonly string[],
-    source: string,
-  ): Promise<Map<string, AddressRecord>> {
-    return this.addresses.bySource(piiIds, source);
-  }
-
   /** The person on a phone, without creating one; same oldest-first rule as `resolve`. */
   findIdByPhone(phone: string): Promise<string | null> {
     return this.piis.findIdByPhone(phone);
-  }
-
-  phonesOf(piiIds: readonly string[]): Promise<Map<string, string>> {
-    return this.piis.phonesOf(piiIds);
   }
 
   /**
@@ -138,7 +127,7 @@ export class PiiService {
 
     throw unavailable(
       'IDENTITY_UNAVAILABLE',
-      'Could not create your account right now. Please try again.',
+      'We could not create your account right now. Please try again in a minute.',
     );
   }
 

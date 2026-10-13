@@ -49,23 +49,29 @@ export class UploadsController {
       throw apiError(
         HttpStatus.SERVICE_UNAVAILABLE,
         'UPLOADS_NOT_CONFIGURED',
-        'File uploads are not configured.',
+        'Uploading files is not working right now. Please try again later.',
       );
     }
     if (!req.isMultipart())
       throw badRequest(
         'FILE_REQUIRED',
-        'Send the file as multipart/form-data, field `file`.',
+        'Please choose a photo or PDF to upload.',
       );
 
     const file = await req.file({
       limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
+      // Leaves `truncated` for the check below, which names this route's limit.
+      throwFileSizeLimit: false,
     });
-    if (!file) throw badRequest('FILE_REQUIRED', 'No file was sent.');
+    if (!file)
+      throw badRequest(
+        'FILE_REQUIRED',
+        'Please choose a photo or PDF to upload.',
+      );
     if (!ALLOWED_MIME.test(file.mimetype)) {
       throw badRequest(
         'FILE_TYPE_NOT_ALLOWED',
-        'Only JPG, PNG, WEBP, HEIC images and PDF files are accepted.',
+        'This file type is not allowed. Please upload a photo (JPG, PNG, WEBP, HEIC) or a PDF.',
       );
     }
 
@@ -74,7 +80,7 @@ export class UploadsController {
       throw apiError(
         HttpStatus.PAYLOAD_TOO_LARGE,
         'FILE_TOO_LARGE',
-        'The file is larger than 10 MB.',
+        'This file is too big. Please upload a file smaller than 10 MB.',
       );
     }
 

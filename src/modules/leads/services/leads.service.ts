@@ -328,6 +328,15 @@ export class LeadsService {
     };
   }
 
+  /**
+   * Is this farmer one the partner holds — a lead, or a customer from one?
+   * The cart's "Ordering for" asks; the org lead's `lead_owner` is the HO
+   * head, so it cannot answer this.
+   */
+  async holds(agentId: string, piiId: string): Promise<boolean> {
+    return this.rows.isHeldBy(piiId.toUpperCase(), agentId.toUpperCase());
+  }
+
   async getMine(partner: PartnerRef, piiId: string): Promise<LeadDetail> {
     return detailOf(await this.mine(partner, piiId));
   }

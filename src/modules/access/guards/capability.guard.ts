@@ -41,7 +41,7 @@ export class CapabilityGuard implements CanActivate {
       throw apiError(
         HttpStatus.FORBIDDEN,
         'NO_ADMIN_ACCESS',
-        'Your account has no access to Vistaar.',
+        'Your account does not have access to Vistaar. Please ask your admin for access.',
       );
     }
 
@@ -53,7 +53,7 @@ export class CapabilityGuard implements CanActivate {
       throw apiError(
         HttpStatus.FORBIDDEN,
         'ROLE_NOT_ALLOWED',
-        'Your role cannot do this.',
+        'Your role does not allow this action. Please ask your admin if you need it.',
       );
     }
     return true;

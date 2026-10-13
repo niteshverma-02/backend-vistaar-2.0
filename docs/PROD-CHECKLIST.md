@@ -8,7 +8,11 @@ What must exist in production before the matching feature is switched on.
 | Variable | Note |
 |---|---|
 | `NODE_ENV` | `production` — otherwise index builds run at boot |
-| `MONGODB_URI` | Production `CRM-Database` |
+| `MONGODB_URI` | Production `CRM-Database`. **Same region as the app**: a 28 ms round trip (beta, from outside) is most of every request's time |
+| `MONGODB_MAX_POOL_SIZE` / `MONGODB_MIN_POOL_SIZE` | `50` / `5` per process. Processes × max must fit the Mongo server's connection limit |
+| (OTP limits) | 3 SMS and 5 guesses per number per 10 min are counted in **`vistaar_v2_otp_attempts`** (Mongo), so they hold across every process. No Redis is used |
+| `WEB_CONCURRENCY` | `pnpm start:cluster` workers; `0` = one per CPU core |
+| `LOG_LEVEL` | `info`: one short line per request (id, method, URL, status, time); `/health` not logged |
 | `CORS_ORIGINS` | HO portal hosts only, never `*` |
 | `SWAGGER_ENABLED` | `false` unless the team wants `/docs` public |
 | `VISTAAR_JWT_SECRET` | 32+ random characters, unique to this service (`openssl rand -base64 48`) |
@@ -34,8 +38,26 @@ db.vistaar_v2_onboarding_data.createIndex({ agent_ref: 1 }, { unique: true })
 db.vistaar_v2_onboarding_data.createIndex({ location: '2dsphere' })
 db.vistaar_v2_onboarding_configs.createIndex({ cohort: 1, version: -1 }, { unique: true })
 db.vistaar_v2_onboarding_configs.createIndex({ cohort: 1, status: 1 }, { unique: true, partialFilterExpression: { status: 'draft' } })
+db.vistaar_v2_otp_attempts.createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 })
 db.vistaar_v2_sessions.createIndex({ agent_ref: 1 })
 db.vistaar_v2_sessions.createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 })
+db.vistaar_v2_banners.createIndex({ is_active: 1, order: 1 })
+db.vistaar_v2_stories.createIndex({ agent_id: 1, signature: 1 }, { unique: true })
+db.vistaar_v2_stories.createIndex({ agent_id: 1, last_used_at: -1 })
+db.vistaar_v2_story_stats.createIndex({ date: 1, agent_id: 1 })
+db.vistaar_v2_story_festivals.createIndex({ key: 1 }, { unique: true })
+db.vistaar_v2_story_festivals.createIndex({ is_active: 1, order: 1 })
+db.vistaar_v2_story_samples.createIndex({ key: 1 }, { unique: true })
+db.vistaar_v2_story_samples.createIndex({ is_active: 1, order: 1 })
+db.vistaar_v2_story_designs.createIndex({ key: 1 }, { unique: true })
+db.vistaar_v2_story_designs.createIndex({ is_active: 1, order: 1 })
+db.vistaar_v2_crop_calendar.createIndex({ is_active: 1, order: 1 })
+db.vistaar_v2_faqs.createIndex({ q_key: 1 }, { unique: true })
+db.vistaar_v2_faqs.createIndex({ is_active: 1, order: 1 })
+db.vistaar_v2_faqs.createIndex({ category: 1, order: 1 })
+db.vistaar_v2_faq_sections.createIndex({ is_active: 1, order: 1 })
+db.vistaar_v2_events.createIndex({ is_active: 1, starts_at: 1 })
+db.vistaar_v2_event_registrations.createIndex({ event_id: 1, created_at: 1 })
 db.vistaar_v2_leads.createIndex({ pii_id: 1 }, { unique: true })
 db.vistaar_v2_leads.createIndex({ agent_id: 1, created_at: -1 })
 db.vistaar_v2_leads.createIndex({ agent_id: 1, stage: 1 })
@@ -91,6 +113,21 @@ Nothing to build: the lookups use the existing `pii_id`, `phone_number`,
 - [ ] ko-sales / sales-operation told: `source: 'vistaar'` leads are inserted directly (no pipeline, no LQS, no webhook), `created_by` = `VST-…`
 - [ ] Optional: a `lead_sources` row `{ source_code: 'vistaar', display_name: 'Vistaar Agent' }` so CRM source filters list it (ko-sales adds one itself only for leads it writes)
 
+### `orders_v2`, `products_v2` (read-only, owned by Stockship)
+
+Nothing to build to go live: the partner's list rides the existing
+`{ agent: 1, order_status: 1, date: -1 }` and `products_v2.sku` indexes.
+
+**At scale:** an unfiltered list (no `status`) sorts one partner's orders in
+memory, because `order_status` sits between `agent` and `date`. Fine for a
+few thousand orders per partner; past that, ask Stockship for
+`{ agent: 1, date: -1 }` on `orders_v2`.
+
+## Orders — before switching on
+
+- [ ] Checkout (not built) writes orders through Stockship with `source: 'vistaar'` and the partner's `VST-` id in `agent`. Stockship's create-order checks `agent` against `agents_v2` today, so it must accept a `VST-` id for `source: 'vistaar'` (Stockship team).
+- [ ] Stockship team told `source: 'vistaar'` orders will appear, with a `VST-` id in `agent`.
+
 ## Draft orders — before switching on
 
 - [ ] `app_counters` has the `_id: 'draft_orders'` row in production (the API answers 503 `DRAFT_ID_UNAVAILABLE` without it — it never creates it)
@@ -101,7 +138,56 @@ Nothing to build: the lookups use the existing `pii_id`, `phone_number`,
 - [x] Login module's auth guard live and `PartnerHeaderGuard` deleted — the cart reads the partner from the Vistaar token; the B2B token travels in `x-b2b-token`
 - [ ] B2B Sales team told `source: 'vistaar'` rows exist in `carts` (their shape: `pii_id` only, no `user_id`; the partner is in the derived `_id`), and that their own queries must filter on `source`
 
+## Banners — before switching on
+
+- [ ] `FIREBASE_*` set (same bucket as KYC uploads); without them the image upload answers `503 UPLOADS_NOT_CONFIGURED` (text banners still work).
+- [ ] `vistaar_v2_banners` index built (above).
+- [ ] App build that reads `GET /banners` (and draws `image`) shipped before HO starts publishing image banners.
+
+## Attendance — before switching on
+
+- [ ] No index to build: `vistaar_v2_attendance` is read only by `_id`.
+- [ ] App build that calls `/attendance/*` (and sends GPS from `geolocator`) shipped.
+- [ ] Decided with product: auto-close of a missed punch-out, absent days, regularisation (not built — see `ATTENDANCE-APP.md`).
+
+## My Story — before switching on
+
+- [ ] The ten story / crop-calendar / event indexes built (above) — the unique `{agent_id, signature}` is what stops a double tap saving two copies.
+- [ ] `FIREBASE_*` set; story images go private under `vistaar/stories/<agent_id>/`. Without it uploads answer `503 UPLOADS_NOT_CONFIGURED` and the app shares without saving.
+- [ ] The four FAQ / FAQ-section indexes built (above) — the unique `{q_key}` is what refuses a duplicate question.
+- [ ] `node dist/scripts/seed-faqs.js --apply` once (the app's 5 sections and 11 built-in FAQs; re-running skips existing ones).
+- [ ] `node dist/scripts/seed-story-content.js --apply` once (6 template cards + 5 example custom cards, 5 designs, 4 festivals, 8 farmer stories, 5 crops, 3 events). Done on beta 2026-10-12 (designs and template cards 2026-10-13). On production, skip the 3 sample events — HO adds real ones — and delete the `diwali_lights` test design (generated art).
+- [ ] HO replaces or switches off the 8 sample farmer stories — they are the prototype's made-up quotes, not real customers.
+- [ ] App build on `/stories/*` shipped: `FestivalId` enum → string key, snake_case mapping, save after share (see `STORIES-APP.md`).
+- [ ] Stockship team told Vistaar reads approved `source: 'vistaar'` testimonials (and `bulk_v2.trade_name`) for the Farmer story template — read-only.
+
+## Terms and conditions — before switching on
+
+- [ ] No index to build: `terms_and_conditions` already has `{toc_id}` unique and `{profiles, is_active}` (owned by the other apps — not ours to change).
+- [ ] Legal signs off the Vistaar Partner T&C (`src/scripts/terms-content.ts` — every rule the app shipped as built-in text), then `node dist/scripts/seed-terms.js --apply` once (makes the .docx through the editor's path, uploads to `toc/`, adds the next `TOC-n`, `profiles: ['vistaar']`). Done on beta 2026-10-13: `TOC-6` active and editable in the portal (`TOC-4`, `TOC-5` — uploaded files, not editable — switched off).
+- [ ] Stockship / RLM owners told Vistaar adds rows to `terms_and_conditions` with `profiles: ['vistaar']` and takes the next `TOC-n`.
+- [ ] The privacy policy is inside the same document (one Vistaar row) — no separate row.
+- [ ] App build that reads `GET /terms-and-conditions` (`{toc_id, title, link}`) shipped.
+
+## Info pages (About Vistaar, About Katyayani, Contact Us) — before switching on
+
+- [ ] No index to build: `vistaar_v2_info_pages` is read only by `_id`.
+- [ ] `node dist/scripts/seed-info-pages.js --apply` once (the app's current text, v1 of each page).
+- [ ] HO replaces the placeholders the app marked "to confirm": About Katyayani stats, helpline `1800-000-0000`, social links (bare youtube/instagram/facebook), Contact Us helpline `1800123456` and WhatsApp `9876543000`, the Play Store link.
+- [ ] App build that reads `GET /about-program`, `/about-company`, `/contact-us` (instead of `help_seed.dart` / `content_seed.dart`) shipped.
+
 ## Run
 
-Build `pnpm install --frozen-lockfile && pnpm build`, start `node dist/main`. One process
-(the OTP rate limits are in memory).
+Build `pnpm install --frozen-lockfile && pnpm build`, then either:
+
+- **Kubernetes / several hosts:** `node dist/main` — one process per pod, scale pods.
+- **One VM:** `pnpm start:cluster` — one worker per core on the same port, a dead worker is restarted.
+
+**No Redis.** Caching is in each server process's memory (lists ≤ 60 s,
+cohort ≤ 60 s, signed image URLs ≤ 45 min) — each process lags an HO edit by
+at most a minute. The per-partner request limit (120 per route per minute) is
+also per process, so with N processes it is up to N × 120 — loose, but it is
+abuse protection, not a quota. The OTP limits, which guard logins, are shared
+through Mongo (`vistaar_v2_otp_attempts`).
+
+Measured capacity and the reasoning: `docs/PERFORMANCE.md`.

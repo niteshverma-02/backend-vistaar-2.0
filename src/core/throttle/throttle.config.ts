@@ -35,4 +35,5 @@ function verifiedSubject(user: unknown): string | null {
 export const THROTTLE_OPTIONS: ThrottlerModuleOptions = {
   throttlers: [{ name: 'default', ttl: 60_000, limit: 120 }],
   getTracker: throttleTracker,
+  errorMessage: 'Too many requests. Please wait a minute and try again.',
 };

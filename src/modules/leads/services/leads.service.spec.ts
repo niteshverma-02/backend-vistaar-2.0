@@ -43,6 +43,9 @@ function fakeRows(seed: Row[] = []) {
     findByPii: jest.fn((pii: string) =>
       Promise.resolve(rows.has(pii) ? { ...rows.get(pii)! } : null),
     ),
+    isHeldBy: jest.fn((pii: string, agent: string) =>
+      Promise.resolve(rows.get(pii)?.agent_id === agent),
+    ),
     insert: jest.fn((row: Row) => {
       if (rows.has(row.pii_id)) return Promise.resolve(false);
       rows.set(row.pii_id, { ...row });
@@ -371,5 +374,21 @@ describe('LeadsService.update', () => {
     expect(
       await codeOf(other.service.update(ME, 'PII-9', { stage: 'contacted' })),
     ).toBe('NOT_FOUND');
+  });
+});
+
+describe('LeadsService.holds', () => {
+  it('answers for the holding partner only — a linked farmer included', async () => {
+    const { service } = setup({
+      seed: [
+        myRow(),
+        myRow({ pii_id: 'PII-10', origin: 'linked', lead_id: 'L-77' }),
+        myRow({ pii_id: 'PII-11', agent_id: 'VST-000002' }),
+      ],
+    });
+    expect(await service.holds(ME.agent_id, 'pii-9')).toBe(true);
+    expect(await service.holds(ME.agent_id, 'PII-10')).toBe(true);
+    expect(await service.holds(ME.agent_id, 'PII-11')).toBe(false);
+    expect(await service.holds(ME.agent_id, 'PII-404')).toBe(false);
   });
 });

@@ -44,6 +44,22 @@ export const CAPABILITIES = {
   'leads.read': ['head'],
   /** Default owner, conflict radius. */
   'settings.write': ['head'],
+  /** See the app's Home banners, scheduled and ended ones included. */
+  'content.read': ['head'],
+  /** Add, edit, schedule, target and delete banners — the app shows them within a minute. */
+  'content.write': ['head'],
+  /** See Vistaar's product testimonials (source vistaar only), removed ones included. */
+  'testimonials.read': ['head'],
+  /** Add, approve, remove, restore, correct and delete Vistaar's testimonials. */
+  'testimonials.write': ['head'],
+  /** See every partner's punch-ins and punch-outs; nobody punches for a partner. */
+  'attendance.read': ['head'],
+  /** See My Story activity (who shares what) and partners' saved stories. */
+  'stories.read': ['head'],
+  /** Take a story off a partner's list. Festivals are `content.write`. */
+  'stories.write': ['head'],
+  /** See every partner's placed orders (Stockship `orders_v2`, source vistaar). Read-only. */
+  'orders.read': ['head'],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Capability = keyof typeof CAPABILITIES;

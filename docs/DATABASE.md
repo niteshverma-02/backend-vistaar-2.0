@@ -18,6 +18,21 @@ writes its retailers.
 | `vistaar_v2_settings` | — (`_id: vistaar`) | `default_owner_agent_id`, `lead_owner_agent_id` (override owner of farmer leads; `null` = the Offline Head), `farmer_consent { version, text { en, hi } }` (`null` = built-in version 1), `conflict_radius_km` |
 | `vistaar_v2_leads` | farmer a partner holds (unique `pii_id`) | `_id` UUID, `pii_id`, `agent_id` (`VST-…`), `lead_id` (org `L-…`, `null` until written / contact-only person), `origin` `created`/`linked`, farmer copy `name`, `phone`, `village`, `district`, `state`, `pincode`, `crops[]`, `acreage`; `found_via`, `expected_value`, `stage` (prospect · contacted · interested · negotiation · won · lost), `stage_history[]` (last 50), `next_follow_up`, `lost_reason`, `activities[]` `{id, type, text, at, by}` (last 100), `consent {version, at}`, `ex_employee_declared_at`, `customer_at` (first order), timestamps |
 | `vistaar_v2_counters` | id series | `_id: agent_id`, `seq` |
+| `vistaar_v2_banners` | Home banner (HO) | `_id` UUID, `title{}` (localized, `en` required), `subtitle{}` / `cta{}` (required unless an image), `image_path` + `image_url` + `image_width/height` (HO art), `link` (in-app route), `tone`, `emoji`, `cohorts[]` (empty = everyone), `starts_at` / `ends_at`, `order`, `is_active`, `created_by/updated_by`, timestamps. Deleted for good by HO |
+| `vistaar_v2_attendance` | partner × IST day | `_id` `<agent_id>:<YYYY-MM-DD>`, `agent_id`, `date`, `sessions[]{in_at, in_location, out_at, out_location}` (location = `lat`, `lng`, `accuracy_m`, `label`, `source` gps/registered; at most 10), `punched_in`, `first_in_at`, `last_out_at`, `worked_ms` (closed sessions), timestamps. Times are server time. Never deleted |
+| `vistaar_v2_stories` | partner's saved My Story (≤ 20 each) | `_id` UUID, `agent_id`, `signature` (SHA-256 of config + photo path), `template`, `lang`, `theme` (design key), `card` (custom card key or null), `fields{emoji,headline,body,detail1-3,price,mrp,stars}`, `show_whatsapp`, `photo_mode`, `selection{}`, `image_path` (+ `image_width/height`) and `photo_path` (private, `vistaar/stories/<agent_id>/`), `share_count`, `last_shared_at`, `last_used_at` (list order), timestamps. Oldest beyond 20 deleted with their files |
+| `vistaar_v2_otp_attempts` | OTP sends / guesses per phone | `_id` `send:<phone>` or `verify:<phone>`, `hits[]` (inside the 10-min window), `allowed`, `expires_at` (TTL). Shared limit across server processes |
+| `vistaar_v2_story_stats` | partner × IST day | `_id` `<agent_id>:<YYYY-MM-DD>`, `agent_id`, `date`, `saved`, `shares`, `templates{<template>:n}`, `channels{<channel>:n}`, timestamps. `$inc` upserts only; never deleted |
+| `vistaar_v2_story_festivals` | festival greeting (HO) | `_id` UUID, `key` (unique, never changes), `label{}`, `emoji`, `text{<lang>:{headline,body}}` (`en` required), `starts_at` / `ends_at`, `order`, `is_active`, `created_by/updated_by`, timestamps |
+| `vistaar_v2_story_templates` | "Choose a design" card (HO) | `_id` = card key (a layout name for the six built-in cards, else HO's key), `base` (layout), `builtin`, `label{}`, `hint{}`, `texts{<lang>:{kicker,cta}}` (`en` required), `fields{<lang>:{emoji,headline,body,detail1..3}}`, `emojis[]`, `default_design` (design key or null), `suggested`, `starts_at` / `ends_at`, `order`, `is_active`, `created_by/updated_by`, timestamps |
+| `vistaar_v2_story_designs` | story look (HO) | `_id` UUID, `key` (unique, never changes — `vistaar_v2_stories.theme`), `label{}`, `colors{bg_from,bg_to,text,subtext,accent,accent_text,soft,deco,avatar}` (`#RRGGBB[AA]`), `image_path` / `image_url` / `image_width` / `image_height` (public art under `vistaar/story-designs/`, or null), `overlay`, `templates[]`, `starts_at` / `ends_at`, `order`, `is_active`, `created_by/updated_by`, timestamps |
+| `vistaar_v2_story_samples` | ready-made farmer quote (HO) | `_id` UUID, `key` (unique), `name`, `village`, `district`, `state`, `product`, `crop`, `quote`, `stars`, `order`, `is_active`, `created_by/updated_by`, timestamps |
+| `vistaar_v2_faq_sections` | FAQ section / app category chip (HO) | `_id` = section key (`payments`), `label`, `emoji`, `order`, `is_active` (off hides its FAQs too), `created_by/updated_by`, timestamps. Deleted by HO only when empty |
+| `vistaar_v2_faqs` | help FAQ (HO) | `_id` UUID, `category` = a section key, `q`, `a`, `q_key` (normalised `q`, unique), `order`, `is_active`, `created_by/updated_by`, timestamps. Deleted for good by HO |
+| `vistaar_v2_crop_calendar` | crop (HO) | `_id` = crop key (`wheat`), `crop`, `emoji`, `season` kharif/rabi/zaid, `sowing`, `harvest`, `stages[]{stage, month, advice, products[]}`, `order`, `is_active`, `created_by/updated_by`, timestamps |
+| `vistaar_v2_events` | farmer event (HO) | `_id` UUID, `title`, `type` kisan_mela/training/webinar/field_day, `starts_at`, `location`, `note`, `seats`, `registered_count` (conditional `$inc`), `cohorts[]` (empty = everyone), `is_active`, `created_by/updated_by`, timestamps |
+| `vistaar_v2_event_registrations` | partner's seat | `_id` `<event_id>:<agent_id>`, `event_id`, `agent_id`, `created_at`. Deleted on un-register or with the event |
+| `vistaar_v2_info_pages` | info page (HO) | `_id` = page `about_program` / `about_company` / `contact_us`, `content{}` (page's shape — see `INFO-PAGES-HO.md`), `version` (1 on first save, +1 each; a save names the one it was made from), `created_by/updated_by`, timestamps. Read only by `_id`; never deleted |
 
 ### Indexes (declared on the schemas; listed in PROD-CHECKLIST)
 
@@ -26,6 +41,20 @@ writes its retailers.
 - onboarding_configs: `{cohort, version:-1}` unique · `{cohort, status}` unique partial `status: draft` (one draft per cohort)
 - sessions: `{agent_ref}` · `{expires_at}` TTL 0
 - leads: `{pii_id}` unique · `{agent_id, created_at:-1}` · `{agent_id, stage}` · `{agent_id, next_follow_up}` · `{created_at:-1}` · `{phone}`
+- banners: `{is_active, order}`
+- attendance: none beyond `_id` — today and every punch are `_id` lookups, a month is an `_id` range
+- stories: `{agent_id, signature}` unique · `{agent_id, last_used_at:-1}`
+- story_stats: `{date, agent_id}` (HO ranges); one partner's days are an `_id` range
+- story_festivals: `{key}` unique · `{is_active, order}`
+- story_samples: `{key}` unique · `{is_active, order}`
+- otp_attempts: `{expires_at}` TTL
+- story_designs: `{key}` unique · `{is_active, order}`
+- story_templates: `_id` only (a few dozen rows, read whole)
+- crop_calendar: `{is_active, order}`
+- faq_sections: `{is_active, order}`
+- faqs: `{q_key}` unique · `{is_active, order}` · `{category, order}`
+- events: `{is_active, starts_at}`
+- event_registrations: `{event_id, created_at}`; a partner's seat is an `_id` lookup
 
 ## Shared — written
 ## Shared — written by this service with `source: 'vistaar'`
@@ -55,6 +84,25 @@ Not stored (B2B's rows have no field for them): MRP, the pack label and the
 item count — the API reads them from the catalogue / works them out.
 
 Indexes: see `PROD-CHECKLIST.md` — none are built from this service.
+
+## Shared — written by this service with `profiles: ['vistaar']`
+
+### `terms_and_conditions` (rows of Krishi Sampark `TOC-1`, B2B Portal `TOC-2`, RLM `TOC-3`)
+
+One row per T&C document, in the existing shape — nothing added:
+
+| Field | Vistaar row |
+|---|---|
+| `_id` | ObjectId |
+| `toc_id` | `TOC-n` — next after the highest in the collection (any app); unique index already there, retry on collision |
+| `title` | e.g. `Vistaar Partner T&C` |
+| `link` | https URL of the document (docx / pdf) |
+| `profiles` | `['vistaar']` — what every Vistaar read and write filters on |
+| `is_active` | One Vistaar row `true` at a time |
+| `__v` (version) | Edit count — `PUT /:toc_id/text` (or a title / link change) raises it; version = `__v + 1` |
+
+Existing indexes (not built by us): `{toc_id}` unique, `{profiles, is_active}`.
+Vistaar's one document holds both the privacy policy and the partner terms.
 
 ## Shared — written by this service with `entry_path: 'vistaar'`
 
@@ -140,9 +188,9 @@ with the next number, up to 3 times.
 | Collection | Read by | Index used |
 |---|---|---|
 | `piis` | draft orders: phone of a `pii_id`; `pii_id` of a phone | `pii_id`, `phone_number` |
-| `leads_v2` | draft orders: customer name, `lead_id`; farmer lists (`source` + `created_by`) | `pii_id`, `source` |
-| `contacts_v2` | draft orders: `contact_id` ↔ `pii_id`; farm of a listed farmer | `pii_id`, `contact_id` |
-| `addresses` | the village of a listed farmer | `pii_id` |
+| `leads_v2` | draft orders: customer name, `lead_id`; leads: does this `pii_id` already have a lead, and whose (`source`, `created_by`) | `pii_id` |
+| `contacts_v2` | draft orders: `contact_id` ↔ `pii_id`; leads: the person's `profile` (farmer or not) | `pii_id`, `contact_id` |
+| `addresses` | leads: the row this service wrote for the person (`pii_id` + `source`) | `pii_id` |
 
 ## Read-only, other apps
 
@@ -156,6 +204,8 @@ with the next number, up to 3 times.
 
 | Collection | Why |
 |---|---|
+| `orders_v2` (owner: Stockship) | the partner's orders: `{ source: 'vistaar', agent: <VST id> }`, newest by `date`; status filter is `order_status $in`. Rides Stockship's `{ agent, order_status, date }` index. Never written here |
+| `products_v2` (owner: Stockship) | name, `hero_image`, `variant` of an order's skus, one `$in` per page, on its `sku` index |
 | `agents_v2` | HO role (`user_role`) and owner names |
 | `pincode_map_v2` | pincode → state / district (cached 6 h) |
 | `franchises`, `prasar_v2_retailers`, `vistaaragents` | nearby-network warning at approval. ⚠️ `vistaaragents.latestCoordinates.coordinates` is stored `[lat, lng]` (swapped) — matched with a box, not a geo query |
@@ -171,8 +221,21 @@ db.vistaar_v2_agents.find({ agent_id: { $type: 'string' }, pii_id: null })   // 
 ## Seed
 
 `node dist/scripts/seed-onboarding.js [--apply]` — the five PRD cohorts and a first form each
+
+`node dist/scripts/seed-info-pages.js [--apply]` — About Vistaar, About Katyayani and Contact Us as the app shipped them (`src/scripts/info-pages-content.ts`), v1 of each. Insert-only; a page that exists is skipped.
+
+`node dist/scripts/seed-terms.js [--apply] [--file <docx|pdf> --title <t>]` — writes Vistaar Privacy & Terms from `src/scripts/terms-content.ts` as an editor-made .docx (`--replace` to add a new version over an active one; `--file` uploads a finished document instead) to `toc/` and adds it to `terms_and_conditions` as the next `TOC-n`, active. Skipped if Vistaar already has an active one. Applied on beta 2026-10-13 → `TOC-6` (active, editable); `TOC-4`, `TOC-5` switched off.
+
+`node dist/scripts/seed-banners.js [--apply | --remove]` — five **test** banners (3 text, 2 image; targeted, scheduled, ending) as `created_by: 'seed:test-banners'`, for beta/local only. Applied on beta 2026-10-12; `--remove` deletes them and their images.
 (`src/scripts/default-forms.ts`). Insert-only; dry run by default. Applied on beta 2026-10-09.
 | `vistaaragents`, `vistaarfarmers` | old Vistaar (CRM-Backend) | Still written by the old KSS app. Never modified here |
+
+## Storage (Firebase, org bucket)
+
+| Folder | Access | Written by |
+|---|---|---|
+| `KO-documents/<pii_id>/<purpose>/` | private, signed URLs (1 h) | `POST /uploads` (partner KYC) |
+| `vistaar/banners/<uuid>.<ext>` | anyone with the URL (Firebase download token); `Cache-Control: public, max-age=31536000, immutable` | `POST /admin/banners/image` (HO). Width and height stored as object metadata. Deleted when no banner uses it |
 
 ## External
 

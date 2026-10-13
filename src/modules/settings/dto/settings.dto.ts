@@ -34,7 +34,7 @@ export class UpdateSettingsDto {
   @IsOptional()
   @IsString()
   @Matches(/^A0-\d+$/, {
-    message: 'default_owner_agent_id must look like A0-1234.',
+    message: "Please enter the default owner's staff ID, for example A0-1234.",
   })
   default_owner_agent_id?: string;
 
@@ -46,7 +46,8 @@ export class UpdateSettingsDto {
   @IsOptional()
   @IsString()
   @Matches(/^A0-\d+$/, {
-    message: 'lead_owner_agent_id must look like A0-1234.',
+    message:
+      "Please enter the farmer-lead owner's staff ID, for example A0-1234.",
   })
   lead_owner_agent_id?: string;
 
