@@ -26,6 +26,7 @@ import {
   CartRepository,
   type CartWrite,
 } from '../repositories/cart.repository';
+import { CustomerLinkRepository } from '../repositories/customer-link.repository';
 import type { CartRecord } from '../schemas/cart.schema';
 
 /**
@@ -53,6 +54,7 @@ export class CartService {
 
   constructor(
     private readonly carts: CartRepository,
+    private readonly links: CustomerLinkRepository,
     private readonly catalog: CatalogService,
   ) {}
 
@@ -106,11 +108,13 @@ export class CartService {
     );
   }
 
-  setCustomer(
+  async setCustomer(
     partner: PartnerRef,
     token: string,
     dto: SetCartCustomerDto,
   ): Promise<CartView> {
+    await this.requireCustomer(partner, dto.pii_id);
+
     return this.mutate(partner, token, (current) =>
       writeOf(current?.items ?? [], dto.pii_id),
     );
@@ -132,6 +136,8 @@ export class CartService {
     lines: readonly { sku: string; quantity: number }[],
     piiId: string | null,
   ): Promise<CartView> {
+    await this.requireCustomer(partner, piiId);
+
     const catalog = await this.catalog.variants(
       lines.map((l) => l.sku),
       token,
@@ -139,6 +145,22 @@ export class CartService {
     const restored = restoreLines(lines, catalog);
 
     return this.mutate(partner, token, () => writeOf(restored, piiId));
+  }
+
+  /**
+   * A cart, and the draft saved from it, may only be for the partner's own
+   * stock or a farmer whose lead they own: a draft copies the customer's name
+   * and phone from `piis` and hands them back, so an unchecked `PII-n` would
+   * read any person in the org's records. Unknown and not-theirs answer the
+   * same 404, so the check reveals nothing about who exists.
+   */
+  async requireCustomer(
+    partner: PartnerRef,
+    piiId: string | null | undefined,
+  ): Promise<void> {
+    if (!piiId || piiId === partner.pii_id) return;
+    if (await this.links.ownsLead(partner.agent_id, piiId)) return;
+    throw notFound('This customer could not be found.');
   }
 
   // ── Internals ─────────────────────────────────────────────────────────
@@ -194,7 +216,7 @@ export class CartService {
   /** A pack that is sold here, or 404. */
   private async sellable(sku: string, token: string): Promise<CatalogVariant> {
     const variant = await this.catalog.variant(sku, token);
-    if (!variant) throw notFound('This product is not sold here any more.');
+    if (!variant) throw notFound('This product is no longer available.');
     return variant;
   }
 
@@ -262,14 +284,19 @@ function applied(change: CartChange): CartLineData[] {
 
   switch (change.reason) {
     case 'OUT_OF_STOCK':
-      throw conflict('OUT_OF_STOCK', 'This pack is out of stock.');
+      throw conflict(
+        'OUT_OF_STOCK',
+        'Sorry, this product is out of stock right now.',
+      );
     case 'CART_LIMIT_REACHED':
       throw conflict(
         'CART_LIMIT_REACHED',
-        `A cart can hold up to ${MAX_LINES} products.`,
+        `Your cart is full (up to ${MAX_LINES} products). Please remove a product to add another.`,
       );
     case 'NOT_IN_CART':
-      throw notFound('This pack is not in the cart.');
+      throw notFound(
+        'This product is no longer in your cart. Please refresh your cart.',
+      );
   }
 }
 

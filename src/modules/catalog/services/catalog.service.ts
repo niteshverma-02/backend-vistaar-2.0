@@ -96,11 +96,13 @@ export class CatalogService {
     } catch (error) {
       // The app renews its token on a 401 and retries; a 503 would not.
       if (error instanceof B2bUnauthorizedError) {
-        throw new UnauthorizedException('Sign in again to continue.');
+        throw new UnauthorizedException(
+          'You have been signed out. Please log in again.',
+        );
       }
       throw serviceUnavailable(
         'CATALOG_UNAVAILABLE',
-        'Products could not be loaded. Please try again in a minute.',
+        'Products could not be loaded right now. Please try again in a minute.',
       );
     }
   }

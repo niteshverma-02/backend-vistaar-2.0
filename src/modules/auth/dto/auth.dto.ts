@@ -27,7 +27,9 @@ export class OtpRequestDto {
     description: 'India only for now',
   })
   @IsOptional()
-  @IsIn(['+91'], { message: 'Only +91 numbers are supported.' })
+  @IsIn(['+91'], {
+    message: 'Only Indian (+91) mobile numbers are supported.',
+  })
   country_code: string = '+91';
 
   @ApiPropertyOptional({
@@ -45,7 +47,7 @@ export class OtpRequestDto {
 export class OtpVerifyDto extends OtpRequestDto {
   @ApiProperty({ example: '6942' })
   @Transform(trim)
-  @Matches(/^\d{4,6}$/, { message: 'otp must be 4 to 6 digits.' })
+  @Matches(/^\d{4,6}$/, { message: 'Please enter the OTP (4 to 6 digits).' })
   otp!: string;
 }
 

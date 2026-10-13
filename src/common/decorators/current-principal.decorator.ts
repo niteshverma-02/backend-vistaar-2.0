@@ -15,7 +15,9 @@ export const CurrentPartner = createParamDecorator(
   (_: unknown, ctx: ExecutionContext): PartnerPrincipal => {
     const user = ctx.switchToHttp().getRequest<AuthedRequest>().user;
     if (user?.kind !== 'partner') {
-      throw new UnauthorizedException('A partner session is required.');
+      throw new UnauthorizedException(
+        'Please sign in to the Vistaar app to continue.',
+      );
     }
     return user;
   },
@@ -26,7 +28,9 @@ export const CurrentAdmin = createParamDecorator(
   (_: unknown, ctx: ExecutionContext): AdminPrincipal => {
     const user = ctx.switchToHttp().getRequest<AuthedRequest>().user;
     if (user?.kind !== 'admin') {
-      throw new UnauthorizedException('An HO session is required.');
+      throw new UnauthorizedException(
+        'Please sign in to the HO portal to continue.',
+      );
     }
     return user;
   },

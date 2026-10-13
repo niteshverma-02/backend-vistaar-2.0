@@ -67,7 +67,8 @@ export class CreateCohortDto extends UpdateCohortDto {
     description: 'Permanent key — never renamed once used',
   })
   @Matches(/^[a-z][a-z0-9_]{1,40}$/, {
-    message: 'key must be lowercase letters, digits, _',
+    message:
+      'The partner type ID can use only small letters, numbers and _ (2 to 41 characters), for example vistaar_agent.',
   })
   key!: string;
 

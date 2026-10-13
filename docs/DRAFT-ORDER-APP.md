@@ -60,7 +60,7 @@ All routes are under `/api/v2/draft-orders` and answer
 | Status | Code | When |
 |---|---|---|
 | 409 | `DRAFT_CART_EMPTY` | Save with an empty cart |
-| 404 | `NOT_FOUND` | Draft not found / not yours / already ordered; or the cart's customer no longer exists |
+| 404 | `NOT_FOUND` | Draft not found / not yours / already ordered; or the cart's customer no longer exists or is not one of the partner's farmers (checked again on save and restore) |
 | 503 | `DRAFT_ID_UNAVAILABLE` | Draft ids cannot be issued — retry later |
 | 409 | `CART_BUSY` | Restore: the cart was changed on another device — retry |
 | 401 | `UNAUTHORIZED` | Vistaar token or B2B token missing/expired |

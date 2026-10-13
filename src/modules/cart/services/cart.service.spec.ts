@@ -10,6 +10,7 @@ import type {
   CartRepository,
   CartWrite,
 } from '../repositories/cart.repository';
+import type { CustomerLinkRepository } from '../repositories/customer-link.repository';
 import type { CartRecord } from '../schemas/cart.schema';
 import { CartService } from './cart.service';
 
@@ -60,6 +61,7 @@ function record(
 describe('CartService', () => {
   let active: CartRecord | null;
   let repo: jest.Mocked<CartRepository>;
+  let links: jest.Mocked<CustomerLinkRepository>;
   let catalog: Map<string, CatalogVariant>;
   let service: CartService;
 
@@ -95,7 +97,17 @@ describe('CartService', () => {
         ),
     } as unknown as CatalogService;
 
-    service = new CartService(repo, catalogService);
+    // The partner owns leads for PII-1 and PII-1620388, nobody else.
+    links = {
+      ownsLead: jest.fn((agentId: string, piiId: string) =>
+        Promise.resolve(
+          agentId === PARTNER.agent_id &&
+            ['PII-1', 'PII-1620388'].includes(piiId),
+        ),
+      ),
+    } as unknown as jest.Mocked<CustomerLinkRepository>;
+
+    service = new CartService(repo, links, catalogService);
   });
 
   describe('addItem', () => {
@@ -222,6 +234,44 @@ describe('CartService', () => {
       expect(active?.pii_id).toBe('PII-9');
       expect(active).not.toHaveProperty('user_id');
       expect(active?.items).toHaveLength(1);
+    });
+
+    it('refuses a person whose lead the partner does not own, and leaves the cart as it was', async () => {
+      await service.addItem(PARTNER, TOKEN, { sku: 'K-1', quantity: 1 });
+      await service.setCustomer(PARTNER, TOKEN, { pii_id: 'PII-1' });
+      const writes = repo.updateActive.mock.calls.length;
+
+      await expect(
+        service.setCustomer(PARTNER, TOKEN, { pii_id: 'PII-424242' }),
+      ).rejects.toMatchObject({ status: 404 });
+
+      expect(links.ownsLead).toHaveBeenCalledWith('VST-000001', 'PII-424242');
+      expect(repo.updateActive).toHaveBeenCalledTimes(writes);
+      expect(active?.pii_id).toBe('PII-1');
+    });
+
+    it("accepts the partner's own pii_id as shop stock without a lead lookup", async () => {
+      const view = await service.setCustomer(PARTNER, TOKEN, {
+        pii_id: 'PII-9',
+      });
+
+      expect(view.pii_id).toBeNull();
+      expect(links.ownsLead).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('replace', () => {
+    it('refuses to restore a cart for a person whose lead the partner does not own', async () => {
+      await expect(
+        service.replace(
+          PARTNER,
+          TOKEN,
+          [{ sku: 'K-1', quantity: 1 }],
+          'PII-424242',
+        ),
+      ).rejects.toMatchObject({ status: 404 });
+
+      expect(repo.insertActive).not.toHaveBeenCalled();
     });
   });
 

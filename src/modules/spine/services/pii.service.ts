@@ -50,7 +50,7 @@ export class PiiService {
 
     throw unavailable(
       'IDENTITY_UNAVAILABLE',
-      'Could not create your account right now. Please try again.',
+      'We could not create your account right now. Please try again in a minute.',
     );
   }
 

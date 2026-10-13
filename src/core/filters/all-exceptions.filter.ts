@@ -9,7 +9,10 @@ import {
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { Error as MongooseError, mongo } from 'mongoose';
 
-import type { FrameworkErrorCode } from '@common/errors/api-error';
+import type {
+  ApiErrorCode,
+  FrameworkErrorCode,
+} from '@common/errors/api-error';
 
 export interface ApiErrorEnvelope {
   success: false;
@@ -75,13 +78,16 @@ function describe(exception: unknown): Described {
     const response = exception.getResponse();
 
     if (typeof response === 'string') {
-      return { status, code: codeFor(status), message: response };
+      return { status, code: codeFor(status), message: plain(response) };
     }
 
     const {
       message,
       error,
       details: explicitDetails,
+      // Nest's own exceptions echo the status in the body; the HTTP status
+      // already says it, and it is not a detail anyone can act on.
+      statusCode: _statusCode,
       ...rest
     } = response as {
       message?: unknown;
@@ -94,10 +100,8 @@ function describe(exception: unknown): Described {
       status,
       code: typeof error === 'string' ? v2Code(slug(error)) : codeFor(status),
       message: Array.isArray(message)
-        ? 'Request validation failed.'
-        : typeof message === 'string'
-          ? message
-          : exception.message,
+        ? 'Some details are missing or not correct. Please check and try again.'
+        : plain(typeof message === 'string' ? message : exception.message),
       // `details` passed deliberately (the v2 `apiError()` helpers) surfaces
       // as-is; class-validator instead puts its per-field errors on `message`
       // as an array. Without the explicit branch the helper's array would
@@ -113,12 +117,29 @@ function describe(exception: unknown): Described {
     };
   }
 
+  // Fastify plugins (multipart above all) reject with their own errors, not
+  // an HttpException. Their status is right but would have fallen through to
+  // a 500 here — a file over the limit read "unexpected error" and was logged
+  // as our fault.
+  if (isFastifyClientError(exception)) {
+    const { statusCode: status, code } = exception;
+    return {
+      status,
+      code:
+        FASTIFY_CODES[code] ??
+        (status === Number(HttpStatus.PAYLOAD_TOO_LARGE)
+          ? ('PAYLOAD_TOO_LARGE' satisfies FrameworkErrorCode)
+          : ('VALIDATION_FAILED' satisfies ApiErrorCode)),
+      message: FASTIFY_MESSAGES[code] ?? exception.message,
+    };
+  }
+
   if (exception instanceof mongo.MongoServerError && exception.code === 11000) {
     return {
       status: HttpStatus.CONFLICT,
       code: 'DUPLICATE_KEY' satisfies FrameworkErrorCode,
-      message: 'A record with these unique values already exists.',
-      details: exception.keyValue as unknown,
+      // `keyValue` stays off the wire: it can be a phone number or a name.
+      message: 'This already exists. Please use a different value.',
     };
   }
 
@@ -129,7 +150,8 @@ function describe(exception: unknown): Described {
     return {
       status: HttpStatus.SERVICE_UNAVAILABLE,
       code: 'DATABASE_UNAVAILABLE' satisfies FrameworkErrorCode,
-      message: 'Account database is unavailable. Please try again shortly.',
+      message:
+        'We cannot reach our servers right now. Please try again in a few minutes.',
     };
   }
 
@@ -137,7 +159,7 @@ function describe(exception: unknown): Described {
     return {
       status: HttpStatus.BAD_REQUEST,
       code: 'INVALID_ID' satisfies FrameworkErrorCode,
-      message: `Malformed value for "${exception.path}".`,
+      message: 'This link is not valid. Please go back and try again.',
     };
   }
 
@@ -145,7 +167,8 @@ function describe(exception: unknown): Described {
     return {
       status: HttpStatus.UNPROCESSABLE_ENTITY,
       code: 'SCHEMA_VALIDATION_FAILED' satisfies FrameworkErrorCode,
-      message: 'Document failed schema validation.',
+      message:
+        'This could not be saved. Please check the details and try again.',
       details: Object.keys(exception.errors),
     };
   }
@@ -155,7 +178,8 @@ function describe(exception: unknown): Described {
     code: 'INTERNAL_ERROR' satisfies FrameworkErrorCode,
     // Deliberately generic — stack traces and driver messages go to the log,
     // never to a partner's phone.
-    message: 'An unexpected error occurred.',
+    message:
+      'Something went wrong on our side. Please try again in a little while.',
   };
 }
 
@@ -184,6 +208,71 @@ function isDatabaseUnreachable(exception: unknown): boolean {
     exception instanceof mongo.MongoNetworkError ||
     exception instanceof mongo.MongoNotConnectedError ||
     exception instanceof mongo.MongoTopologyClosedError
+  );
+}
+
+interface FastifyClientError extends Error {
+  code: string;
+  statusCode: number;
+}
+
+function isFastifyClientError(
+  exception: unknown,
+): exception is FastifyClientError {
+  if (!(exception instanceof Error)) return false;
+  const { code, statusCode } = exception as Partial<FastifyClientError>;
+  return (
+    typeof code === 'string' &&
+    code.startsWith('FST_') &&
+    typeof statusCode === 'number' &&
+    statusCode >= 400 &&
+    statusCode < 500
+  );
+}
+
+const FASTIFY_CODES: Record<string, ApiErrorCode> = {
+  FST_REQ_FILE_TOO_LARGE: 'FILE_TOO_LARGE',
+  FST_INVALID_MULTIPART_CONTENT_TYPE: 'FILE_REQUIRED',
+};
+
+/** Fastify's own wording is for developers; the app shows `message` as is. */
+const FASTIFY_MESSAGES: Record<string, string> = {
+  FST_REQ_FILE_TOO_LARGE: 'The file is too large.',
+  FST_FILES_LIMIT: 'Send one file per request.',
+  FST_PARTS_LIMIT: 'The form has too many parts.',
+  FST_FIELDS_LIMIT: 'The form has too many fields.',
+  FST_INVALID_MULTIPART_CONTENT_TYPE:
+    'Send the file as multipart/form-data, field `file`.',
+};
+
+/**
+ * Messages Nest, Fastify and the throttler write for developers
+ * (`Cannot GET /api/v2/x`, `ThrottlerException: Too Many Requests`), swapped
+ * for ones a partner can act on. A message a route wrote itself passes as is.
+ */
+const FRAMEWORK_MESSAGES: [RegExp, string][] = [
+  [
+    /^Cannot (GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS) /,
+    'This page or action is not available. Please update the app.',
+  ],
+  [
+    /^ThrottlerException/,
+    'Too many tries. Please wait a minute and try again.',
+  ],
+  [
+    /^Body is not valid JSON|^Unsupported Media Type$/,
+    'Your request could not be read. Please try again.',
+  ],
+  [
+    /^Request body is too large$/,
+    'This is too large to send. Please send less at a time.',
+  ],
+];
+
+function plain(message: string): string {
+  return (
+    FRAMEWORK_MESSAGES.find(([pattern]) => pattern.test(message))?.[1] ??
+    message
   );
 }
 

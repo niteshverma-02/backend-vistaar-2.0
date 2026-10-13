@@ -5,6 +5,7 @@ import { CatalogModule } from '@modules/catalog/catalog.module';
 
 import { CartController } from './controllers/cart.controller';
 import { CartRepository } from './repositories/cart.repository';
+import { CustomerLinkRepository } from './repositories/customer-link.repository';
 import { Cart, CartSchema } from './schemas/cart.schema';
 import { CartService } from './services/cart.service';
 
@@ -14,7 +15,7 @@ import { CartService } from './services/cart.service';
     CatalogModule,
   ],
   controllers: [CartController],
-  providers: [CartRepository, CartService],
+  providers: [CartRepository, CustomerLinkRepository, CartService],
   exports: [CartService],
 })
 export class CartModule {}
