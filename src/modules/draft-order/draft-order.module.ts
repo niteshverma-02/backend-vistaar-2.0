@@ -24,5 +24,6 @@ import { DraftOrderService } from './services/draft-order.service';
     CustomerLookupRepository,
     DraftOrderService,
   ],
+  exports: [DraftOrderService],
 })
 export class DraftOrderModule {}

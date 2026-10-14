@@ -17,6 +17,7 @@ Contract docs, one per feature, named by who reads them:
 | [LEADS-HO.md](./LEADS-HO.md) | HO portal | Leads screen (cards, list, drawer), farmer-consent wording, lead owner |
 | [CUSTOMERS-APP.md](./CUSTOMERS-APP.md) | app | Customers list, tiles, detail; a lead becomes a customer on its first confirmed order |
 | [ORDER-EVENTS.md](./ORDER-EVENTS.md) | order service (TL) | The confirmed-order call that turns a lead into a customer |
+| [TODAY-APP.md](./TODAY-APP.md) | app | Home's Today's tasks: follow-ups due, saved carts to remind, events, orders to confirm |
 | [BANNERS-APP.md](./BANNERS-APP.md) | app | Home carousel banners for the partner's cohort |
 | [BANNERS-HO.md](./BANNERS-HO.md) | HO portal | Add, schedule, target, reorder and delete Home banners |
 | [ORDERS-APP.md](./ORDERS-APP.md) | app | My orders: list by stage, details, tracking steps (read from `orders_v2`) |
