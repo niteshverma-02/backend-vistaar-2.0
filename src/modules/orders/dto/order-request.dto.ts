@@ -3,6 +3,7 @@ import { Transform } from 'class-transformer';
 import { IsIn, IsOptional, Matches } from 'class-validator';
 
 import { PageQueryDto } from '@common/dto/page-query.dto';
+import { DATE_PATTERN } from '@modules/attendance/attendance.domain';
 
 import { ORDER_STAGES, type OrderStage } from '../orders.domain';
 
@@ -41,4 +42,24 @@ export class OrdersQueryDto extends PageQueryDto {
   )
   @Matches(/^PII-[A-Z0-9-]{1,20}$/, { message: 'This customer is not valid.' })
   customer?: string;
+
+  @ApiPropertyOptional({
+    example: '2026-09-01',
+    description: 'First IST day placed, included',
+  })
+  @IsOptional()
+  @Matches(DATE_PATTERN, {
+    message: 'Please choose a valid start date, for example 2026-09-01.',
+  })
+  from?: string;
+
+  @ApiPropertyOptional({
+    example: '2026-09-30',
+    description: 'Last IST day placed, included',
+  })
+  @IsOptional()
+  @Matches(DATE_PATTERN, {
+    message: 'Please choose a valid end date, for example 2026-09-30.',
+  })
+  to?: string;
 }

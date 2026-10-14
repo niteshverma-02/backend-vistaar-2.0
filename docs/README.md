@@ -21,7 +21,12 @@ Contract docs, one per feature, named by who reads them:
 | [TODAY-APP.md](./TODAY-APP.md) | app | Home's Today's tasks: follow-ups due, saved carts to remind, events, orders to confirm |
 | [BANNERS-APP.md](./BANNERS-APP.md) | app | Home carousel banners for the partner's cohort |
 | [BANNERS-HO.md](./BANNERS-HO.md) | HO portal | Add, schedule, target, reorder and delete Home banners |
-| [ORDERS-APP.md](./ORDERS-APP.md) | app | My orders: list by stage, details, tracking steps (read from `orders_v2`) |
+| [ORDERS-APP.md](./ORDERS-APP.md) | app | My orders: list by stage / dates, details, tracking steps, each order's commission (read from `orders_v2`) |
+| [ORDERS-HO.md](./ORDERS-HO.md) | HO portal | Every partner's orders, filters, one order with its commission |
+| [COMMISSION-LOGIC.md](./COMMISSION-LOGIC.md) | both, Finance | The commission rules: base, slabs, statuses, wallet maths, TDS |
+| [COMMISSION-APP.md](./COMMISSION-APP.md) | app | Commission summary, ledger, plans; wallet and withdrawals; commission statement and TDS reports |
+| [MY-PERFORMANCE-APP.md](./MY-PERFORMANCE-APP.md) | app | My Performance by period; tier, lifecycle stage, health score (Home / Profile) |
+| [COMMISSION-HO.md](./COMMISSION-HO.md) | HO portal | Commission plans, payouts (approve, bank file, UTR), TDS and Form 16A, a partner's commission / performance / target, commission settings |
 | [ATTENDANCE-APP.md](./ATTENDANCE-APP.md) | app | Punch in / out, today's state, monthly log and summary |
 | [ATTENDANCE-HO.md](./ATTENDANCE-HO.md) | HO portal | Day board across partners, 14-day trend, one partner's month |
 | [TESTIMONIALS-HO.md](./TESTIMONIALS-HO.md) | HO portal | Vistaar's product testimonials (source vistaar): review, approve, remove, add |

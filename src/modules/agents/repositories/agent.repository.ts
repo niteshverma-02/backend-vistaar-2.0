@@ -225,6 +225,21 @@ export class AgentRepository {
       .exec();
   }
 
+  setMonthlyTarget(
+    agentId: string,
+    target: number | null,
+    by: string,
+  ): Promise<AgentRecord | null> {
+    return this.model
+      .findOneAndUpdate(
+        { agent_id: agentId, otp_verified: true },
+        { $set: { monthly_target: target, updated_by: by } },
+        { returnDocument: 'after' },
+      )
+      .lean<AgentRecord | null>()
+      .exec();
+  }
+
   async list(
     filter: AgentListFilter,
     page: { skip: number; limit: number; sort: Record<string, 1 | -1> },

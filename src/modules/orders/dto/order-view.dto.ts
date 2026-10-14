@@ -1,5 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 
+import {
+  COMMISSION_STATUSES,
+  type CommissionStatus,
+} from '@modules/commission/commission.domain';
+
 import { ORDER_STAGES, type OrderStage } from '../orders.domain';
 
 export class OrderLineView {
@@ -40,6 +45,52 @@ export class OrderTrackingStepView {
 
   @ApiProperty()
   completed!: boolean;
+}
+
+/** What the order earns the partner (COMMISSION-APP.md). */
+export class OrderCommissionView {
+  @ApiProperty({
+    example: 11980,
+    description: 'Lines after discount and coins, before GST; no delivery (₹)',
+  })
+  base!: number;
+
+  @ApiProperty({
+    example: 7,
+    description:
+      'Slab % of the month it was delivered in; this month’s rate until delivered',
+  })
+  rate!: number;
+
+  @ApiProperty({ example: 838, description: 'round(base × rate / 100)' })
+  amount!: number;
+
+  @ApiProperty({ enum: COMMISSION_STATUSES })
+  status!: CommissionStatus;
+
+  @ApiProperty({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description: 'Delivery + the return window; `null` until delivered',
+  })
+  confirms_at!: Date | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  confirmed_at!: Date | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  paid_at!: Date | null;
+
+  @ApiProperty({ type: String, nullable: true, example: 'WD-000012' })
+  withdrawal_id!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    enum: ['cancelled', 'returned'],
+  })
+  reversed_reason!: 'cancelled' | 'returned' | null;
 }
 
 export class OrderView {
@@ -116,4 +167,15 @@ export class OrderView {
 
   @ApiProperty({ type: String, format: 'date-time' })
   created_at!: Date;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  delivered_at!: Date | null;
+
+  @ApiProperty({
+    type: OrderCommissionView,
+    nullable: true,
+    description:
+      '`null` = no commission shown (HO lists; an order that is not a live one)',
+  })
+  commission!: OrderCommissionView | null;
 }

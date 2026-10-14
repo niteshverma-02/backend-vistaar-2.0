@@ -34,7 +34,7 @@ and the app never sets `won` — the lead moves to `won` on its own, and the lea
 
 | Method | Path | |
 |---|---|---|
-| GET | `/customers?q&crop&sort&page&limit` | my customers — `PageResult<Customer>` |
+| GET | `/customers?q&crop&ordered_in&sort&page&limit` | my customers — `PageResult<Customer>` |
 | GET | `/customers/summary` | the screen's tiles and crop chips |
 | GET | `/customers/:piiId` | one customer — the lead detail + business |
 | GET | `/orders?customer=<pii_id>` | the customer's **Orders** tab (ORDERS-APP.md), newest first |
@@ -42,6 +42,9 @@ and the app never sets `won` — the lead moves to `won` on its own, and the lea
 `GET /customers`:
 - `q` — name, village, district, crop, or digits of the mobile.
 - `crop` — one crop chip (any case).
+- `ordered_in` — `YYYY-MM`: only customers ordered for in that IST month, cancelled orders
+  left out (Reports → Customer list; its CSV's `total_orders` / `total_spent` /
+  `last_order_at` are `orders` / `spend` / `last_order_at` here).
 - `sort` — `-last_order_at` (latest order first, the default) · `-spend` (highest first) ·
   `name` (A–Z).
 
@@ -100,4 +103,4 @@ not on the server yet.
 | Code | HTTP | Show |
 |---|---|---|
 | `NOT_FOUND` | 404 | not one of your customers (a lead not won yet, or another partner's) |
-| `VALIDATION_FAILED` | 400 | a bad `q` / `crop` / `sort` |
+| `VALIDATION_FAILED` | 400 | a bad `q` / `crop` / `ordered_in` / `sort` |

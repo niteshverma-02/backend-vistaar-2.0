@@ -136,7 +136,9 @@ cohorts). No pipeline, LQS or webhook. See `docs/DATABASE.md`.
 
 Other apps' collections read here, read-only: `agents_v2` (HO role, owner
 names), `pincode_map_v2`, `orders_v2` + `products_v2` (the partner's orders:
-`source: 'vistaar'`, partner's `VST-` id in `agent`; decided 2026-10-12), and `franchises` / `prasar_v2_retailers` /
+`source: 'vistaar'`, partner's `VST-` id in `agent`; decided 2026-10-12; the
+commission module reads `orders_v2` too), `bulk_v2` + `categories_v2` (GST and
+category, held in memory), and `franchises` / `prasar_v2_retailers` /
 `vistaaragents` for the nearby-network warning.
 
 **Exception — `carts`** (owned by B2B Sales): the cart module writes its rows
@@ -184,9 +186,12 @@ index is declared in code.
 | Cohorts | `vistaar_v2_cohorts` | HO-managed partner types |
 | Sessions | `vistaar_v2_sessions` | SHA-256 of refresh tokens, TTL |
 | OTP attempts | `vistaar_v2_otp_attempts` | `_id` `send:<phone>` or `verify:<phone>`, sliding window of hits, one atomic pipeline update; TTL. Shared OTP limits across processes |
-| Settings | `vistaar_v2_settings` | Default owner, farmer-lead owner, farmer-consent wording (versioned), lead / customer release days, conflict radius |
+| Settings | `vistaar_v2_settings` | Default owner, farmer-lead owner, farmer-consent wording (versioned), lead / customer release days, commission (return window, min withdrawal, TDS rates, monthly target), conflict radius |
 | Leads | `vistaar_v2_leads` | One row per farmer a partner holds (unique `pii_id`): holder (released when not worked, HO transfer), stage, follow-up, activity, consent; copy of the farmer basics for lists. The farmer is the org's `leads_v2` / `contacts_v2`. A **customer** is a row at `won` — set by the order service's confirmed-order call (`/hooks/orders/confirmed`), business read from `orders_v2` |
-| Counters | `vistaar_v2_counters` | `VST-` series (not `app_counters`, not legacy `sequences`) |
+| Counters | `vistaar_v2_counters` | `VST-` and `WD-` series (not `app_counters`, not legacy `sequences`) |
+| Commission plans | `vistaar_v2_commission_plans` | Slabs per cohort from a month on (`<cohort>@<YYYY-MM>`); past months locked; history kept. No plan = the PRD's draft rates. Commission itself is never stored — worked out from `orders_v2` on read (`docs/COMMISSION-LOGIC.md`) |
+| Withdrawals | `vistaar_v2_withdrawals` | `WD-` payout requests: TDS fixed at approval, bank file + UTR; one open per partner (unique partial `open: true`). Never deleted |
+| Form 16A | `vistaar_v2_tds_certificates` | One private PDF per partner and quarter (HO upload) |
 | Banners | `vistaar_v2_banners` | HO-managed Home carousel: own image (`vistaar/banners/`, public token URL) or text banner; cohort-targeted, scheduled; app reads cached ≤ 60 s |
 | Attendance | `vistaar_v2_attendance` | One row per partner per IST day (`_id` `<agent_id>:<date>`), punch sessions with location at in/out only; server time |
 | My Story | `vistaar_v2_stories` | Partner's saved stories (≤ 20, oldest drop off with files); same config + photo = one row; images private under `vistaar/stories/<agent_id>/` |

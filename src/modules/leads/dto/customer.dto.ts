@@ -9,6 +9,7 @@ import {
 } from 'class-validator';
 
 import { PageQueryDto } from '@common/dto/page-query.dto';
+import { MONTH_PATTERN } from '@modules/attendance/attendance.domain';
 
 const trim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
@@ -33,6 +34,18 @@ export class CustomerQueryDto extends PageQueryDto {
   @IsString()
   @MaxLength(60)
   crop?: string;
+
+  @ApiPropertyOptional({
+    example: '2026-09',
+    description:
+      'Only customers ordered for in this IST month (Reports → customer list)',
+  })
+  @IsOptional()
+  @Transform(trim)
+  @Matches(MONTH_PATTERN, {
+    message: 'Please choose a valid month, for example 2026-09.',
+  })
+  ordered_in?: string;
 }
 
 const upper = ({ value }: { value: unknown }) =>

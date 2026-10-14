@@ -68,11 +68,16 @@ export class OrderRepository {
     skip: number,
     limit: number,
     piiId: string | null = null,
+    placed: { from: Date | null; to: Date | null } = { from: null, to: null },
   ): Promise<[OrderRecord[], number]> {
+    const date: Record<string, Date> = {};
+    if (placed.from) date.$gte = placed.from;
+    if (placed.to) date.$lt = placed.to;
     const filter = {
       ...this.ownFilter(partnerId),
       ...(statuses ? { order_status: { $in: statuses } } : {}),
       ...(piiId ? { pii_id: piiId } : {}),
+      ...(placed.from || placed.to ? { date } : {}),
     };
 
     const rows = await this.model
@@ -138,6 +143,23 @@ export class OrderRepository {
         },
       ])
       .exec();
+  }
+
+  /** The buyers of the partner's orders placed in `[from, to)` whose status is not one of `except`. */
+  async buyersBetween(
+    partnerId: string,
+    from: Date,
+    to: Date,
+    except: readonly string[],
+  ): Promise<string[]> {
+    const ids = await this.model
+      .distinct('pii_id', {
+        ...this.ownFilter(partnerId),
+        order_status: { $nin: except },
+        date: { $gte: from, $lt: to },
+      })
+      .exec();
+    return ids.filter((id): id is string => typeof id === 'string');
   }
 
   /**

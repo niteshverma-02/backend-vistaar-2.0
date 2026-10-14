@@ -37,6 +37,9 @@ The app's `OrderView` (see `ORDERS-APP.md`) plus:
 }
 ```
 
+- `commission` (COMMISSION-APP.md) is filled on `GET /admin/orders/:id` only; the list
+  sends `null` (a page spans many partners, each a book of their own). One partner's
+  commission in full: `GET /admin/commission/partners/:agentId` (COMMISSION-HO.md).
 - `partner` is looked up once per page; `name` etc. are `null` for an id the
   agents collection does not know. `partner: null` only for a row with no `agent`.
 - `customer_name: "Self (shop stock)"` when the order was billed to the

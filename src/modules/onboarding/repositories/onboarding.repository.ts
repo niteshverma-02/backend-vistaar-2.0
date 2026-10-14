@@ -117,6 +117,35 @@ export class OnboardingRepository {
       .exec();
   }
 
+  /** What a payout needs from each partner's form, in one read. */
+  forPayout(
+    agentRefs: readonly string[],
+  ): Promise<
+    Pick<
+      OnboardingData,
+      | 'agent_ref'
+      | 'cohort'
+      | 'config_version'
+      | 'raw_data'
+      | 'documents_review'
+    >[]
+  > {
+    return this.model
+      .find({ agent_ref: { $in: agentRefs } })
+      .select('agent_ref cohort config_version raw_data documents_review')
+      .lean<
+        Pick<
+          OnboardingData,
+          | 'agent_ref'
+          | 'cohort'
+          | 'config_version'
+          | 'raw_data'
+          | 'documents_review'
+        >[]
+      >()
+      .exec();
+  }
+
   async countForCohort(cohort: string): Promise<number> {
     return this.model.countDocuments({ cohort }).exec();
   }

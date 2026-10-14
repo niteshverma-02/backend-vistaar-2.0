@@ -66,6 +66,11 @@ db.vistaar_v2_leads.createIndex({ agent_id: 1, next_follow_up: 1 })
 db.vistaar_v2_leads.createIndex({ created_at: -1 })
 db.vistaar_v2_leads.createIndex({ phone: 1 })
 db.vistaar_v2_leads.createIndex({ agent_id: 1, location: '2dsphere' })
+db.vistaar_v2_withdrawals.createIndex({ agent_id: 1, requested_at: -1 })
+db.vistaar_v2_withdrawals.createIndex({ status: 1, requested_at: 1 })
+db.vistaar_v2_withdrawals.createIndex({ status: 1, paid_at: 1 })
+db.vistaar_v2_withdrawals.createIndex({ agent_id: 1 }, { unique: true, partialFilterExpression: { open: true } })
+db.vistaar_v2_tds_certificates.createIndex({ quarter: 1, agent_id: 1 })
 ```
 
 ⚠️ **Beta (2026-10-09): none of these exist** — the beta Mongo host is out of disk and every
@@ -138,6 +143,17 @@ few thousand orders per partner; past that, ask Stockship for
 
 - [ ] Checkout (not built) writes orders through Stockship with `source: 'vistaar'` and the partner's `VST-` id in `agent`. Stockship's create-order checks `agent` against `agents_v2` today, so it must accept a `VST-` id for `source: 'vistaar'` (Stockship team).
 - [ ] Stockship team told `source: 'vistaar'` orders will appear, with a `VST-` id in `agent`.
+
+## Commission, wallet, My Performance — before switching on
+
+- [ ] **The withdrawals indexes above, the unique partial `{ agent_id }` (`open: true`) first** — it is what stops two open withdrawals from one partner across server processes (one process also serialises a partner's requests in memory)
+- [ ] Finance signs off the slabs (COMMISSION-LOGIC.md); HO saves them as plans with `draft: false` — until then every cohort earns the PRD's rates and the app shows "Draft"
+- [ ] Settings checked in `GET /admin/settings`: `return_window_days` 7, `min_withdrawal` 500, `tds_rate_with_pan` 2, `tds_rate_without_pan` 20, `monthly_target` 1,00,000 (defaults apply while unset)
+- [ ] Finance has an `agents_v2` role code for payouts → add it to `payouts.manage` / `commission.read` in `access.domain.ts` (heads only until then)
+- [ ] The bank's upload template, if it is not the generic CSV (`GET /admin/withdrawals/payout-file`)
+- [ ] Checkout (see *Orders*) — commission exists only for orders with `source: 'vistaar'` and the partner's `VST-` id in `agent`
+- [ ] Every published onboarding form keeps a PAN field (`org_document: pan`), a bank-proof field (`org_document: bank_details`) and the bank account (`maps_to: details.bank_account`) — TDS rate and payouts read them (all five forms do, 2026-10-14)
+- [ ] Nothing to build in `orders_v2`: one aggregation per partner a minute on `{ agent, order_status, date }`
 
 ## Draft orders — before switching on
 

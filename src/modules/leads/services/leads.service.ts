@@ -408,6 +408,37 @@ export class LeadsService {
   }
 
   /**
+   * My Performance: leads added in `[from, to)` and how they ended, and
+   * follow-ups overdue now (before today, IST).
+   */
+  async performance(
+    agentId: string,
+    from: Date,
+    to: Date,
+  ): Promise<{
+    total: number;
+    won: number;
+    lost: number;
+    /** Won of all leads added, as the leads screen's tile. */
+    conversion_pct: number | null;
+    overdue_follow_ups: number;
+  }> {
+    const r = await this.rows.performance(
+      agentId,
+      from,
+      to,
+      istDayStart(new Date()),
+    );
+    return {
+      total: r.total,
+      won: r.won,
+      lost: r.lost,
+      conversion_pct: r.total ? Math.round((r.won * 100) / r.total) : null,
+      overdue_follow_ups: r.overdue,
+    };
+  }
+
+  /**
    * Is this farmer one the partner holds — a lead, or a customer from one?
    * The cart's "Ordering for" asks; the org lead's `lead_owner` is the HO
    * head, so it cannot answer this.

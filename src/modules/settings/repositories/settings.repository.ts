@@ -17,6 +17,11 @@ export interface SettingsRecord {
   farmer_consent: FarmerConsent;
   lead_release_days: number;
   customer_release_days: number;
+  return_window_days: number;
+  min_withdrawal: number;
+  tds_rate_with_pan: number;
+  tds_rate_without_pan: number;
+  monthly_target: number;
   conflict_radius_km: number;
   updated_by?: string;
   updated_at?: Date;

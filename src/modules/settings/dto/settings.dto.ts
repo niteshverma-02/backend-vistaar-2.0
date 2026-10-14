@@ -97,6 +97,66 @@ export class UpdateSettingsDto {
   @Max(365, { message: 'Customer release can be at most 365 days.' })
   customer_release_days?: number;
 
+  @ApiPropertyOptional({
+    example: 7,
+    minimum: 0,
+    maximum: 30,
+    description: 'Commission confirms this many days after delivery',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(30)
+  return_window_days?: number;
+
+  @ApiPropertyOptional({
+    example: 500,
+    minimum: 1,
+    maximum: 100000,
+    description: 'Smallest withdrawal, ₹',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  min_withdrawal?: number;
+
+  @ApiPropertyOptional({
+    example: 2,
+    minimum: 0,
+    maximum: 30,
+    description: 'TDS % on a withdrawal with a verified PAN',
+  })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(30)
+  tds_rate_with_pan?: number;
+
+  @ApiPropertyOptional({
+    example: 20,
+    minimum: 0,
+    maximum: 40,
+    description: 'TDS % without a verified PAN',
+  })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(40)
+  tds_rate_without_pan?: number;
+
+  @ApiPropertyOptional({
+    example: 100000,
+    minimum: 1,
+    maximum: 100000000,
+    description: 'Default monthly sales target, ₹',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100000000)
+  monthly_target?: number;
+
   @ApiPropertyOptional({ example: 5, minimum: 0.5, maximum: 50 })
   @IsOptional()
   @IsNumber()

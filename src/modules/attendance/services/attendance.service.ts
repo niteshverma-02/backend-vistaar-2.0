@@ -91,6 +91,12 @@ export class AttendanceService {
     return toDayView(closed, date, date);
   }
 
+  /** Field days (punched in) in IST month `YYYY-MM` — a health-score factor. */
+  fieldDays(agentId: string, month: string): Promise<number> {
+    const { from, to } = monthBounds(month);
+    return this.days.countDays(agentId, from, to);
+  }
+
   async month(agentId: string, month?: string): Promise<AttendanceMonthView> {
     const now = new Date();
     const today = istDate(now);

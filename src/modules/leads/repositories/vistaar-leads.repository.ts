@@ -425,6 +425,59 @@ export class VistaarLeadsRepository {
     };
   }
 
+  /**
+   * Leads the partner added in `[from, to)` by outcome, and open leads whose
+   * follow-up is before `overdueBefore` — My Performance, in one round trip.
+   */
+  async performance(
+    agentId: string,
+    from: Date,
+    to: Date,
+    overdueBefore: Date,
+  ): Promise<{ total: number; won: number; lost: number; overdue: number }> {
+    const [out] = await this.model
+      .aggregate<{
+        added: { total: number; won: number; lost: number }[];
+        overdue: { n: number }[];
+      }>([
+        { $match: { agent_id: agentId } },
+        {
+          $facet: {
+            added: [
+              { $match: { created_at: { $gte: from, $lt: to } } },
+              {
+                $group: {
+                  _id: null,
+                  total: { $sum: 1 },
+                  won: { $sum: { $cond: [{ $eq: ['$stage', 'won'] }, 1, 0] } },
+                  lost: {
+                    $sum: { $cond: [{ $eq: ['$stage', 'lost'] }, 1, 0] },
+                  },
+                },
+              },
+            ],
+            overdue: [
+              {
+                $match: {
+                  stage: { $nin: CLOSED_STAGES },
+                  next_follow_up: { $ne: null, $lt: overdueBefore },
+                },
+              },
+              { $count: 'n' },
+            ],
+          },
+        },
+      ])
+      .exec();
+    const added = out?.added[0];
+    return {
+      total: added?.total ?? 0,
+      won: added?.won ?? 0,
+      lost: added?.lost ?? 0,
+      overdue: out?.overdue[0]?.n ?? 0,
+    };
+  }
+
   /** The HO cards in one round trip. */
   async adminSummary(since: { today: Date; week: Date }): Promise<{
     total: number;

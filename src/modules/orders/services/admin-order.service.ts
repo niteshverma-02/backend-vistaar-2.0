@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common';
 
-import { badRequest, notFound } from '@common/errors/api-error';
+import { notFound } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
 import {
   AgentsService,
   type AgentRecord,
 } from '@modules/agents/services/agents.service';
+import type { OrderCommission } from '@modules/commission/services/commission.service';
 
 import type {
   AdminOrderView,
@@ -16,11 +17,7 @@ import { statusesFor } from '../orders.domain';
 import { OrderRepository } from '../repositories/order.repository';
 import { ProductLookupRepository } from '../repositories/product-lookup.repository';
 import type { OrderRecord } from '../schemas/order.schema';
-import { orderView } from './order.service';
-
-/** IST is UTC+05:30; a `YYYY-MM-DD` filter means the IST calendar day. */
-const IST_OFFSET = '+05:30';
-const DAY_MS = 86_400_000;
+import { checkedRange, orderView, OrderService } from './order.service';
 
 /**
  * Head office's read of every partner's orders. Same mapping as the app's
@@ -32,22 +29,11 @@ export class AdminOrderService {
     private readonly orders: OrderRepository,
     private readonly products: ProductLookupRepository,
     private readonly agents: AgentsService,
+    private readonly partnerOrders: OrderService,
   ) {}
 
   async list(query: AdminOrdersQueryDto): Promise<PageResult<AdminOrderView>> {
-    const from = query.from
-      ? new Date(`${query.from}T00:00:00${IST_OFFSET}`)
-      : null;
-    const to = query.to
-      ? new Date(
-          new Date(`${query.to}T00:00:00${IST_OFFSET}`).getTime() + DAY_MS,
-        )
-      : null;
-    if (from && to && from >= to)
-      throw badRequest(
-        'VALIDATION_FAILED',
-        'The start date must be on or before the end date.',
-      );
+    const { from, to } = checkedRange(query.from, query.to);
 
     const [rows, total] = await this.orders.adminList(
       {
@@ -63,15 +49,23 @@ export class AdminOrderService {
     return new PageResult(views, total, query);
   }
 
+  /** One order, with its commission (a list leaves it `null`: one book per partner on the page is too many reads). */
   async get(id: string): Promise<AdminOrderView> {
     const order = await this.orders.adminFindOne(id);
     if (!order) throw notFound('This order could not be found.');
-    const [view] = await this.views([order]);
+    const commission = await this.partnerOrders.commissionOf(
+      order.agent ?? '',
+      !!order.agent,
+    );
+    const [view] = await this.views([order], commission);
     return view;
   }
 
   /** One product lookup and one partner lookup for the whole page. */
-  private async views(rows: OrderRecord[]): Promise<AdminOrderView[]> {
+  private async views(
+    rows: OrderRecord[],
+    commission: Map<string, OrderCommission> = new Map(),
+  ): Promise<AdminOrderView[]> {
     const ids = [
       ...new Set(rows.map((o) => o.agent).filter((a): a is string => !!a)),
     ];
@@ -95,6 +89,7 @@ export class AdminOrderService {
         o,
         { agent_id: o.agent ?? '', pii_id: agent?.pii_id ?? '' },
         products,
+        commission.get(o.order_id) ?? null,
       );
       return {
         ...view,

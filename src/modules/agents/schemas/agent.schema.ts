@@ -90,6 +90,9 @@ export class Agent {
   profile!: AgentProfile | null;
   @Prop({ type: SchemaTypes.Mixed, default: undefined }) location?: GeoPoint;
 
+  /** ₹ of delivered sales a month HO expects of this partner; `null` = the settings default. */
+  @Prop({ type: Number, default: null }) monthly_target!: number | null;
+
   @Prop({ type: Boolean, default: true }) is_active!: boolean;
   @Prop({ type: String, default: 'self' }) created_by!: string;
   @Prop({ type: String, default: 'self' }) updated_by!: string;

@@ -110,6 +110,15 @@ export const API_ERROR_CODES = [
   'LEADS_UNAVAILABLE',
   // The order service's confirmed-order call is off on this server (no secret).
   'ORDER_EVENTS_NOT_CONFIGURED',
+  // Commission plans: one per cohort and month (409); past months are paid out, so locked (409).
+  'PLAN_EXISTS',
+  'PLAN_LOCKED',
+  // Wallet. 400 for the amount; 409 when the stored state refused it.
+  'BELOW_MIN_WITHDRAWAL',
+  'NOT_ENOUGH_BALANCE',
+  'WITHDRAWAL_OPEN',
+  'BANK_NOT_VERIFIED',
+  'WITHDRAWAL_CHANGED',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

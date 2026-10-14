@@ -25,6 +25,11 @@ const DEFAULTS: SettingsRecord = {
   farmer_consent: FIRST_CONSENT,
   lead_release_days: 15,
   customer_release_days: 45,
+  return_window_days: 7,
+  min_withdrawal: 500,
+  tds_rate_with_pan: 2,
+  tds_rate_without_pan: 20,
+  monthly_target: 100_000,
   conflict_radius_km: 5,
 };
 const CACHE_MS = 60_000;

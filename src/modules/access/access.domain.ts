@@ -62,6 +62,15 @@ export const CAPABILITIES = {
   'stories.write': ['head'],
   /** See every partner's placed orders (Stockship `orders_v2`, source vistaar). Read-only. */
   'orders.read': ['head'],
+  /** See commission plans, any partner's commission and wallet, and payout totals. */
+  'commission.read': ['head'],
+  /** Add and change commission plans (this month and later; past months stay as paid). */
+  'commission.plans': ['head'],
+  /**
+   * Approve, reject and mark withdrawals paid; the bank file (account numbers)
+   * and Form 16A. Heads until Finance has a role code of its own.
+   */
+  'payouts.manage': ['head'],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Capability = keyof typeof CAPABILITIES;

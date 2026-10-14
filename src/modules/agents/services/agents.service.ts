@@ -283,6 +283,21 @@ export class AgentsService {
     return updated;
   }
 
+  /** A partner's own monthly target; `null` puts them back on the settings default. */
+  async setMonthlyTarget(
+    agentId: string,
+    target: number | null,
+    by: string,
+  ): Promise<AgentRecord> {
+    const updated = await this.agents.setMonthlyTarget(
+      agentId.toUpperCase(),
+      target,
+      by,
+    );
+    if (!updated) throw notFound('This partner could not be found.');
+    return updated;
+  }
+
   list(
     filter: AgentListFilter,
     page: { skip: number; limit: number; sort: Record<string, 1 | -1> },

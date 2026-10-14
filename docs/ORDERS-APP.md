@@ -17,7 +17,7 @@ orders come back. No `x-b2b-token` is needed.
 
 | Method | Path | Returns |
 |---|---|---|
-| `GET` | `/orders?page=1&limit=50&status=shipped&customer=PII-123` | `PageResult<OrderView>`, newest first. `limit` ≤ 200; `status` and `customer` (one farmer's `pii_id` — a customer's Orders tab) optional |
+| `GET` | `/orders?page=1&limit=50&status=shipped&customer=PII-123&from=2026-09-01&to=2026-09-30` | `PageResult<OrderView>`, newest first. `limit` ≤ 200; all filters optional: `status`, `customer` (one farmer's `pii_id` — a customer's Orders tab), `from` / `to` (IST days placed, **both included**; Reports → Order history) |
 | `GET` | `/orders/:id` | `OrderView` |
 
 `:id` is the order's `order_id` (`KSK-341382`); case does not matter. An id with `/` (`ORD/K0-150/41350`) is sent URL-encoded: `/orders/ORD%2FK0-150%2F41350`.
@@ -62,7 +62,13 @@ orders come back. No `x-b2b-token` is needed.
     { "status": "Out for delivery", "description": "With delivery partner", "timestamp": null, "completed": false },
     { "status": "Delivered", "description": "Delivered to customer", "timestamp": null, "completed": false }
   ],
-  "created_at": "2026-10-12T08:56:40.000Z"
+  "created_at": "2026-10-12T08:56:40.000Z",
+  "delivered_at": null,
+  "commission": {
+    "base": 462, "rate": 5, "amount": 23, "status": "pending",
+    "confirms_at": null, "confirmed_at": null, "paid_at": null,
+    "withdrawal_id": null, "reversed_reason": null
+  }
 }
 ```
 
@@ -79,7 +85,13 @@ orders come back. No `x-b2b-token` is needed.
   app's `online` = `prepaid`.
 - `product_name` / `product_image` / `size_label` come from `products_v2`; a sku
   not found there shows the sku as its name and no image.
-- Commission is not on the order — it will come from the commission module.
+- `delivered_at` — when it was delivered (`null` until then).
+- `commission` — what the order earns the partner; the fields and their rules are in
+  COMMISSION-APP.md (*An order's commission*). `null` = show nothing (it could not be
+  worked out just now, or it is not a live order). The backend works it out from the
+  order — the app no longer computes or stores it on the phone.
+- Reports → Order history: `GET /orders?from=…&to=…`, paging through `has_more`. Note
+  `to` is the **last day included** (`from=2026-09-01&to=2026-09-30` for September).
 
 ### Maps to the app's `Order`
 
@@ -97,6 +109,6 @@ orders come back. No `x-b2b-token` is needed.
 
 | Status | Code | When |
 |---|---|---|
-| 400 | `VALIDATION_FAILED` | bad `status`, `page`, or an `:id` that is not an order id |
+| 400 | `VALIDATION_FAILED` | bad `status`, `page`, `from` / `to` (or `from` after `to`), or an `:id` that is not an order id |
 | 401 | `UNAUTHORIZED` | no or expired Vistaar token |
 | 404 | `NOT_FOUND` | no such order, or it is another partner's |

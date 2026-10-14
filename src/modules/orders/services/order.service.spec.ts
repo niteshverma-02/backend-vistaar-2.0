@@ -1,6 +1,11 @@
 import { HttpException } from '@nestjs/common';
 import { Types } from 'mongoose';
 
+import type {
+  CommissionService,
+  OrderCommission,
+} from '@modules/commission/services/commission.service';
+
 import { OrdersQueryDto } from '../dto/order-request.dto';
 import type { OrderRepository } from '../repositories/order.repository';
 import type { ProductLookupRepository } from '../repositories/product-lookup.repository';
@@ -33,6 +38,7 @@ describe('OrderService', () => {
   let list: jest.Mock;
   let findOne: jest.Mock;
   let bySku: jest.Mock;
+  let forOrders: jest.Mock;
   let service: OrderService;
 
   beforeEach(() => {
@@ -50,9 +56,11 @@ describe('OrderService', () => {
         ],
       ]),
     );
+    forOrders = jest.fn().mockResolvedValue(new Map());
     service = new OrderService(
       { list, findOne } as unknown as OrderRepository,
       { bySku } as unknown as ProductLookupRepository,
+      { forOrders } as unknown as CommissionService,
     );
   });
 
@@ -135,5 +143,72 @@ describe('OrderService', () => {
       HttpException,
     );
     expect(findOne).toHaveBeenCalledWith('VST-1', 'KSK-2');
+  });
+
+  it('filters by IST placing days, the end day included', async () => {
+    list.mockResolvedValue([[], 0]);
+    await service.list(
+      PARTNER,
+      Object.assign(new OrdersQueryDto(), {
+        from: '2026-09-01',
+        to: '2026-09-30',
+      }),
+    );
+    const call = list.mock.calls[0] as unknown[];
+    expect(call[5]).toEqual({
+      from: new Date('2026-08-31T18:30:00Z'),
+      to: new Date('2026-09-30T18:30:00Z'),
+    });
+    await expect(
+      service.list(
+        PARTNER,
+        Object.assign(new OrdersQueryDto(), {
+          from: '2026-09-30',
+          to: '2026-09-01',
+        }),
+      ),
+    ).rejects.toBeInstanceOf(HttpException);
+  });
+
+  it('shows each order’s commission and when it was delivered', async () => {
+    const earned: OrderCommission = {
+      base: 170,
+      rate: 5,
+      amount: 9,
+      status: 'pending',
+      confirms_at: new Date('2026-10-20T08:00:00Z'),
+      confirmed_at: null,
+      paid_at: null,
+      withdrawal_id: null,
+      reversed_reason: null,
+    };
+    forOrders.mockResolvedValue(new Map([['KSK-1', earned]]));
+    findOne.mockResolvedValue(
+      order({
+        order_status: 'delivered',
+        order_status_map: [
+          {
+            stage_name: 'created',
+            timestamp: new Date('2026-10-12T08:00:00Z'),
+          },
+          {
+            stage_name: 'delivered',
+            timestamp: new Date('2026-10-13T08:00:00Z'),
+          },
+        ],
+      }),
+    );
+    const view = await service.get(PARTNER, 'KSK-1');
+    expect(view.commission).toEqual(earned);
+    expect(view.delivered_at).toEqual(new Date('2026-10-13T08:00:00Z'));
+    expect(forOrders).toHaveBeenCalledWith('VST-1');
+  });
+
+  it('still shows the order when commission cannot be worked out', async () => {
+    forOrders.mockRejectedValue(new Error('down'));
+    findOne.mockResolvedValue(order());
+    const view = await service.get(PARTNER, 'KSK-1');
+    expect(view.commission).toBeNull();
+    expect(view.delivered_at).toBeNull();
   });
 });

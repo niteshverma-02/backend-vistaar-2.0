@@ -44,6 +44,16 @@ export class Settings {
   @Prop({ type: Number, default: 45 })
   customer_release_days!: number;
 
+  /** Commission: days after delivery before it is confirmed (returns allowed until then). */
+  @Prop({ type: Number, default: 7 }) return_window_days!: number;
+  /** Smallest withdrawal, ₹. */
+  @Prop({ type: Number, default: 500 }) min_withdrawal!: number;
+  /** TDS u/s 194H on a withdrawal, % — with a verified PAN / without. */
+  @Prop({ type: Number, default: 2 }) tds_rate_with_pan!: number;
+  @Prop({ type: Number, default: 20 }) tds_rate_without_pan!: number;
+  /** A partner's monthly sales target, ₹, unless HO set one for them. */
+  @Prop({ type: Number, default: 100_000 }) monthly_target!: number;
+
   /** How far the approval screen looks for existing network, in km. */
   @Prop({ type: Number, default: 5 })
   conflict_radius_km!: number;

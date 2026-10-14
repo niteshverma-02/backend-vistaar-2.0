@@ -19,6 +19,7 @@ import { AuthModule } from '@modules/auth/auth.module';
 import { BannersModule } from '@modules/banners/banners.module';
 import { TestimonialsModule } from '@modules/testimonials/testimonials.module';
 import { CartModule } from '@modules/cart/cart.module';
+import { CommissionModule } from '@modules/commission/commission.module';
 import { CropCalendarModule } from '@modules/crop-calendar/crop-calendar.module';
 import { DraftOrderModule } from '@modules/draft-order/draft-order.module';
 import { EventsModule } from '@modules/events/events.module';
@@ -29,6 +30,7 @@ import { LeadsModule } from '@modules/leads/leads.module';
 import { OnboardingModule } from '@modules/onboarding/onboarding.module';
 import { OrdersModule } from '@modules/orders/orders.module';
 import { PartnerDeskModule } from '@modules/partner-desk/partner-desk.module';
+import { PerformanceModule } from '@modules/performance/performance.module';
 import { SettingsModule } from '@modules/settings/settings.module';
 import { StoriesModule } from '@modules/stories/stories.module';
 import { TermsModule } from '@modules/terms/terms.module';
@@ -89,6 +91,8 @@ import { UploadsModule } from '@modules/uploads/uploads.module';
     CartModule,
     DraftOrderModule,
     OrdersModule,
+    CommissionModule,
+    PerformanceModule,
     BannersModule,
     TestimonialsModule,
     AttendanceModule,

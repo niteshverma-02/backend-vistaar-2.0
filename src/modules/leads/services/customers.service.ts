@@ -157,8 +157,16 @@ export class CustomersService {
     query: CustomerQueryDto,
   ): Promise<PageResult<CustomerView>> {
     const crop = query.crop?.toLowerCase();
-    const all = (await this.customersOf(partner, query.q)).filter(
-      (c) => !crop || c.crops.some((x) => x.toLowerCase() === crop),
+    const [customers, orderedIn] = await Promise.all([
+      this.customersOf(partner, query.q),
+      query.ordered_in
+        ? this.orders.buyersIn(partner.agent_id, query.ordered_in)
+        : null,
+    ]);
+    const all = customers.filter(
+      (c) =>
+        (!crop || c.crops.some((x) => x.toLowerCase() === crop)) &&
+        (!orderedIn || orderedIn.has(c.pii_id)),
     );
     all.sort(SORTS[query.sort] ?? byLatestOrder);
     return new PageResult(
