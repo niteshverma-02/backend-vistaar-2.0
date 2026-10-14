@@ -12,6 +12,7 @@ import {
   CommissionService,
   type OrderCommission,
 } from '@modules/commission/services/commission.service';
+import { ProductFactsService } from '@modules/spine/services/product-facts.service';
 
 import type { OrdersQueryDto } from '../dto/order-request.dto';
 import type { OrderView } from '../dto/order-view.dto';
@@ -53,6 +54,7 @@ export class OrderService {
     private readonly orders: OrderRepository,
     private readonly products: ProductLookupRepository,
     private readonly commission: CommissionService,
+    private readonly catalogue: ProductFactsService,
   ) {}
 
   async list(
@@ -67,11 +69,8 @@ export class OrderService {
       query.customer ?? null,
       checkedRange(query.from, query.to),
     );
-    // One lookup for the whole page, not one per order.
     const [products, commission] = await Promise.all([
-      this.products.bySku(
-        rows.flatMap((o) => (o.items ?? []).map((i) => i.sku)),
-      ),
+      this.productsFor(rows.flatMap((o) => (o.items ?? []).map((i) => i.sku))),
       this.commissionOf(partner.agent_id, rows.length > 0),
     ]);
 
@@ -124,7 +123,7 @@ export class OrderService {
     if (!order) throw notFound('This order could not be found.');
 
     const [products, commission] = await Promise.all([
-      this.products.bySku((order.items ?? []).map((i) => i.sku)),
+      this.productsFor((order.items ?? []).map((i) => i.sku)),
       this.commissionOf(partner.agent_id, true),
     ]);
     return orderView(
@@ -133,6 +132,35 @@ export class OrderService {
       products,
       commission.get(order.order_id) ?? null,
     );
+  }
+
+  /**
+   * Name, picture and pack size per sku from the catalogue in memory; only a
+   * pack it does not hold yet (added within the hour) is read from Mongo.
+   */
+  async productsFor(
+    skus: Iterable<string>,
+  ): Promise<Map<string, OrderProduct>> {
+    const catalogue = await this.catalogue.facts();
+    const out = new Map<string, OrderProduct>();
+    const missing: string[] = [];
+    for (const sku of new Set(skus)) {
+      const fact = catalogue.get(sku);
+      if (!fact) {
+        missing.push(sku);
+        continue;
+      }
+      out.set(sku, {
+        name: fact.name ?? undefined,
+        hero_image: fact.image ?? undefined,
+        variant: fact.variant ?? undefined,
+        item_qty: fact.item_qty ?? undefined,
+      });
+    }
+    if (missing.length)
+      for (const [sku, p] of await this.products.bySku(missing))
+        if (!out.has(sku)) out.set(sku, p);
+    return out;
   }
 
   /**

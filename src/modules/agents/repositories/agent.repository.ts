@@ -61,6 +61,16 @@ export class AgentRepository {
       .exec();
   }
 
+  /** Every verified partner's `VST-` id, and nothing else of them. */
+  async verifiedAgentIds(): Promise<string[]> {
+    const rows = await this.model
+      .find({ otp_verified: true, agent_id: { $type: 'string' } })
+      .select('-_id agent_id')
+      .lean<{ agent_id: string }[]>()
+      .exec();
+    return rows.map((r) => r.agent_id);
+  }
+
   /** The record an OTP request lands on — created once per number, then reused. */
   async upsertForOtp(phone: string, countryCode: string): Promise<AgentRecord> {
     const filter = { phone, country_code: countryCode };

@@ -95,6 +95,7 @@ describe('WalletService', () => {
     } as unknown as jest.Mocked<WithdrawalRepository>;
 
     const commission = {
+      forgetWithdrawals: jest.fn(),
       bookOf: jest.fn(() =>
         Promise.resolve({
           partner,

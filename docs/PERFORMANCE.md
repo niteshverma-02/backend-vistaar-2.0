@@ -42,11 +42,14 @@ per-partner book is small on beta, so this measures the request path, not a big 
 | API | DB calls per request | Requests/s | p50 | p99 |
 |---|---|---|---|---|
 | `/performance/standing` | 0 (5-min cache) | **~2,050** | 22 ms | 55 ms |
-| `/commission/summary`, `/commission/ledger` | 1 (withdrawals; orders cached 60 s) | **~860** | 59 ms | ~100 ms |
-| `/wallet` | 2 (withdrawals, KYC facts) | **~590** | 81 ms | 136 ms |
-| `/performance?period=3m` | 3 (withdrawals, leads, attendance) | **~410** | 121 ms | 163 ms |
+| `/commission/summary`, `/commission/ledger` | 1 → **0** warm (orders and withdrawals cached 60 s) | **~860** | 59 ms | ~100 ms |
+| `/wallet` | 2 (withdrawals read fresh — the money screen; KYC facts) | **~590** | 81 ms | 136 ms |
+| `/performance?period=3m` | 3 → **2** (leads, attendance) | **~410** | 121 ms | 163 ms |
 | `/customers?ordered_in=` | 3 | **~370** | 129 ms | 208 ms |
-| `/orders` | 3 (page, product names, withdrawals) | **~290** | 152 ms | 609 ms |
+| `/orders` | 3 → **1** (the page; names from memory, withdrawals cached) | **~290** | 152 ms | 609 ms |
+
+Requests/s were measured before the `→` changes (fix/merge-review): each removed call is
+one ~28 ms round trip on beta. Re-measure once beta Mongo is reachable.
 
 A partner's commission book costs one aggregation a minute however many screens ask
 (`TtlCache`, shared by concurrent callers). Checked with `explain` on beta: the book,
@@ -80,6 +83,10 @@ examined). Cold first call for a partner: ~190 ms (beta, 28 ms away).
 | 10 | Commission is never stored per order: worked out on read from one projected aggregation per partner (only delivery / cancel / return status entries leave Mongo), cached 60 s and shared by every caller in that minute | `CommissionOrderRepository`, `CommissionService` | No sync job, no per-order writes; ~300 KB per 1,000 orders over the wire |
 | 11 | Catalogue facts (GST, category, name, picture of ~4,900 packs) in memory, hourly, stale-while-revalidate | `ProductFactsService` | No catalogue read per order line |
 | 12 | Plans, settings in memory 60 s; standing 5 min | `CommissionPlansService`, `SettingsService`, `PerformanceService` | `/performance/standing` makes no DB call when warm |
+| 13 | Order lines named from the catalogue in memory; Mongo only for a pack added within the hour | `OrderService.productsFor` | `/orders` and HO orders: one call fewer |
+| 14 | A partner's withdrawals cached 60 s for display, read fresh before money moves (wallet, request, approval), dropped on this server when one moves | `CommissionService.bookOf(…, fresh)` | Orders, commission, performance: one call fewer |
+| 15 | HO carts: ids of verified partners only, the page from `carts` on `_id`, full records for that page's partners only | `AdminCartService` | Was up to 5,000 full partner records per call, unverified first |
+| 16 | Paid batch: the UTR updates go out together, each still conditional | `WalletService.payBatch` | 200 lines ≈ one round trip, not 200 |
 
 ## 4. 🚧 Still to do (outside this code)
 
@@ -95,11 +102,10 @@ examined). Cold first call for a partner: ~190 ms (beta, 28 ms away).
 
 | What | Grows with | Fix |
 |---|---|---|
-| `/orders` makes 3 calls; 2 can go: product names from `ProductFactsService` (memory) and the partner's withdrawals cached 60 s for display (fresh for a withdrawal request / approval) | every app open | Backend — ~2× `/orders`, `/commission/*`, `/performance` expected |
-| `GET /admin/carts` reads up to 5,000 full partner records per call, unverified signups first (sorted by `agent_id`, `null` first) | partners | Backend — read only verified partners' ids, or page them |
 | `GET /admin/draft-orders` without `agent_id` sorts all Vistaar drafts in memory (`draft_orders` has no `entry_path` index; ~100 rows today) | drafts | B2B — `{ entry_path, status, updated_at }` |
 | Testimonials HO lists and My Story's approved reviews scan Stockship's `product_reviews` / `product_testimonials` (only `_id`; 8,600 / 100 rows today) | reviews | Stockship — indexes in PROD-CHECKLIST *Owed by other teams* |
 | HO search boxes (feedback, suggestions, testimonials) are unanchored regex `$or` — always a scan | rows | Backend — prefix match or a text index when lists pass ~100K rows |
+| Feedback's daily cap is check-then-insert: two answers sent at the same instant can pass one over the cap (bounded by the 5-per-minute throttle) | — | Leave: a counter row per partner-day costs a write per answer for a soft limit |
 
 ## 5. 🧪 How to re-run
 

@@ -39,7 +39,7 @@ interface AdminDraftOrderView {   // the app's DraftOrderView, plus the partner
 }
 ```
 
-A cart row names no partner (its `_id` is derived from theirs), so the list
-is built from every partner's id: up to 5,000 partner records are read per
-call (not cached). Fine at today's size; past a few thousand partners this
-list must page the partners (see PERFORMANCE.md *Watch list*).
+A cart row names no partner (its `_id` is derived from theirs), so the cart
+ids come from every verified partner's `VST-` id (ids only, ~15 bytes each),
+the page is read from `carts` on `_id`, and only that page's partners are read
+in full.

@@ -92,7 +92,10 @@ Capability `payments.credentials` — company admins only (`USR-1000` Super Admi
    moves): Razorpay lists payments, Cashfree reads a made-up order, PhonePe mints
    a token. Approval needs a pass. The webhook secret cannot be checked this way.
 3. **Approve** — admin **B, not A** (`403 APPROVER_IS_SUBMITTER`). The keys go
-   live; the previous live keys are **wiped**, not kept.
+   live; the previous live keys are **wiped**, not kept. If the server stops
+   half-way, the set stays `approved`: any admin but A presses Approve again to
+   finish it, or Reject to cancel it. No new keys can be submitted for that
+   provider until it is finished or rejected (`409 CREDENTIALS_PENDING`).
 
 Production accepts only `live` keys; every other server only `test` keys.
 Every step is in the audit log and sent to Slack (`PAYMENTS_ALERT_WEBHOOK_URL`).
@@ -121,7 +124,7 @@ Every step is in the audit log and sent to Slack (`PAYMENTS_ALERT_WEBHOOK_URL`).
 submitted_by, submitted_at, expires_at, test: {ok, message, by, at} | null,
 decided_by, decided_at, reason, activated_at, retired_at, retired_by }`.
 `status`: `pending` → `approved` (a moment) → `active` → `superseded` / `revoked`;
-or `rejected` / `expired`.
+or `rejected` / `expired`. Reject works on `pending` and on a stuck `approved`.
 
 Errors: `400 VALIDATION_FAILED` (`details[]` lists each bad field), `403
 APPROVER_IS_SUBMITTER`, `409 CREDENTIALS_PENDING` / `CREDENTIALS_NOT_PENDING` /

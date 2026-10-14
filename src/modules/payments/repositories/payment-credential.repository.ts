@@ -160,6 +160,15 @@ export class PaymentCredentialRepository {
       .exec();
   }
 
+  /** A set half-way through approval (crash between the steps) is in the way too. */
+  async approving(provider: PaymentProvider): Promise<boolean> {
+    return (
+      (await this.model.exists({ provider, status: 'approved' }).exec()) !==
+      null
+    );
+  }
+
+  /** Waiting, or approved and not live yet (cancels a stuck approval). */
   reject(
     id: string,
     by: string,
@@ -167,7 +176,7 @@ export class PaymentCredentialRepository {
   ): Promise<PaymentCredential | null> {
     return this.model
       .findOneAndUpdate(
-        { _id: id, status: 'pending' },
+        { _id: id, status: { $in: ['pending', 'approved'] } },
         {
           $set: {
             ...retire('rejected', by, reason),

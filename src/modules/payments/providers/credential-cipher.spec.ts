@@ -55,6 +55,16 @@ describe('CredentialCipher', () => {
     ).toThrow();
   });
 
+  it('refuses a shortened authentication tag', () => {
+    const c = cipher(KEY);
+    const sealed = c.seal('s3cr3t', CTX);
+    const short = Buffer.from(sealed.tag, 'base64').subarray(0, 4);
+
+    expect(() =>
+      c.open({ ...sealed, tag: short.toString('base64') }, CTX),
+    ).toThrow(/authentication tag/);
+  });
+
   it('refuses a value sealed with another key', () => {
     const sealed = cipher(KEY).seal('s3cr3t', CTX);
     expect(() =>

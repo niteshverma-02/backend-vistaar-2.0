@@ -4,6 +4,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AccessModule } from '@modules/access/access.module';
 import { AgentsModule } from '@modules/agents/agents.module';
 import { CommissionModule } from '@modules/commission/commission.module';
+import { SpineModule } from '@modules/spine/spine.module';
 
 import { AdminOrderController } from './controllers/admin-order.controller';
 import { OrderController } from './controllers/order.controller';
@@ -19,6 +20,7 @@ import { OrderService } from './services/order.service';
     AccessModule,
     AgentsModule,
     CommissionModule,
+    SpineModule,
   ],
   controllers: [OrderController, AdminOrderController],
   providers: [

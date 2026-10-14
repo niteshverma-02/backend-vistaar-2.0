@@ -18,6 +18,7 @@ import { PaymentCredentialsService } from './payment-credentials.service';
 
 const A = 'a@katyayaniorganics.com';
 const B = 'b@katyayaniorganics.com';
+const C = 'c@katyayaniorganics.com';
 const SECRET = 'AbCdEfGh12345678ZZ';
 const WEBHOOK = 'whsec-9f8e7d';
 const RZP = {
@@ -110,9 +111,16 @@ function memoryRepo() {
           : null,
       ),
     ),
+    approving: jest.fn((p: PaymentProvider) =>
+      Promise.resolve(
+        [...rows.values()].some(
+          (r) => r.provider === p && r.status === 'approved',
+        ),
+      ),
+    ),
     reject: jest.fn((id: string, _by: string, reason: string) =>
       Promise.resolve(
-        rows.get(id)?.status === 'pending'
+        ['pending', 'approved'].includes(rows.get(id)?.status ?? '')
           ? patch(id, { status: 'rejected', secrets: null, reason })
           : null,
       ),
@@ -323,6 +331,24 @@ describe('PaymentCredentialsService — test, approve', () => {
 
     await expect(s.service.approve(id, B)).resolves.toMatchObject({
       status: 'active',
+    });
+  });
+
+  it('lets another admin finish or cancel a stuck approval, and holds new keys meanwhile', async () => {
+    const { s, id } = await submitted();
+    await s.service.test(id, A);
+    s.repo.promote.mockResolvedValueOnce(null);
+    await expect(s.service.approve(id, B)).rejects.toBeDefined();
+
+    // Nothing new while this set is half-way to live: it would retire the newer one.
+    await expect(s.service.submit('razorpay', RZP, C)).rejects.toMatchObject({
+      response: { error: 'CREDENTIALS_PENDING' },
+    });
+    // The submitter still cannot push their own keys live.
+    await expect(s.service.approve(id, A)).rejects.toBeDefined();
+    // Any other admin can cancel it.
+    await expect(s.service.reject(id, C, 'stuck')).resolves.toMatchObject({
+      status: 'rejected',
     });
   });
 });

@@ -136,7 +136,7 @@ the library answers `404`.
 
 | Status | Code | When |
 |---|---|---|
-| 400 | `VALIDATION_FAILED` | A bad field, both / neither of `bulk` and `family`, a quote with no words or with a file, a video with no `duration_sec` |
+| 400 | `VALIDATION_FAILED` | A bad field, both / neither of `bulk` and `family`, a quote with no words or with a file, a video with no `duration_sec`, or a `media_path` already sent on another testimonial (upload the file again — one file, one testimonial) |
 | 400 | `FILE_TYPE_NOT_ALLOWED` / `FILE_TOO_LARGE` | Upload request outside the table above |
 | 400 | `MEDIA_NOT_FOUND` | `media_path` not uploaded (or not finished), not this partner's, or not this kind — upload again |
 | 400 | `PRODUCT_NOT_FOUND` | The product / combo is not in the catalogue |

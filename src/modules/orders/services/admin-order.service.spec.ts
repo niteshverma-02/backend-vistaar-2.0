@@ -6,7 +6,6 @@ import type { AgentsService } from '@modules/agents/services/agents.service';
 
 import { AdminOrdersQueryDto } from '../dto/admin-order.dto';
 import type { OrderRepository } from '../repositories/order.repository';
-import type { ProductLookupRepository } from '../repositories/product-lookup.repository';
 import type { OrderRecord } from '../schemas/order.schema';
 import { AdminOrderService } from './admin-order.service';
 import type { OrderService } from './order.service';
@@ -64,12 +63,10 @@ describe('AdminOrderService', () => {
     });
     service = new AdminOrderService(
       { adminList, adminFindOne } as unknown as OrderRepository,
-      {
-        bySku: jest.fn().mockResolvedValue(new Map()),
-      } as unknown as ProductLookupRepository,
       { list: agentsList } as unknown as AgentsService,
       {
         commissionOf: jest.fn().mockResolvedValue(new Map()),
+        productsFor: jest.fn().mockResolvedValue(new Map()),
       } as unknown as OrderService,
     );
   });

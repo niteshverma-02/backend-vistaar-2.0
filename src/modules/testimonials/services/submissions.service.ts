@@ -400,6 +400,15 @@ export class SubmissionsService {
       ? await this.storage.publish(row.media_path)
       : null;
     await this.showShared(row, mediaUrl, by);
+    // A withdrawal marks the consent before it erases, so a withdrawal that
+    // erased before our write above is seen here — and its erase is redone.
+    if ((await this.consents.find(row._id))?.status === 'withdrawn') {
+      await this.eraseShared(row);
+      throw conflict(
+        'CONSENT_WITHDRAWN',
+        'The farmer withdrew consent for this testimonial. It cannot be shown again.',
+      );
+    }
 
     const now = new Date();
     const moved = await this.submissions.transition(row._id, [row.status], {
@@ -412,7 +421,7 @@ export class SubmissionsService {
     });
     if (!moved) {
       const latest = await this.require(row._id);
-      if (latest.status !== 'approved') await this.hideShared(latest, by);
+      if (latest.status !== 'approved') await this.takeDown(latest, by);
       throw changedMeanwhile();
     }
     return this.adminView(moved);
@@ -482,16 +491,20 @@ export class SubmissionsService {
       reason.trim(),
       now,
     );
-    if (!withdrawn) {
+    // Already withdrawn: a retry finishes one that failed part-way; a
+    // finished one (removed, file gone) is refused as before.
+    const finished = row.status === 'removed' && !row.media_path;
+    if (
+      !withdrawn &&
+      (finished || (await this.consents.find(row._id))?.status !== 'withdrawn')
+    ) {
       throw conflict(
         'CONSENT_WITHDRAWN',
         'Consent for this testimonial was already withdrawn.',
       );
     }
 
-    await this.reviews.erase(row.review_id);
-    if (row.testimonial_id) await this.testimonials.erase(row.testimonial_id);
-    if (row.media_path) await this.storage.remove(row.media_path);
+    await this.eraseShared(row);
 
     const moved = await this.submissions.transition(
       row._id,
@@ -571,6 +584,20 @@ export class SubmissionsService {
     }
   }
 
+  /** Gone for good (consent withdrawn): every step is safe to run twice. */
+  private async eraseShared(row: SubmissionRow): Promise<void> {
+    await this.reviews.erase(row.review_id);
+    if (row.testimonial_id) await this.testimonials.erase(row.testimonial_id);
+    if (row.media_path) await this.storage.remove(row.media_path);
+  }
+
+  /** Off the product page: erased when consent is withdrawn, else only hidden. */
+  private async takeDown(row: SubmissionRow, by: string): Promise<void> {
+    if ((await this.consents.find(row._id))?.status === 'withdrawn')
+      await this.eraseShared(row);
+    else await this.hideShared(row, by);
+  }
+
   private async hideShared(row: SubmissionRow, by: string): Promise<void> {
     await this.reviews.hide(row.review_id, by);
     if (row.testimonial_id)
@@ -632,6 +659,12 @@ export class SubmissionsService {
       throw invalid('The video length is missing. Please record it again.');
     }
     const rule = UPLOAD_RULES[dto.kind];
+    // One file, one testimonial: erasing one (consent withdrawn) deletes the file.
+    if (await this.submissions.mediaTaken(agentId, path)) {
+      throw invalid(
+        'This photo or video is already on another testimonial. Please upload it again.',
+      );
+    }
     const file = ownsMedia(agentId, dto.kind, path)
       ? await this.storage.stat(path)
       : null;
