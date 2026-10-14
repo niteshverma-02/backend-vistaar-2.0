@@ -21,6 +21,15 @@ and the app never sets `won` — the lead moves to `won` on its own, and the lea
 - One farmer, one partner, as for leads (LEADS-APP.md). A customer with **no order for 45
   days** can be taken by another partner (`releases_at`).
 
+## Create · read · update · delete
+
+| | How |
+|---|---|
+| Create | never directly — the first confirmed order (above) |
+| Read | `GET /customers`, `/customers/summary`, `/customers/:piiId` |
+| Update | the Lovable **edit customer** screen → `PATCH /leads/:piiId` with the farmer's details (LEADS-APP.md); the mobile cannot change |
+| Delete | not possible — orders and commission hang on a customer (`DELETE /leads/:piiId` answers `409`) |
+
 ## Routes
 
 | Method | Path | |

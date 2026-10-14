@@ -55,7 +55,7 @@ export class SettingsService {
   }
 
   async update(dto: UpdateSettingsDto, by: string): Promise<SettingsRecord> {
-    const owners: [string, string | undefined][] = [
+    const owners: [string, string | null | undefined][] = [
       ['default owner', dto.default_owner_agent_id],
       ['farmer-lead owner', dto.lead_owner_agent_id],
     ];

@@ -8,6 +8,7 @@ import type { CartService } from '@modules/cart/services/cart.service';
 import type { CatalogVariant } from '@modules/catalog/catalog.domain';
 import type { CatalogService } from '@modules/catalog/services/catalog.service';
 
+import { DraftOrdersQueryDto } from '../dto/draft-order-request.dto';
 import { formDataFor, type DraftCustomer } from '../draft-order.domain';
 import type { CustomerLookupRepository } from '../repositories/customer-lookup.repository';
 import type {
@@ -112,6 +113,9 @@ describe('DraftOrderService', () => {
     customers = {
       byPiiId: jest.fn(() => Promise.resolve(CUSTOMER)),
       piiIdFor: jest.fn(() => Promise.resolve('PII-1')),
+      piiIdsFor: jest.fn(() =>
+        Promise.resolve(new Map([['C0-1|8247554977', 'PII-1']])),
+      ),
     } as unknown as jest.Mocked<CustomerLookupRepository>;
 
     cartService = {
@@ -281,6 +285,37 @@ describe('DraftOrderService', () => {
         service.restore(OWNER, TOKEN, 'DFT-1'),
       ).rejects.toMatchObject({ status: 404 });
       expect(cartService.replace).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('the farmer on a draft', () => {
+    const write = (contact_id: string | null, phone: string | null) => ({
+      contact_id,
+      customer_name: contact_id ? 'Mohan Rao' : null,
+      contact_number: phone,
+      form_data: { products: [] },
+      grand_total: 0,
+    });
+
+    it('names each draft’s farmer by pii_id, one lookup for the page', async () => {
+      drafts.list.mockResolvedValue([
+        [
+          record('DFT-1', write('C0-1', '8247554977') as unknown as DraftWrite),
+          record('DFT-2', write(null, null) as unknown as DraftWrite),
+        ],
+        2,
+      ]);
+      const page = await service.list(
+        PARTNER,
+        Object.assign(new DraftOrdersQueryDto(), {}),
+      );
+      expect(page.items.map((d) => d.pii_id)).toEqual(['PII-1', null]);
+      expect(customers.piiIdsFor).toHaveBeenCalledTimes(1);
+    });
+
+    it('a saved draft carries the cart’s farmer', async () => {
+      const saved = await service.save(OWNER, TOKEN);
+      expect(saved.pii_id).toBe('PII-1');
     });
   });
 

@@ -23,7 +23,7 @@ What must exist in production before the matching feature is switched on.
 | `B2B_API_URL` | Production B2B Sales API — required, boot fails without it. No token here: each request brings the app's in `x-b2b-token` |
 | `B2B_MARKETPLACE_CODE` | `MKTP-1` unless the partner marketplace changes |
 | `CATALOG_CACHE_TTL_SECONDS` | `60` default |
-| `ORDER_EVENTS_SECRET` | 24+ random characters, shared **only** with the order service (`POST /hooks/orders/confirmed`). Unset = leads never turn into customers |
+| `ORDER_EVENTS_SECRET` | 24+ random characters (`openssl rand -base64 32`), shared **only** with the order service (`POST /hooks/orders/confirmed`). Unset = the route answers 503 and leads never turn into customers. Set it when the TL's order API is ready |
 
 ## Indexes (create by hand on prod)
 

@@ -1,5 +1,9 @@
 # Farmer leads — HO portal
 
+> **Updated 2026-10-14 (2).** Settings: an emptied owner field — `""` or `null` — now
+> clears `lead_owner_agent_id` / `default_owner_agent_id` (was a 400). Partners can now
+> remove a lead added by mistake (not a customer): it leaves `/admin/leads`.
+>
 > **Updated 2026-10-14 — won is automatic.** A lead moves to `won` (`by: system`) when
 > Katyayani confirms the first order its partner placed for the farmer; `customer_at`
 > and `last_order_at` are then set. Customers = `GET /admin/leads?stage=won`. No route or
@@ -190,7 +194,7 @@ only what changed:
 | Field | UI |
 |---|---|
 | `farmer_consent_text: { en, hi? }` | "Farmer consent" — English (required) and Hindi text areas, ≤ 600 chars each; show `farmer_consent.version`. New words make a new version: partners must tick the new wording before their next add (the app gets `409 CONSENT_OUTDATED` and reloads it); leads keep the version they were given under. The app picks it up within a minute. Confirm before saving — it changes what every partner shows farmers |
-| `lead_owner_agent_id` | "Farmer-lead owner (override)" — an active `A0-…` account; empty = the Offline Head (below). `400 OWNER_NOT_FOUND` if it is not an active account |
+| `lead_owner_agent_id` | "Farmer-lead owner (override)" — an active `A0-…` account; send `""` or `null` to clear it — then the Offline Head owns them (below). `400 OWNER_NOT_FOUND` if it is not an active account |
 | `lead_release_days` | "Release a lead after N days without work" — whole number 1–365, default 15 |
 | `customer_release_days` | "Release a customer after N days without an order" — whole number 1–365, default 45 |
 

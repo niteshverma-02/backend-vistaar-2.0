@@ -95,6 +95,14 @@ export class VistaarLeadsRepository {
       .exec();
   }
 
+  /** The partner's own row, unless it became a customer meanwhile. */
+  async remove(piiId: string, agentId: string): Promise<boolean> {
+    const out = await this.model
+      .deleteOne({ pii_id: piiId, agent_id: agentId, stage: { $ne: 'won' } })
+      .exec();
+    return out.deletedCount === 1;
+  }
+
   /**
    * Every row that matches, unpaged — for one partner's customers, which the
    * app sorts by business the rows do not hold. Capped as a guard.

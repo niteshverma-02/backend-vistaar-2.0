@@ -58,6 +58,24 @@ function fakeRows(seed: Row[] = []) {
     isHeldBy: jest.fn((pii: string, agent: string) =>
       Promise.resolve(rows.get(pii)?.agent_id === agent),
     ),
+    remove: jest.fn((pii: string, agent: string) => {
+      const row = rows.get(pii);
+      if (!row || row.agent_id !== agent || row.stage === 'won')
+        return Promise.resolve(false);
+      rows.delete(pii);
+      return Promise.resolve(true);
+    }),
+    partnerSummary: jest.fn(() =>
+      Promise.resolve({
+        total: 10,
+        open: 7,
+        pipeline_value: 0,
+        won: 2,
+        lost: 1,
+        due: 0,
+        by_stage: [],
+      }),
+    ),
     insert: jest.fn((row: Row) => {
       if (rows.has(row.pii_id)) return Promise.resolve(false);
       const now = new Date();
@@ -592,5 +610,73 @@ describe('LeadsService — release and transfer', () => {
         ),
       ),
     ).toBe('PARTNER_NOT_APPROVED');
+  });
+});
+
+describe('LeadsService — edit, remove, cards', () => {
+  const farmerRow = (extra: Record<string, unknown> = {}) =>
+    myRow({
+      name: 'Ramesh',
+      phone: '9876543210',
+      village: 'Rampur',
+      district: 'BHOPAL',
+      state: 'MADHYA PRADESH',
+      pincode: '462026',
+      crops: ['Wheat'],
+      acreage: 5,
+      ...extra,
+    });
+
+  it('edits the farmer; the org lead Vistaar created follows', async () => {
+    const { service, rows, org } = setup({
+      seed: [farmerRow()],
+      lead: { lead_id: 'L-5', source: 'vistaar', created_by: ME.agent_id },
+      contact: { profile: 'farmer', source: 'vistaar' },
+    });
+    const saved = await service.update(ME, 'PII-9', {
+      name: 'ramesh  kumar',
+      crops: ['soybean', 'wheat'],
+      acreage: 8,
+    });
+    expect(saved).toMatchObject({
+      name: 'Ramesh Kumar',
+      crops: ['Soybean', 'Wheat'],
+      acreage: 8,
+      phone: '9876543210',
+      village: 'Rampur',
+    });
+    expect(rows.rows.get('PII-9')?.last_worked_at).toBeInstanceOf(Date);
+    expect(org.updateLead).toHaveBeenCalledWith(
+      'L-5',
+      expect.objectContaining({ first_name: 'ramesh', last_name: 'kumar' }),
+    );
+  });
+
+  it('edits only the partner’s copy for a farmer from another channel', async () => {
+    const { service, org } = setup({
+      seed: [farmerRow({ origin: 'linked' })],
+      lead: { lead_id: 'L-77', source: 'kkd_app' },
+    });
+    await service.update(ME, 'PII-9', { village: 'Kheda' });
+    expect(org.updateLead).not.toHaveBeenCalled();
+    expect(org.updateContact).not.toHaveBeenCalled();
+  });
+
+  it('removes a lead and frees the farmer, but never a customer', async () => {
+    const { service, rows } = setup({ seed: [farmerRow()] });
+    expect(await service.remove(ME, 'pii-9')).toEqual({ removed: true });
+    expect(rows.rows.has('PII-9')).toBe(false);
+
+    const won = setup({ seed: [farmerRow({ stage: 'won' })] });
+    expect(await codeOf(won.service.remove(ME, 'PII-9'))).toBe(
+      'STAGE_NOT_ALLOWED',
+    );
+    const theirs = setup({ seed: [farmerRow({ agent_id: 'VST-000002' })] });
+    expect(await codeOf(theirs.service.remove(ME, 'PII-9'))).toBe('NOT_FOUND');
+  });
+
+  it('counts conversion as won of all leads, as the app does', async () => {
+    const { service } = setup();
+    expect((await service.summaryMine(ME)).conversion_pct).toBe(20);
   });
 });

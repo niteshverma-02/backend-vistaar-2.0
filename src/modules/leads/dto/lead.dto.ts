@@ -157,8 +157,64 @@ export class AddFarmerDto {
   ex_employee_declared?: boolean;
 }
 
-/** Work a lead (Lovable lead detail): only what is sent changes; `null` clears. */
+/**
+ * Work a lead (Lovable lead detail) or edit the farmer (Lovable edit screen):
+ * only what is sent changes; `null` clears. The mobile is never changed here.
+ */
 export class UpdateLeadDto {
+  @ApiPropertyOptional({ example: 'Ramesh Patel' })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @IsNotEmpty({ message: 'Enter the farmer’s name.' })
+  @MaxLength(80)
+  name?: string;
+
+  @ApiPropertyOptional({ example: 'Rampur' })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @IsNotEmpty({ message: 'Enter the village.' })
+  @MaxLength(80)
+  village?: string;
+
+  @ApiPropertyOptional({ example: 'Bhopal' })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(60)
+  district?: string;
+
+  @ApiPropertyOptional({
+    example: '462026',
+    description: 'Sets the state (and the district when none is sent)',
+  })
+  @IsOptional()
+  @Matches(/^[1-9]\d{5}$/, { message: 'Pincode must be 6 digits.' })
+  pincode?: string;
+
+  @ApiPropertyOptional({
+    example: ['Wheat'],
+    description: `Main crop first; 1 to ${MAX_CROPS} — replaces the list`,
+  })
+  @IsOptional()
+  @Transform(trimEach)
+  @IsArray()
+  @ArrayMinSize(1, { message: 'Pick the main crop.' })
+  @ArrayMaxSize(MAX_CROPS)
+  @IsString({ each: true })
+  @IsNotEmpty({ each: true, message: 'A crop needs a name.' })
+  @MaxLength(60, { each: true })
+  crops?: string[];
+
+  @ApiPropertyOptional({ example: 5, description: 'Total farm, in acres' })
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Enter acres.' })
+  @IsPositive({ message: 'Farm area must be more than 0 acres.' })
+  @Max(MAX_ACRES)
+  acreage?: number;
+
   @ApiPropertyOptional({
     enum: LEAD_STAGES,
     description:

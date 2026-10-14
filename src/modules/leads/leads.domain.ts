@@ -121,10 +121,8 @@ export function holderOf(found: {
     if (link.agent_id === agentId) return 'mine';
     return found.released ? 'released' : 'other_partner';
   }
-  // A Vistaar lead whose partner row is missing still belongs to its creator.
-  if (lead?.source === LEAD_SOURCE) {
-    return lead.created_by === agentId ? 'mine' : 'other_partner';
-  }
+  // No partner row — never added, or the partner removed the lead: free to
+  // link, whoever's channel the org lead came from (a Vistaar one included).
   if (contact && !isFarmerProfile(contact.profile)) return 'not_farmer';
   return lead || contact ? 'katyayani' : 'none';
 }

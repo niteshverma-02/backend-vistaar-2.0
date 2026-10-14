@@ -4,6 +4,12 @@
 Only an **approved** partner can add farmers. Screens: Add lead, Leads (list / board), Lead
 detail, Home "follow-ups due" (PRD C2, C4, C9, H5).
 
+> **Updated 2026-10-14 (2) — full CRUD.** `PATCH /leads/:piiId` now also edits the farmer
+> (name, village, district, pincode, crops, acreage — not the mobile): the Lovable edit
+> screen. New `DELETE /leads/:piiId` removes a lead added by mistake (not a customer).
+> `conversion_pct` is now **won ÷ all leads**, as the app's tile. Don't send a `note` with
+> `PATCH` — stage moves are logged by the server.
+>
 > **Updated 2026-10-14 — won is automatic.** When Katyayani confirms the first order you
 > placed for a farmer, the lead moves to `won` by itself (`by: system`), with
 > `customer_at` and `last_order_at` set; it then also shows in `GET /customers`
@@ -69,7 +75,8 @@ call or visit before <date> or another partner can take this farmer."
 | GET | `/leads?stage&due&q&page&limit` | my leads, **most urgent first** |
 | GET | `/leads/summary` | the Leads cards and Home "follow-ups due" |
 | GET | `/leads/:piiId` | one lead with `stage_history` and `activities` |
-| PATCH | `/leads/:piiId` | stage · lost reason · follow-up · expected value |
+| PATCH | `/leads/:piiId` | stage · lost reason · follow-up · expected value · the farmer's details |
+| DELETE | `/leads/:piiId` | remove a lead added by mistake → `{ removed: true }` — not a customer |
 | POST | `/leads/:piiId/activities` | log a call / visit / WhatsApp / note |
 
 `pii_id` is the lead's id everywhere — the cart's "Ordering for" takes the same id
@@ -179,7 +186,7 @@ within each, the soonest follow-up (else the oldest lead) first. List rows leave
 
 ```jsonc
 { "total": 12, "open": 9, "pipeline_value": 42000,   // Σ expected_value of open leads
-  "won": 2, "lost": 1, "conversion_pct": 67,           // won ÷ (won + lost)
+  "won": 2, "lost": 1, "conversion_pct": 17,           // won ÷ all leads (the app's tile); won + lost = "closed"
   "due": 3,                                            // due today incl. overdue
   "by_stage": [{ "key": "prospect", "count": 5 }, …] }
 ```
@@ -193,14 +200,28 @@ Only what is sent changes; `null` clears.
 { "stage": "lost", "lost_reason": "Price too high" }   // reason required; clears the follow-up
 { "next_follow_up": "2026-10-16T09:00:00+05:30" }     // future; open leads only
 { "next_follow_up": null, "expected_value": 3000 }
+// Edit farmer (Lovable edit screen) — any of these; the mobile cannot change:
+{ "name": "Ramesh Kumar", "village": "Rampur", "district": "Bhopal",
+  "pincode": "462026", "crops": ["Wheat", "Soybean"], "acreage": 6 }
 ```
 
 - `won` is refused (`409 STAGE_NOT_ALLOWED`) — it comes from the first confirmed order. A won lead's
   stage is fixed.
 - A lost lead reopens by moving it to any other stage (the reason is cleared).
-- Each stage move is logged in `stage_history` and as a `stage_change` activity.
+- Each stage move is logged in `stage_history` and as a `stage_change` activity — the app
+  does not write its own note (there is no `note` field; sending one is a 400).
+- Editing the farmer: a new `pincode` moves the state (and the district, unless one is
+  sent); `crops` replaces the list. Works for a customer too. Counts as work (renews the
+  hold).
 
 `POST /leads/:piiId/activities` `{ "type": "call|visit|whatsapp|note", "text": "…" }` (≤ 500).
+Activities are a log: added and read, never edited or deleted.
+
+## `DELETE /leads/:piiId`
+
+For a lead added by mistake (wrong number, wrong farmer). Your row goes; the farmer is free
+again (`GET /leads/check` → `katyayani` for anyone). Katyayani's own records of the farmer
+stay. A customer (`won`) cannot be removed — `409 STAGE_NOT_ALLOWED`.
 
 ## Errors
 
@@ -212,7 +233,7 @@ Only what is sent changes; `null` clears.
 | `FARMER_TAKEN` | 409 | another partner's farmer |
 | `NOT_A_FARMER` | 409 | registered as a retailer / business |
 | `CONSENT_OUTDATED` | 409 | wording changed — reload `GET /leads/consent`, show it, ask again |
-| `STAGE_NOT_ALLOWED` | 409 | `won` (set by the first confirmed order), or the lead is already a customer |
+| `STAGE_NOT_ALLOWED` | 409 | `won` (set by the first confirmed order), the lead is already a customer, or removing a customer |
 | `STAGE_CHANGED` | 409 | the lead changed meanwhile — reload it |
 | `PARTNER_NOT_APPROVED` / `ACCOUNT_BLOCKED` | 403 | |
 | `NOT_FOUND` | 404 | not one of your leads |
