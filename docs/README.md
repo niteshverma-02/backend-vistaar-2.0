@@ -32,6 +32,7 @@ Contract docs, one per feature, named by who reads them:
 | [INFO-PAGES-APP.md](./INFO-PAGES-APP.md) | app | About Vistaar, About Katyayani and Contact Us text and HO contacts (public) |
 | [INFO-PAGES-HO.md](./INFO-PAGES-HO.md) | HO portal | Edit About Vistaar, About Katyayani and Contact Us |
 | [DATABASE.md](./DATABASE.md) | both | Every collection this service reads or writes |
+| [TEST-DATA.md](./TEST-DATA.md) | everyone testing on beta | Test partners and farmers, what each is for, how to seed and remove them |
 | [PROD-CHECKLIST.md](./PROD-CHECKLIST.md) | backend | What must exist in production before a feature goes live |
 | [PERFORMANCE.md](./PERFORMANCE.md) | backend | Measured capacity, latency, and the optimisations behind them |
 
