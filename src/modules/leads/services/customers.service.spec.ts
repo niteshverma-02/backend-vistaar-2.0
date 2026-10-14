@@ -2,12 +2,11 @@ import type { HttpException } from '@nestjs/common';
 
 import type {
   CustomerBusiness,
-  OrderFacts,
   OrderService,
 } from '@modules/orders/services/order.service';
 import type { SettingsService } from '@modules/settings/services/settings.service';
 
-import { CustomerQueryDto } from '../dto/customer.dto';
+import { CustomerQueryDto, type OrderEventDto } from '../dto/customer.dto';
 import type { VistaarLeadsRepository } from '../repositories/vistaar-leads.repository';
 import { CustomersService } from './customers.service';
 
@@ -52,7 +51,6 @@ const lead = (pii: string, extra: Record<string, unknown> = {}): Row => ({
 
 function setup(opts: {
   rows?: Row[];
-  order?: Partial<OrderFacts> | null;
   business?: Record<string, Partial<CustomerBusiness>>;
 }) {
   const rows = new Map(opts.rows?.map((r) => [r.pii_id, { ...r }]) ?? []);
@@ -86,17 +84,6 @@ function setup(opts: {
       Promise.resolve([...rows.values()].filter((r) => r.stage === 'won')),
     ),
   };
-  const order: OrderFacts | null =
-    opts.order === null
-      ? null
-      : {
-          order_id: 'KSK-1',
-          agent: ME.agent_id,
-          pii_id: 'PII-9',
-          date: daysAgo(2),
-          confirmed: true,
-          ...opts.order,
-        };
   const business = new Map(
     Object.entries(opts.business ?? {}).map(([pii, b]) => [
       pii,
@@ -110,7 +97,6 @@ function setup(opts: {
     ]),
   );
   const orders = {
-    facts: jest.fn().mockResolvedValue(order),
     businessByCustomer: jest.fn().mockResolvedValue(business),
   };
   const settings = {
@@ -139,10 +125,18 @@ async function codeOf(promise: Promise<unknown>): Promise<string> {
 const query = (q: Partial<CustomerQueryDto> = {}) =>
   Object.assign(new CustomerQueryDto(), q);
 
+const ordered = (e: Partial<OrderEventDto> = {}): OrderEventDto => ({
+  order_id: 'KSK-1',
+  pii_id: 'PII-9',
+  agent_id: ME.agent_id,
+  order_date: daysAgo(2).toISOString(),
+  ...e,
+});
+
 describe('CustomersService.recordOrder', () => {
   it('makes the lead won on the first confirmed order, once', async () => {
     const { service, repo } = setup({ rows: [lead('PII-9')] });
-    expect(await service.recordOrder('KSK-1')).toEqual({
+    expect(await service.recordOrder(ordered())).toEqual({
       result: 'won',
       pii_id: 'PII-9',
     });
@@ -156,7 +150,7 @@ describe('CustomersService.recordOrder', () => {
     expect((row.activities as { text: string }[])[0].text).toContain('KSK-1');
 
     // The same call again changes nothing but the last order.
-    expect((await service.recordOrder('KSK-1')).result).toBe('updated');
+    expect((await service.recordOrder(ordered())).result).toBe('updated');
     expect(row.stage_history).toHaveLength(1);
   });
 
@@ -164,44 +158,33 @@ describe('CustomersService.recordOrder', () => {
     const { service, repo } = setup({
       rows: [lead('PII-9', { stage: 'lost', lost_reason: 'Price' })],
     });
-    await service.recordOrder('KSK-1');
-    const first = repo.rows.get('PII-9')!.customer_at as Date;
+    await service.recordOrder(ordered());
     expect(repo.rows.get('PII-9')).toMatchObject({
       stage: 'won',
       lost_reason: null,
     });
+    const first = repo.rows.get('PII-9')!.customer_at as Date;
 
     const earlier = daysAgo(30);
-    const later = setup({
-      rows: [
-        lead('PII-9', {
-          stage: 'won',
-          customer_at: first,
-          last_order_at: first,
-        }),
-      ],
-      order: { date: earlier },
-    });
-    expect((await later.service.recordOrder('KSK-0')).result).toBe('updated');
-    expect(later.repo.rows.get('PII-9')).toMatchObject({
+    await service.recordOrder(
+      ordered({ order_id: 'KSK-0', order_date: earlier.toISOString() }),
+    );
+    expect(repo.rows.get('PII-9')).toMatchObject({
       customer_at: earlier,
       last_order_at: first,
     });
   });
 
   it.each([
-    [{ order: null }, 'not_a_vistaar_order'],
-    [{ order: { confirmed: false } }, 'not_confirmed'],
-    [{ order: { pii_id: null } }, 'no_buyer'],
     // Shop stock: the partner's own pii has no lead row.
-    [{ order: { pii_id: ME.pii_id } }, 'not_held'],
+    [ordered({ pii_id: ME.pii_id })],
     // A farmer another partner holds.
-    [{ rows: [lead('PII-9', { agent_id: 'VST-000007' })] }, 'not_held'],
-  ])('ignores %j (%s) and writes nothing', async (opts, reason) => {
-    const { service, repo } = setup({ rows: [lead('PII-9')], ...opts });
-    expect(await service.recordOrder('KSK-1')).toEqual({
+    [ordered({ agent_id: 'VST-000007' })],
+  ])('ignores %j and writes nothing', async (event) => {
+    const { service, repo } = setup({ rows: [lead('PII-9')] });
+    expect(await service.recordOrder(event)).toEqual({
       result: 'ignored',
-      reason,
+      reason: 'not_held',
     });
     expect(repo.update).not.toHaveBeenCalled();
   });
@@ -209,7 +192,7 @@ describe('CustomersService.recordOrder', () => {
   it('reads the lead again when the partner moved it meanwhile', async () => {
     const { service, repo } = setup({ rows: [lead('PII-9')] });
     repo.update.mockResolvedValueOnce(null);
-    expect((await service.recordOrder('KSK-1')).result).toBe('won');
+    expect((await service.recordOrder(ordered())).result).toBe('won');
     expect(repo.findByPii).toHaveBeenCalledTimes(2);
   });
 });

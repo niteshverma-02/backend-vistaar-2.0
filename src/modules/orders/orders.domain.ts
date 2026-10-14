@@ -87,20 +87,6 @@ const RAW_STATUS: Record<string, { stage: OrderStage; step: number }> = {
 const normalise = (status: string | null | undefined): string =>
   (status ?? '').trim().toLowerCase();
 
-/**
- * Stockship confirmed the order (punched at the warehouse) — wherever it went
- * after, a return included. One such order makes the farmer a customer.
- */
-const CONFIRMED_STAGES: ReadonlySet<OrderStage> = new Set([
-  'punched',
-  'shipped',
-  'delivered',
-  'returned',
-]);
-
-export const isConfirmedStatus = (status: string | null | undefined) =>
-  CONFIRMED_STAGES.has(stageOf(status));
-
 /** Confirmed and not returned: the orders a customer's count and spend are made of. */
 export const BUSINESS_STATUSES: readonly string[] = [
   ...statusesFor('punched'),

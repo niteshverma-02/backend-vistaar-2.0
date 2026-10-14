@@ -126,7 +126,7 @@ few thousand orders per partner; past that, ask Stockship for
 
 ## Customers — before switching on
 
-- [ ] `ORDER_EVENTS_SECRET` set; the order service (TL) calls `POST /api/v2/hooks/orders/confirmed { order_id }` when Stockship confirms an order — contract in ORDER-EVENTS.md
+- [ ] `ORDER_EVENTS_SECRET` set; the order service (TL) calls `POST /api/v2/hooks/orders/confirmed { order_id, pii_id, agent_id, order_date }` when an order is confirmed — contract in ORDER-EVENTS.md. The call is trusted as sent, so the secret goes to the order service only
 - [ ] Nothing to build in Mongo: customers are `vistaar_v2_leads` at stage `won`; their business is read from `orders_v2` on `{ agent, order_status, date }`
 
 ## Orders — before switching on

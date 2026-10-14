@@ -12,7 +12,7 @@ import {
 import type { OrderStage } from '@modules/orders/orders.domain';
 import { SettingsService } from '@modules/settings/services/settings.service';
 
-import type { CustomerQueryDto } from '../dto/customer.dto';
+import type { CustomerQueryDto, OrderEventDto } from '../dto/customer.dto';
 import {
   detailOf,
   viewOf,
@@ -56,7 +56,8 @@ export interface CustomerSummary {
 /** What a confirmed-order call did, for the order service's log. */
 export interface OrderEventResult {
   result: 'won' | 'updated' | 'ignored';
-  reason?: 'not_a_vistaar_order' | 'not_confirmed' | 'no_buyer' | 'not_held';
+  /** Shop stock, or a farmer this partner does not hold. */
+  reason?: 'not_held';
   pii_id?: string;
 }
 
@@ -76,9 +77,10 @@ const byLatestOrder: Sorter = (a, b) =>
 
 /**
  * Customers (PRD C1–C3): a farmer becomes one with their first confirmed
- * order from the partner who holds them — no "add customer". The customer is
- * the partner's `vistaar_v2_leads` row at stage `won`; their business is read
- * from `orders_v2`, so it can never drift from Stockship's book.
+ * order from the partner who holds them — no "add customer"; the order
+ * service (TL) says when. The customer is the partner's `vistaar_v2_leads`
+ * row at stage `won`; their orders and spend are read from `orders_v2` for
+ * the lists.
  */
 @Injectable()
 export class CustomersService {
@@ -89,29 +91,22 @@ export class CustomersService {
   ) {}
 
   /**
-   * Stockship confirmed an order (the order service calls). The order is read
-   * again from `orders_v2`, so the call carries nothing to trust. The first
-   * confirmed order makes the lead won, once; later ones move the last order.
-   * Safe to repeat.
+   * The order service says an order is confirmed (TL's order API) — trusted
+   * as sent. The first one makes the lead won, once; later ones move the last
+   * order. Safe to repeat.
    */
-  async recordOrder(orderId: string): Promise<OrderEventResult> {
-    const order = await this.orders.facts(orderId);
-    if (!order) return { result: 'ignored', reason: 'not_a_vistaar_order' };
-    if (!order.confirmed) return { result: 'ignored', reason: 'not_confirmed' };
-    if (!order.pii_id || !order.agent) {
-      return { result: 'ignored', reason: 'no_buyer' };
-    }
-
+  async recordOrder(event: OrderEventDto): Promise<OrderEventResult> {
+    const date = event.order_date ? new Date(event.order_date) : new Date();
     for (let attempt = 0; attempt < TRIES; attempt++) {
-      const row = await this.rows.findByPii(order.pii_id);
+      const row = await this.rows.findByPii(event.pii_id);
       // Shop stock (the partner's own pii) and farmers they do not hold.
-      if (!row || row.agent_id !== order.agent) {
+      if (!row || row.agent_id !== event.agent_id) {
         return { result: 'ignored', reason: 'not_held' };
       }
       if (row.customer_at) {
         await this.rows.update(row.pii_id, row.agent_id, {
-          $max: { last_order_at: order.date },
-          $min: { customer_at: order.date },
+          $max: { last_order_at: date },
+          $min: { customer_at: date },
         });
         return { result: 'updated', pii_id: row.pii_id };
       }
@@ -122,8 +117,8 @@ export class CustomersService {
         {
           $set: {
             stage: 'won',
-            customer_at: order.date,
-            last_order_at: order.date,
+            customer_at: date,
+            last_order_at: date,
             lost_reason: null,
             next_follow_up: null,
           },
@@ -137,7 +132,7 @@ export class CustomersService {
             activities: {
               $each: [
                 activity(
-                  `First order ${order.order_id} confirmed — now a customer`,
+                  `First order ${event.order_id} confirmed — now a customer`,
                   now,
                 ),
               ],

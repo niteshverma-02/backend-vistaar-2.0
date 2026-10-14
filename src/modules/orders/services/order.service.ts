@@ -10,7 +10,6 @@ import {
   BUSINESS_STATUSES,
   addressLine,
   firstUrl,
-  isConfirmedStatus,
   personName,
   sizeLabel,
   stageOf,
@@ -27,17 +26,6 @@ import type { OrderRecord } from '../schemas/order.schema';
 
 /** The app's `selfLabel`: whose name a shop-stock order shows. */
 const SELF_LABEL = 'Self (shop stock)';
-
-/** A Vistaar order as Leads needs it to make a farmer a customer. */
-export interface OrderFacts {
-  order_id: string;
-  /** The partner (`VST-…`) who placed it. */
-  agent: string | null;
-  /** The buyer; the partner's own for shop stock. */
-  pii_id: string | null;
-  date: Date;
-  confirmed: boolean;
-}
 
 /** A customer's confirmed business with their partner (returns and cancellations left out). */
 export interface CustomerBusiness {
@@ -75,19 +63,6 @@ export class OrderService {
       total,
       query,
     );
-  }
-
-  /** `null` for an order that is not Vistaar's. */
-  async facts(orderId: string): Promise<OrderFacts | null> {
-    const order = await this.orders.adminFindOne(orderId);
-    if (!order) return null;
-    return {
-      order_id: order.order_id,
-      agent: order.agent ?? null,
-      pii_id: order.pii_id ?? null,
-      date: order.date ?? order.created_at ?? new Date(),
-      confirmed: isConfirmedStatus(order.order_status),
-    };
   }
 
   /** Each of the partner's customers' business, by `pii_id`. */

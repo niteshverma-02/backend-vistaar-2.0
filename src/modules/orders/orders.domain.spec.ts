@@ -1,6 +1,5 @@
 import {
   BUSINESS_STATUSES,
-  isConfirmedStatus,
   addressLine,
   firstUrl,
   personName,
@@ -143,14 +142,7 @@ describe('formatting', () => {
   });
 });
 
-describe('confirmed orders', () => {
-  it('counts an order Stockship confirmed, wherever it went after', () => {
-    for (const s of ['confirmed', 'Packed', 'in transit', 'delivered', 'rto'])
-      expect(isConfirmedStatus(s)).toBe(true);
-    for (const s of ['created', 'pending', 'failed', 'cancelled', null])
-      expect(isConfirmedStatus(s)).toBe(false);
-  });
-
+describe('customer business', () => {
   it('counts business only from confirmed orders that were not returned', () => {
     expect(BUSINESS_STATUSES).toEqual(
       expect.arrayContaining(['confirmed', 'in_transit', 'delivered']),

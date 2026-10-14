@@ -66,11 +66,11 @@ same call by hand with the beta `ORDER_EVENTS_SECRET`:
 ```bash
 curl -X POST $VISTAAR_API/api/v2/hooks/orders/confirmed \
   -H "x-webhook-secret: $ORDER_EVENTS_SECRET" -H 'content-type: application/json' \
-  -d '{"order_id":"<the order id>"}'
+  -d '{"order_id":"<the order id>","pii_id":"PII-1620690","agent_id":"VST-000006"}'
 ```
 
-— makes the farmer `won` and lists them in `GET /customers`. `TEST-VST-1` (beta's only
-Vistaar order) is VST-000006's own shop stock, so it is answered `ignored / not_held`.
+— makes the farmer `won` and lists them in `GET /customers`. Shop stock (the partner's own
+`pii_id`) is answered `ignored / not_held`.
 
 ## Removing it
 

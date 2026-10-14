@@ -33,9 +33,9 @@ export class OrderEventsController {
   @ApiHeader({ name: ORDER_EVENTS_HEADER, required: true })
   @ApiOperation({
     summary:
-      'Stockship confirmed this order — its farmer becomes the partner’s customer (lead won). Idempotent.',
+      'An order is confirmed (order service) — its farmer becomes the partner’s customer (lead won). Idempotent.',
   })
   confirmed(@Body() dto: OrderEventDto): Promise<OrderEventResult> {
-    return this.customers.recordOrder(dto.order_id);
+    return this.customers.recordOrder(dto);
   }
 }
