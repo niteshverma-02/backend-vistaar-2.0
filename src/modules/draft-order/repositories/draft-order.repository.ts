@@ -135,6 +135,29 @@ export class DraftOrderRepository {
     ]);
   }
 
+  /** HO's read: every partner's open drafts (or one partner's), last saved first. */
+  async adminList(
+    partnerId: string | null,
+    skip: number,
+    limit: number,
+  ): Promise<[DraftOrderRecord[], number]> {
+    const filter = {
+      entry_path: DRAFT_ENTRY_PATH,
+      status: 'draft' as const,
+      ...(partnerId ? { agent_id: partnerId } : {}),
+    };
+    return Promise.all([
+      this.model
+        .find(filter)
+        .sort({ updated_at: -1, _id: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean<DraftOrderRecord[]>()
+        .exec(),
+      this.model.countDocuments(filter).exec(),
+    ]);
+  }
+
   markReminderSent(
     partnerId: string,
     id: string,

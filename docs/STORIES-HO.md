@@ -1,8 +1,8 @@
 # My Story — HO portal contract
 
-Seven screens: **template cards** (the six "Choose a design" cards),
-**designs** (the looks a story can have — colours, or HO's own art), **festival greetings**, **ready-made farmer stories** and the
-**crop calendar** the app's templates offer,
+Six screens: **template cards** (the six "Choose a design" cards),
+**designs** (the looks a story can have — colours, or HO's own art), **festival greetings** and **ready-made farmer stories**
+the app's templates offer,
 **activity** (who is promoting on WhatsApp, with which template, through which
 button), and **partners' saved stories** (look, and take one down).
 
@@ -207,27 +207,13 @@ testimonials first, then these.
 `key` (required, unique, never changes; taken = `409 SAMPLE_EXISTS`), `name`,
 `product`, `quote` (≤ 400) required; `stars` 1–5, default 5.
 
-## Crop calendar (`/api/v2/admin/crop-calendar`)
-
-Same routes, keyed by the crop key instead of a UUID (`GET/PATCH/DELETE
-/:key`), capability `content.*`. Feeds the "Crop tip" template and the app's
-`GET /crop-calendar`.
-
-```json
-{ "key": "wheat", "crop": "Wheat", "emoji": "🌾", "season": "rabi",
-  "sowing": "Nov – Dec", "harvest": "Mar – Apr", "order": 1, "is_active": true,
-  "stages": [ { "stage": "Sowing", "month": "Nov", "advice": "Seed treatment and basal zinc",
-                "products": ["Zinc EDTA 12%", "Trichoderma Viride"] } ] }
-```
-
-`season`: `kharif`, `rabi`, `zaid`. 1–12 stages, no stage name twice, ≤ 10
-products each. A taken key is `409 CROP_EXISTS`. `PATCH` with `stages`
-replaces the whole list.
+Crops are not here: the crop calendar module was removed (2026-10-14); crop data is ko-sales
+`/crops` (the Crop Guide).
 
 ## Seed
 
 `node dist/scripts/seed-story-content.js --apply` adds what the app had built
-in — 6 template cards + 5 example custom cards, 5 designs, 4 festivals, 8 farmer stories, 5 crops — skipping any key already there.
+in — 6 template cards + 5 example custom cards, 5 designs, 4 festivals, 8 farmer stories — skipping any key already there.
 **Done on beta 2026-10-12** (designs and template cards 2026-10-13). `diwali_lights` is a generated
 test art design: skip or delete it on production. The 8 farmer stories are the prototype's sample
 quotes, not real customers: replace or switch them off before launch.

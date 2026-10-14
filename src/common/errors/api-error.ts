@@ -88,12 +88,11 @@ export const API_ERROR_CODES = [
   'NOT_PUNCHED_IN',
   'PUNCH_LIMIT_REACHED',
   'ATTENDANCE_CHANGED',
-  // stories and crop calendar: HO content keys are unique (409).
+  // stories: HO content keys are unique (409).
   'FESTIVAL_EXISTS',
   'SAMPLE_EXISTS',
   'DESIGN_EXISTS',
   'TEMPLATE_EXISTS',
-  'CROP_EXISTS',
   'FAQ_EXISTS',
   'FAQ_SECTION_EXISTS',
   'FAQ_SECTION_IN_USE',
@@ -120,6 +119,18 @@ export const API_ERROR_CODES = [
   'ORDER_EVENTS_NOT_CONFIGURED',
   // feedback: a partner's answers or product suggestions for the IST day are used up (429).
   'FEEDBACK_LIMIT',
+  // payments: an option cannot be switched on without live keys (400).
+  'CREDENTIALS_MISSING',
+  // payment keys. No encryption key on the server (503); a set already waiting,
+  // or this one no longer waiting / past its day / not checked yet (409).
+  'CREDENTIALS_NOT_CONFIGURED',
+  'CREDENTIALS_UNREADABLE',
+  'CREDENTIALS_PENDING',
+  'CREDENTIALS_NOT_PENDING',
+  'CREDENTIALS_EXPIRED',
+  'CREDENTIALS_NOT_TESTED',
+  // the two-person rule: the submitter cannot approve their own keys (403).
+  'APPROVER_IS_SUBMITTER',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

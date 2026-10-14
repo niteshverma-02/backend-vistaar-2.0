@@ -88,6 +88,27 @@ export class VistaarLeadsRepository {
     private readonly model: Model<VistaarLeadDocument>,
   ) {}
 
+  /** Names for another module's rows (HO carts, saved carts); rides `{pii_id}`. */
+  findByPiis(
+    piiIds: readonly string[],
+  ): Promise<
+    Pick<
+      VistaarLeadRecord,
+      'pii_id' | 'name' | 'phone' | 'village' | 'district'
+    >[]
+  > {
+    return this.model
+      .find({ pii_id: { $in: piiIds } })
+      .select('pii_id name phone village district')
+      .lean<
+        Pick<
+          VistaarLeadRecord,
+          'pii_id' | 'name' | 'phone' | 'village' | 'district'
+        >[]
+      >()
+      .exec();
+  }
+
   findByPii(piiId: string): Promise<VistaarLeadRecord | null> {
     return this.model
       .findOne({ pii_id: piiId })

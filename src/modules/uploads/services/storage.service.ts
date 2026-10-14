@@ -105,8 +105,9 @@ export class StorageService {
     buffer: Buffer,
     mime: string,
     extra: Record<string, string> = {},
+    ext?: string,
   ): Promise<{ path: string; url: string }> {
-    const path = `${folder}/${randomUUID()}.${EXT[mime] ?? 'bin'}`;
+    const path = `${folder}/${randomUUID()}.${ext ?? EXT[mime] ?? 'bin'}`;
     const token = randomUUID();
     await this.bucket()
       .file(path)

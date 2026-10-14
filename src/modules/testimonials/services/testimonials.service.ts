@@ -4,6 +4,7 @@ import { Types } from 'mongoose';
 import { badRequest, conflict, notFound } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
 import { normalizeMobile } from '@common/utils/phone.util';
+import { StorageService } from '@modules/uploads/services/storage.service';
 
 import type {
   CreateTestimonialDto,
@@ -16,9 +17,12 @@ import {
   type TestimonialRow,
 } from '../repositories/testimonial.repository';
 import {
+  HO_MEDIA_FOLDER,
+  HO_MEDIA_RULES,
   MEDIA_TYPE_OF,
   OBJECT_ID,
   VISTAAR_SOURCE,
+  hoMediaTypeOf,
   statusOf,
   toContact,
   type MediaType,
@@ -73,7 +77,58 @@ export class TestimonialsService {
   constructor(
     private readonly testimonials: TestimonialRepository,
     private readonly submissions: SubmissionRepository,
+    private readonly storage: StorageService,
   ) {}
+
+  /**
+   * Stores a photo, video or voice note HO picked for a testimonial it files,
+   * as a public object, and answers the lasting link to send as `media_url`.
+   * Each upload gets a new path, so nothing is ever overwritten.
+   */
+  async uploadMedia(
+    buffer: Buffer,
+    mime: string,
+    by: string,
+  ): Promise<{
+    media_type: MediaType;
+    media_url: string;
+    content_type: string;
+    size: number;
+  }> {
+    const type = hoMediaTypeOf(mime);
+    if (!type) {
+      throw badRequest(
+        'FILE_TYPE_NOT_ALLOWED',
+        'Please choose a photo (JPG, PNG, WEBP), a video (MP4, MOV, WEBM) or a voice note (MP3, M4A, AAC, OGG, WAV).',
+      );
+    }
+    const rule = HO_MEDIA_RULES[type];
+    if (buffer.length > rule.maxBytes) {
+      throw badRequest(
+        'FILE_TOO_LARGE',
+        `This file is too big. ${type === 'image' ? 'Photos' : type === 'video' ? 'Videos' : 'Voice notes'} can be up to ${rule.maxBytes / (1024 * 1024)} MB.`,
+      );
+    }
+    if (buffer.length === 0) {
+      throw badRequest(
+        'FILE_REQUIRED',
+        'This file is empty. Please choose another.',
+      );
+    }
+    const { url } = await this.storage.savePublic(
+      HO_MEDIA_FOLDER,
+      buffer,
+      mime,
+      { uploadedBy: by },
+      rule.types[mime],
+    );
+    return {
+      media_type: type,
+      media_url: url,
+      content_type: mime,
+      size: buffer.length,
+    };
+  }
 
   /**
    * What My Story's "Farmer story" template picks from, newest first:

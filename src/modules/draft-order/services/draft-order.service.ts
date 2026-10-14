@@ -226,7 +226,7 @@ const keyOf = (draft: DraftOrderRecord) => ({
   contact_number: draft.contact_number ?? null,
 });
 
-function draftView(
+export function draftView(
   draft: DraftOrderRecord,
   piiId: string | null,
 ): DraftOrderView {

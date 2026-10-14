@@ -3,7 +3,6 @@ import { MongooseModule } from '@nestjs/mongoose';
 
 import { AccessModule } from '@modules/access/access.module';
 import { AgentsModule } from '@modules/agents/agents.module';
-import { CropCalendarModule } from '@modules/crop-calendar/crop-calendar.module';
 import { EventsModule } from '@modules/events/events.module';
 import { TestimonialsModule } from '@modules/testimonials/testimonials.module';
 import { UploadsModule } from '@modules/uploads/uploads.module';
@@ -51,7 +50,6 @@ import { StorySamplesService } from './services/story-samples.service';
     ]),
     AccessModule,
     AgentsModule,
-    CropCalendarModule,
     EventsModule,
     TestimonialsModule,
     UploadsModule,

@@ -116,6 +116,7 @@ Both go to the head roles today.
 | `GET` | `/admin/testimonials/summary` | `testimonials.read` | — | `{ pending, approved, removed }` |
 | `GET` | `/admin/testimonials/:id` | `testimonials.read` | — | `AdminTestimonial` |
 | `POST` | `/admin/testimonials` | `testimonials.write` | `CreateTestimonial` | `AdminTestimonial` |
+| `POST` | `/admin/testimonials/media` | `testimonials.write` | multipart `file`: photo (JPG/PNG/WEBP ≤ 10 MB), video (MP4/MOV/WEBM ≤ 60 MB) or voice note (MP3/M4A/AAC/OGG/WAV ≤ 20 MB) | `{ media_type, media_url, content_type, size }` — send `media_url` (lasting public link, `vistaar/testimonials/`) and `media_type` as `media` on create. Errors `FILE_REQUIRED`, `FILE_TYPE_NOT_ALLOWED`, `FILE_TOO_LARGE` (400/413) |
 | `PATCH` | `/admin/testimonials/:id` | `testimonials.write` | Any of `verified`, `deleted`, `review`, `media`, `name` | `AdminTestimonial` |
 | `DELETE` | `/admin/testimonials/:id` | `testimonials.write` | — | `{ "deleted": true }` |
 

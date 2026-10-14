@@ -165,3 +165,20 @@ export class TestimonialListQueryDto extends PageQueryDto {
   @MaxLength(80)
   q?: string;
 }
+
+export class UploadedTestimonialMediaDto {
+  @ApiProperty({ enum: MEDIA_TYPES, example: 'video' })
+  media_type!: MediaType;
+
+  @ApiProperty({
+    description:
+      'Lasting public link — send as `media.media_url` when filing the testimonial',
+  })
+  media_url!: string;
+
+  @ApiProperty({ example: 'video/mp4' })
+  content_type!: string;
+
+  @ApiProperty({ example: 4821337 })
+  size!: number;
+}

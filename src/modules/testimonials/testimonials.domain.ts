@@ -15,6 +15,50 @@ export const COMBO_COLLECTION = 'combos_v2';
 export const MEDIA_TYPES = ['image', 'video', 'audio'] as const;
 export type MediaType = (typeof MEDIA_TYPES)[number];
 
+/**
+ * What HO may upload for a testimonial it files itself: the file goes through
+ * this server (multipart, so no bucket CORS for the portal) to a public object
+ * with a lasting link — what Stockship's product pages play.
+ */
+export const HO_MEDIA_RULES: Record<
+  MediaType,
+  { maxBytes: number; types: Record<string, string> }
+> = {
+  image: {
+    maxBytes: 10 * 1024 * 1024,
+    types: { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' },
+  },
+  video: {
+    maxBytes: 60 * 1024 * 1024,
+    types: {
+      'video/mp4': 'mp4',
+      'video/quicktime': 'mov',
+      'video/webm': 'webm',
+    },
+  },
+  audio: {
+    maxBytes: 20 * 1024 * 1024,
+    types: {
+      'audio/mpeg': 'mp3',
+      'audio/mp4': 'm4a',
+      'audio/x-m4a': 'm4a',
+      'audio/aac': 'aac',
+      'audio/ogg': 'ogg',
+      'audio/wav': 'wav',
+      'audio/webm': 'weba',
+    },
+  },
+};
+export const HO_MEDIA_MAX_BYTES = Math.max(
+  ...Object.values(HO_MEDIA_RULES).map((r) => r.maxBytes),
+);
+export const HO_MEDIA_FOLDER = 'vistaar/testimonials';
+
+/** The kind a file of type [mime] is, or `null` when HO may not upload it. */
+export function hoMediaTypeOf(mime: string): MediaType | null {
+  return MEDIA_TYPES.find((t) => mime in HO_MEDIA_RULES[t].types) ?? null;
+}
+
 export const TESTIMONIAL_TYPES = ['product', 'combo'] as const;
 export type TestimonialType = (typeof TESTIMONIAL_TYPES)[number];
 

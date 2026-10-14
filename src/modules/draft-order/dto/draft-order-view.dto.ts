@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import type { OrderPartner } from '@modules/orders/dto/admin-order.dto';
 
 export class DraftOrderLineView {
   @ApiProperty({ example: 'K-350' })
@@ -71,4 +72,9 @@ export class DraftOrderView {
 
   @ApiProperty({ type: String, format: 'date-time' })
   updated_at!: Date;
+}
+
+/** HO's read of a saved cart: the app's view, plus whose it is. */
+export interface AdminDraftOrderView extends DraftOrderView {
+  partner: OrderPartner;
 }

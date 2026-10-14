@@ -52,7 +52,6 @@ db.vistaar_v2_story_samples.createIndex({ key: 1 }, { unique: true })
 db.vistaar_v2_story_samples.createIndex({ is_active: 1, order: 1 })
 db.vistaar_v2_story_designs.createIndex({ key: 1 }, { unique: true })
 db.vistaar_v2_story_designs.createIndex({ is_active: 1, order: 1 })
-db.vistaar_v2_crop_calendar.createIndex({ is_active: 1, order: 1 })
 db.vistaar_v2_faqs.createIndex({ q_key: 1 }, { unique: true })
 db.vistaar_v2_faqs.createIndex({ is_active: 1, order: 1 })
 db.vistaar_v2_faqs.createIndex({ category: 1, order: 1 })
@@ -84,6 +83,11 @@ db.vistaar_v2_product_suggestions.createIndex({ status: 1, created_at: -1 })
 db.vistaar_v2_product_suggestions.createIndex({ created_at: -1 })
 db.vistaar_v2_product_suggestions.createIndex({ product_key: 1, created_at: -1 })
 db.vistaar_v2_leads.createIndex({ agent_id: 1, location: '2dsphere' })
+db.vistaar_v2_payment_option_audit.createIndex({ at: -1 })
+db.vistaar_v2_payment_option_audit.createIndex({ option_id: 1, at: -1 })
+db.vistaar_v2_payment_credentials.createIndex({ provider: 1 }, { unique: true, name: 'one_active_per_provider', partialFilterExpression: { status: 'active' } })
+db.vistaar_v2_payment_credentials.createIndex({ provider: 1, status: 1 }, { unique: true, name: 'one_pending_per_provider', partialFilterExpression: { status: 'pending' } })
+db.vistaar_v2_payment_credentials.createIndex({ provider: 1, created_at: -1 })
 ```
 
 ⚠️ **Beta (2026-10-09): none of these exist** — the beta Mongo host is out of disk and every
@@ -182,11 +186,11 @@ few thousand orders per partner; past that, ask Stockship for
 
 ## My Story — before switching on
 
-- [ ] The ten story / crop-calendar / event indexes built (above) — the unique `{agent_id, signature}` is what stops a double tap saving two copies.
+- [ ] The nine story / event indexes built (above) — the unique `{agent_id, signature}` is what stops a double tap saving two copies.
 - [ ] `FIREBASE_*` set; story images go private under `vistaar/stories/<agent_id>/`. Without it uploads answer `503 UPLOADS_NOT_CONFIGURED` and the app shares without saving.
 - [ ] The four FAQ / FAQ-section indexes built (above) — the unique `{q_key}` is what refuses a duplicate question.
 - [ ] `node dist/scripts/seed-faqs.js --apply` once (the app's 5 sections and 11 built-in FAQs; re-running skips existing ones).
-- [ ] `node dist/scripts/seed-story-content.js --apply` once (6 template cards + 5 example custom cards, 5 designs, 4 festivals, 8 farmer stories, 5 crops, 3 events). Done on beta 2026-10-12 (designs and template cards 2026-10-13). On production, skip the 3 sample events — HO adds real ones — and delete the `diwali_lights` test design (generated art).
+- [ ] `node dist/scripts/seed-story-content.js --apply` once (6 template cards + 5 example custom cards, 5 designs, 4 festivals, 8 farmer stories, 3 events). Done on beta 2026-10-12 (designs and template cards 2026-10-13). On production, skip the 3 sample events — HO adds real ones — and delete the `diwali_lights` test design (generated art).
 - [ ] HO replaces or switches off the 8 sample farmer stories — they are the prototype's made-up quotes, not real customers.
 - [ ] App build on `/stories/*` shipped: `FestivalId` enum → string key, snake_case mapping, save after share (see `STORIES-APP.md`).
 - [ ] Stockship team told Vistaar reads approved `source: 'vistaar'` testimonials (and `bulk_v2.trade_name`) for the Farmer story template — read-only.
@@ -212,6 +216,16 @@ few thousand orders per partner; past that, ask Stockship for
 - [ ] HO roles that may read / act on feedback get `feedback.read` / `feedback.write` (today: the head roles).
 - [ ] Product agrees the detractor promise in the app ("Your Prasar Officer will call you within 2 working days") — due = end of the 2nd working day (Mon–Sat, IST); the owner officer is the partner's `owner_agent_id`.
 - [ ] App build that calls `/feedback`, `/feedback/suggestions` and reads `/feedback/reasons` shipped (see `FEEDBACK-APP.md`).
+
+## Payment options (Pay online list) — before switching on
+
+- [ ] The two `vistaar_v2_payment_option_audit` and three `vistaar_v2_payment_credentials` indexes built (above) — the two unique ones are what guarantee one live and one waiting set per provider. `vistaar_v2_payment_options` needs none.
+- [ ] `PAYMENTS_CREDENTIALS_KEY` generated **for production only** (`openssl rand -base64 32`), kept in the secret store, never reused from beta, never in git or chat. Losing it means every set of keys is submitted again; leaking it plus a DB dump leaks the keys.
+- [ ] `PAYMENTS_ALERT_WEBHOOK_URL` set to a finance + tech Slack channel.
+- [ ] At least **two** active company admins (`USR-1000` / `USR-1001`) — the two-person rule needs a second one to approve.
+- [ ] `PAYMENTS_ONLINE_ENABLED` stays `false` until real payment (gateway order, signature verify, webhook) is live — until then the app must not offer online payment in production. The boot refuses `true` without `PAYMENTS_CREDENTIALS_KEY`.
+- [ ] HO roles that may switch options get `payments.write` (today: the head roles); keys are `payments.credentials` (company admins only).
+- [ ] App build that reads `GET /payment-options` (instead of `payment_gateways_seed.dart`) shipped (see `PAYMENTS-APP.md`).
 
 ## Testimonials (partner submissions) — before switching on
 

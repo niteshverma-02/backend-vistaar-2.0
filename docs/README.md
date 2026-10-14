@@ -26,8 +26,9 @@ Contract docs, one per feature, named by who reads them:
 | [ATTENDANCE-HO.md](./ATTENDANCE-HO.md) | HO portal | Day board across partners, 14-day trend, one partner's month |
 | [TESTIMONIALS-APP.md](./TESTIMONIALS-APP.md) | App | Send a farmer testimonial (video / photo / quote) with consent; my submissions; the library |
 | [TESTIMONIALS-HO.md](./TESTIMONIALS-HO.md) | HO portal | Partner submissions: approve, reject, remove, consent withdrawal; and Vistaar's testimonials filed by HO |
-| [STORIES-APP.md](./STORIES-APP.md) | app | My Story: save / list / re-share / delete stories, images, festivals, farmer stories, crop calendar (`GET /crop-calendar` too) |
-| [STORIES-HO.md](./STORIES-HO.md) | HO portal | Festivals, ready-made farmer stories, crop calendar, sharing activity, partners' saved stories |
+| [STORIES-APP.md](./STORIES-APP.md) | app | My Story: save / list / re-share / delete stories, images, festivals, farmer stories |
+| [STORIES-HO.md](./STORIES-HO.md) | HO portal | Festivals, ready-made farmer stories, sharing activity, partners' saved stories |
+| [CARTS-HO.md](./CARTS-HO.md) | HO portal | Partners' open carts and saved carts (read-only) |
 | [EVENTS-APP.md](./EVENTS-APP.md) | app | Farmer events for my cohort, register / give back a seat (also My Story meetings) |
 | [EVENTS-HO.md](./EVENTS-HO.md) | HO portal | Event calendar: add, schedule, target, seats, who registered |
 | [TERMS-APP.md](./TERMS-APP.md) | app | The Vistaar partner T&C document link for Privacy & Terms and the login screen (public) |

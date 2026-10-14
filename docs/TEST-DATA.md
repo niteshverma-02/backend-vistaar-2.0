@@ -45,9 +45,13 @@ node dist/scripts/seed-test-leads.js --apply    # adds the missing ones; existin
 | 6000000110 | Lakshmi Patidar | VST-000007 | not worked for 16 days → VST-000006 checks it → `released`; saving takes it over |
 | 6000000111 | Om Prakash Lodhi | VST-000007 → VST-000006 | moved by HO; `holder_history` shows VST-000007 (reason `transferred`) |
 | 6000000112 | Hari Ram Kirar | VST-000006 | not worked for 13 days → "releases in 2 days" |
+| 6000000113 | Vikram Chouhan | VST-000006 | Today's tasks: follow-up 2 days overdue (red) |
+| 6000000114 | Ramvati Bai | VST-000006 | Today's tasks: follow-up due the seed morning (09:30) |
+| 6000000115 | Prakash Dangi | VST-000006 | Today's tasks: follow-up due the seed evening (18:00) |
 
 On beta: 101–108 are `PII-1620690`–`697`, `L-4187744`–`751` (2026-10-13); 109–112 are
-`PII-1620709`–`712`, `L-4187763`–`766` (2026-10-14). Every org lead is owned by A0-2691.
+`PII-1620709`–`712`, `L-4187763`–`766` (2026-10-14); 113–115 are `PII-1620717`–`719`,
+`L-4187773`–`775` (2026-10-14). Every org lead is owned by A0-2691.
 
 Not from the seed: **"Test", 7745963132** on VST-000006 — added from the app on 2026-10-13
 while testing the real add-lead flow.
@@ -74,7 +78,8 @@ curl -X POST $VISTAAR_API/api/v2/hooks/orders/confirmed \
 
 ## Today's tasks
 
-`GET /today` as **VST-000006** shows its follow-ups: Rajendra Singh (overdue), Gopal Meena
+`GET /today` as **VST-000006** shows its follow-ups: Vikram Chouhan, Ramvati Bai, Prakash Dangi (seeded for the card),
+Rajendra Singh (overdue), Gopal Meena
 (overdue), and those due on the day. The other kinds need real records, made through the
 app — the seed does not fake them in shared collections:
 

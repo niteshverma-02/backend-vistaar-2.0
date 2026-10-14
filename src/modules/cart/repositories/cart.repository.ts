@@ -84,6 +84,33 @@ export class CartRepository {
     return result.matchedCount === 1;
   }
 
+  /**
+   * HO's read: the carts behind these `_id`s that still hold a line, last
+   * touched first. The row names no partner, so the caller passes the ids of
+   * the partners it wants (`activeCartId`) — a primary-key `$in`.
+   */
+  async adminList(
+    ids: readonly Types.ObjectId[],
+    skip: number,
+    limit: number,
+  ): Promise<[CartRecord[], number]> {
+    const filter = {
+      _id: { $in: ids },
+      source: CART_SOURCE,
+      'items.0': { $exists: true },
+    };
+    return Promise.all([
+      this.model
+        .find(filter)
+        .sort({ updated_at: -1, _id: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean<CartRecord[]>()
+        .exec(),
+      this.model.countDocuments(filter).exec(),
+    ]);
+  }
+
   // `source` is in every filter beside the `_id`: it keeps Vistaar off B2B's
   // and the retailer app's rows.
   private activeFilter(partnerId: string) {

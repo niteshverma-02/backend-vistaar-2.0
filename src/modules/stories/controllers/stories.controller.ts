@@ -51,7 +51,7 @@ export class StoriesController {
   @Get('content')
   @ApiOperation({
     summary:
-      'What the templates pre-fill from: festivals, farmer stories, crop calendar and upcoming events for my cohort',
+      'What the templates pre-fill from: festivals, farmer stories and upcoming events for my cohort',
   })
   content(@CurrentPartnerId() agentId: string): Promise<StoryContentView> {
     return this.stories.contentFor(agentId);

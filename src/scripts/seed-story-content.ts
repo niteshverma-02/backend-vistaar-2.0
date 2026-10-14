@@ -4,7 +4,6 @@
  *
  *   - 4 festival greetings  → `vistaar_v2_story_festivals`  (story_content.dart)
  *   - 8 farmer stories       → `vistaar_v2_story_samples`    (sahayak_seed.dart `testimonialLibrary`)
- *   - 5 crops, stage advice  → `vistaar_v2_crop_calendar`    (learn_seed.dart `cropCalendar`)
  *   - 3 events               → `vistaar_v2_events`           (content_seed.dart `events`; the Meeting template)
  *   - 5 designs              → `vistaar_v2_story_designs`    (story_themes.dart, + one art design for testing)
  *   - 6 template cards       → `vistaar_v2_story_templates`  (story_content.dart `storyTemplates`, `storyStrings`, `customEmojis`)
@@ -25,11 +24,6 @@ import { crc32, deflateSync } from 'node:zlib';
 import { NestFactory } from '@nestjs/core';
 
 import { AppModule } from '../app.module';
-import {
-  CropListQueryDto,
-  type CreateCropDto,
-} from '../modules/crop-calendar/dto/crop-calendar.dto';
-import { CropCalendarService } from '../modules/crop-calendar/services/crop-calendar.service';
 import {
   EventListQueryDto,
   type CreateEventDto,
@@ -222,131 +216,6 @@ const SAMPLES: CreateStorySampleDto[] = [
     quote: 'Even growth across the field, better pod filling.',
     stars: 4,
     order: 8,
-  },
-];
-
-/** The prototype's crop calendar; emoji from story_content.dart `cropEmoji`. */
-const CROPS: CreateCropDto[] = [
-  {
-    key: 'wheat',
-    crop: 'Wheat',
-    emoji: '🌾',
-    season: 'rabi',
-    sowing: 'Nov – Dec',
-    harvest: 'Mar – Apr',
-    order: 1,
-    stages: [
-      {
-        stage: 'Sowing',
-        month: 'Nov',
-        advice: 'Seed treatment and basal zinc',
-        products: ['Zinc EDTA 12%', 'Trichoderma Viride'],
-      },
-      {
-        stage: 'Tillering',
-        month: 'Dec',
-        advice: 'Humic acid with first irrigation',
-        products: ['Humic + Fulvic Acid 98%'],
-      },
-      {
-        stage: 'Heading',
-        month: 'Feb',
-        advice: 'Watch for aphid and rust',
-        products: ['Imidacloprid 17.8% SL', 'Mancozeb 75% WP'],
-      },
-    ],
-  },
-  {
-    key: 'mustard',
-    crop: 'Mustard',
-    emoji: '🌼',
-    season: 'rabi',
-    sowing: 'Oct – Nov',
-    harvest: 'Feb – Mar',
-    order: 2,
-    stages: [
-      {
-        stage: 'Sowing',
-        month: 'Oct',
-        advice: 'Trichoderma soil application',
-        products: ['Trichoderma Viride'],
-      },
-      {
-        stage: 'Flowering',
-        month: 'Dec',
-        advice: 'Aphid control',
-        products: ['Neem Oil 10000 PPM', 'Imidacloprid 17.8% SL'],
-      },
-    ],
-  },
-  {
-    key: 'paddy',
-    crop: 'Paddy',
-    emoji: '🌾',
-    season: 'kharif',
-    sowing: 'Jun – Jul',
-    harvest: 'Oct – Nov',
-    order: 3,
-    stages: [
-      {
-        stage: 'Transplanting',
-        month: 'Jul',
-        advice: 'Zinc to prevent khaira',
-        products: ['Zinc EDTA 12%'],
-      },
-      {
-        stage: 'Tillering',
-        month: 'Aug',
-        advice: 'Humic acid for root growth',
-        products: ['Humic + Fulvic Acid 98%'],
-      },
-      {
-        stage: 'Panicle',
-        month: 'Sep',
-        advice: 'Blast and BPH watch',
-        products: ['Copper Oxychloride 50% WP'],
-      },
-    ],
-  },
-  {
-    key: 'tomato',
-    crop: 'Tomato',
-    emoji: '🍅',
-    season: 'rabi',
-    sowing: 'Sep – Oct',
-    harvest: 'Jan – Mar',
-    order: 4,
-    stages: [
-      {
-        stage: 'Nursery',
-        month: 'Sep',
-        advice: 'Damping-off prevention',
-        products: ['Trichoderma Viride'],
-      },
-      {
-        stage: 'Flowering',
-        month: 'Nov',
-        advice: 'Flower and fruit set',
-        products: ['Seaweed Extract Liquid', 'NPK 19:19:19'],
-      },
-    ],
-  },
-  {
-    key: 'moong',
-    crop: 'Moong',
-    emoji: '🌱',
-    season: 'zaid',
-    sowing: 'Mar – Apr',
-    harvest: 'May – Jun',
-    order: 5,
-    stages: [
-      {
-        stage: 'Vegetative',
-        month: 'Apr',
-        advice: 'Whitefly watch',
-        products: ['Neem Oil 10000 PPM'],
-      },
-    ],
   },
 ];
 
@@ -799,7 +668,6 @@ async function main(): Promise<void> {
   const log = (line: string) => console.log(`[seed-story-content] ${line}`);
   const festivals = app.get(StoryFestivalsService);
   const samples = app.get(StorySamplesService);
-  const crops = app.get(CropCalendarService);
   const events = app.get(AdminEventsService);
   const designs = app.get(StoryDesignsService);
   const templates = app.get(StoryTemplatesService);
@@ -842,18 +710,6 @@ async function main(): Promise<void> {
         ),
       create: (row) => samples.create(row as CreateStorySampleDto, BY),
       remove: (id) => samples.remove(id),
-    },
-    {
-      name: 'crop',
-      rows: CROPS,
-      existing: async () =>
-        (await crops.list(all(new CropListQueryDto()))).items.map((c) => ({
-          key: c._id,
-          id: c._id,
-          created_by: c.created_by,
-        })),
-      create: (row) => crops.create(row as CreateCropDto, BY),
-      remove: (id) => crops.remove(id),
     },
     {
       name: 'event',

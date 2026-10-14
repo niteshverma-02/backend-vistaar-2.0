@@ -1,7 +1,7 @@
 /**
  * Test farmers for the Vistaar leads flows — beta and local only, never
  * production. Partners are the two approved ones beta has (VST-000006,
- * VST-000007); farmers use the mobiles 6000000101–6000000112 (the
+ * VST-000007); farmers use the mobiles 6000000101–6000000115 (the
  * `60000xxxxx` series is test data). Who is for what: docs/TEST-DATA.md.
  *
  *   node dist/scripts/seed-test-leads.js            # dry run — writes nothing
@@ -259,6 +259,61 @@ const FARMERS: TestFarmer[] = [
       expected_value: 1200,
     },
     idleDays: 13,
+  },
+  // Home "Today's tasks" (GET /today) — three follow-ups to see on the card.
+  {
+    partner: 'VST-000006',
+    purpose: "Today's tasks: follow-up 2 days overdue (red)",
+    farmer: {
+      phone: '6000000113',
+      name: 'Vikram Chouhan',
+      village: 'Sehore',
+      pincode: '466001',
+      crops: ['Soybean'],
+      acreage: 7,
+      found_via: 'meeting',
+      expected_value: 3500,
+      next_follow_up: ist(1, 10),
+      note: 'Wants a quote for weedicide',
+    },
+    moves: ['contacted', 'interested'],
+    acts: [['call', 'Asked to call back after two days']],
+    pastFollowUp: ist(-2, 11),
+  },
+  {
+    partner: 'VST-000006',
+    purpose: "Today's tasks: follow-up due this morning",
+    farmer: {
+      phone: '6000000114',
+      name: 'Ramvati Bai',
+      village: 'Dewas',
+      pincode: '455001',
+      crops: ['Wheat'],
+      acreage: 3,
+      found_via: 'walk_in',
+      expected_value: 1800,
+      next_follow_up: ist(1, 9),
+    },
+    moves: ['contacted'],
+    acts: [['visit', 'Visited the shop, asked about seed treatment']],
+    pastFollowUp: ist(0, 9, 30),
+  },
+  {
+    partner: 'VST-000006',
+    purpose: "Today's tasks: follow-up due this evening",
+    farmer: {
+      phone: '6000000115',
+      name: 'Prakash Dangi',
+      village: 'Shujalpur',
+      pincode: '465333',
+      crops: ['Garlic'],
+      acreage: 5,
+      found_via: 'referral',
+      expected_value: 6000,
+      next_follow_up: ist(1, 18),
+      note: 'Referred by Vikram Chouhan',
+    },
+    pastFollowUp: ist(0, 18),
   },
 ];
 
