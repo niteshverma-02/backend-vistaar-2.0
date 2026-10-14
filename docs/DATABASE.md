@@ -16,7 +16,7 @@ writes its retailers.
 | `vistaar_v2_cohorts` | partner type | `_id` key, `label{}`, `description{}`, `icon`, `sub_types[]`, `order`, `is_active` |
 | `vistaar_v2_sessions` | signed-in device | `_id` = SHA-256 of the refresh token, `agent_ref`, `expires_at` (TTL) |
 | `vistaar_v2_settings` | — (`_id: vistaar`) | `default_owner_agent_id`, `lead_owner_agent_id` (override owner of farmer leads; `null` = the Offline Head), `farmer_consent { version, text { en, hi } }` (`null` = built-in version 1), `lead_release_days` (15), `customer_release_days` (45), `conflict_radius_km` |
-| `vistaar_v2_leads` | farmer a partner holds (unique `pii_id`) | `_id` UUID, `pii_id`, `agent_id` (`VST-…`), `lead_id` (org `L-…`, `null` until written / contact-only person), `origin` `created`/`linked`, farmer copy `name`, `phone`, `village`, `district`, `state`, `pincode`, `crops[]`, `acreage`; `found_via`, `expected_value`, `stage` (prospect · contacted · interested · negotiation · won · lost), `stage_history[]` (last 50), `next_follow_up`, `lost_reason`, `activities[]` `{id, type, text, at, by}` (last 100), `consent {version, at}`, `ex_employee_declared_at`, `customer_at` (first order), `last_order_at`, `held_since`, `last_worked_at`, `holder_history[]` `{agent_id, from, to, reason released·partner_blocked·transferred, by, note?}` (last 20), timestamps |
+| `vistaar_v2_leads` | farmer a partner holds (unique `pii_id`) | `_id` UUID, `pii_id`, `agent_id` (`VST-…`), `lead_id` (org `L-…`, `null` until written / contact-only person), `origin` `created`/`linked`, farmer copy `name`, `phone`, `village`, `district`, `state`, `pincode`, `crops[]`, `acreage`; `found_via`, `expected_value`, `stage` (prospect · contacted · interested · negotiation · won · lost), `stage_history[]` (last 50), `next_follow_up`, `lost_reason`, `activities[]` `{id, type, text, at, by}` (last 100), `consent {version, at}`, `ex_employee_declared_at`, `customer_at` (first order), `last_order_at`, `held_since`, `last_worked_at`, `holder_history[]` `{agent_id, from, to, reason released·partner_blocked·transferred, by, note?}` (last 20), `location` (GeoJSON point or `null`), `location_source` (`visit` · `add` · `order` · `pincode`), `location_at`, timestamps |
 | `vistaar_v2_counters` | id series | `_id: agent_id`, `seq` |
 | `vistaar_v2_banners` | Home banner (HO) | `_id` UUID, `title{}` (localized, `en` required), `subtitle{}` / `cta{}` (required unless an image), `image_path` + `image_url` + `image_width/height` (HO art), `link` (in-app route), `tone`, `emoji`, `cohorts[]` (empty = everyone), `starts_at` / `ends_at`, `order`, `is_active`, `created_by/updated_by`, timestamps. Deleted for good by HO |
 | `vistaar_v2_attendance` | partner × IST day | `_id` `<agent_id>:<YYYY-MM-DD>`, `agent_id`, `date`, `sessions[]{in_at, in_location, out_at, out_location}` (location = `lat`, `lng`, `accuracy_m`, `label`, `source` gps/registered; at most 10), `punched_in`, `first_in_at`, `last_out_at`, `worked_ms` (closed sessions), timestamps. Times are server time. Never deleted |
@@ -158,6 +158,17 @@ draft orders check the partner through `LeadsService.holds()`.
 A partner can **remove** a lead that is not a customer (`DELETE /leads/:piiId`): the row is
 deleted, the farmer is free (a Vistaar org lead with no partner row is just a Katyayani
 farmer), and the org's rows stay.
+
+**Where a farmer is** (the radar): `location` comes from the partner's phone GPS sent with
+an action — a farm visit (best), adding / editing the farmer, ordering for them (weakest;
+never overwrites a stronger source) — else the pincode's centre. A real fix is also set as
+`geo {lat, lng}` on the farmer's `addresses` row Vistaar filed (`source: 'vistaar'` only),
+where ko-sales and prasar's map read it. The radar reads one partner's rows by `agent_id`
+with `$geoWithin` (`{agent_id, location: 2dsphere}` in production; works without it).
+**Pincode centres** come from `pincode_map_v2.geo`, held in memory (one read a day per
+process). About 13% of its points are more than 60 km from their own district (2026-10-14 —
+e.g. 455001 Dewas sits near Bhopal), so a point that far from its district's median centre
+is replaced by that centre.
 
 **Customers** are these rows at stage `won`: the order service's call
 (`POST /hooks/orders/confirmed`, ORDER-EVENTS.md — trusted as sent, the order is not read

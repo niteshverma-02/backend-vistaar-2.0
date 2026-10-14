@@ -61,7 +61,7 @@ function record(
 describe('CartService', () => {
   let active: CartRecord | null;
   let repo: jest.Mocked<CartRepository>;
-  let leads: jest.Mocked<Pick<LeadsService, 'holds'>>;
+  let leads: jest.Mocked<Pick<LeadsService, 'holds' | 'recordLocation'>>;
   let catalog: Map<string, CatalogVariant>;
   let service: CartService;
 
@@ -105,6 +105,7 @@ describe('CartService', () => {
             ['PII-1', 'PII-1620388'].includes(piiId),
         ),
       ),
+      recordLocation: jest.fn().mockResolvedValue(true),
     };
 
     service = new CartService(
@@ -217,6 +218,30 @@ describe('CartService', () => {
   });
 
   describe('setCustomer', () => {
+    it('passes the phone fix on as where the farmer may be, never failing the cart', async () => {
+      const at = { lat: 23.2, lng: 77.4 };
+      await service.setCustomer(PARTNER, TOKEN, {
+        pii_id: 'PII-1',
+        location: at,
+      });
+      expect(leads.recordLocation).toHaveBeenCalledWith(
+        'VST-000001',
+        'PII-1',
+        at,
+      );
+
+      leads.recordLocation.mockRejectedValueOnce(new Error('down'));
+      const view = await service.setCustomer(PARTNER, TOKEN, {
+        pii_id: 'PII-1',
+        location: at,
+      });
+      expect(view.pii_id).toBe('PII-1');
+
+      leads.recordLocation.mockClear();
+      await service.setCustomer(PARTNER, TOKEN, { pii_id: null, location: at });
+      expect(leads.recordLocation).not.toHaveBeenCalled();
+    });
+
     it("stores the customer in pii_id, and the partner's own for shop stock", async () => {
       const first = await service.addItem(PARTNER, TOKEN, {
         sku: 'K-1',

@@ -128,7 +128,8 @@ ko-sales' `/leads/upsert` as the reference shape — `leads_v2` +
 'vistaar'` and `created_by: VST-…`; only for a person with no lead or
 contact yet (a farmer from another channel is only linked, in
 `vistaar_v2_leads`), and later updates filter on `source`, so another
-channel's records are never changed. Owner = the one active Offline Head
+channel's records are never changed. A GPS fix of the farm goes on that
+`addresses` row as `geo {lat, lng}` (Vistaar's rows only). Owner = the one active Offline Head
 (USR-1037) as `{agent_id, agent_ref}`, unless `settings.lead_owner_agent_id`
 names another. Never `profiled_at` (keeps the offline lead out of telecaller
 cohorts). No pipeline, LQS or webhook. See `docs/DATABASE.md`.

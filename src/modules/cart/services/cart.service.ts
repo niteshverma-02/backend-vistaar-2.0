@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 
 import type { PartnerRef } from '@common/auth/current-partner.decorator';
+import type { LocationDto } from '@common/dto/location.dto';
 import { conflict, notFound } from '@common/errors/api-error';
 import { KeyedSerialQueue } from '@common/utils/keyed-serial-queue';
 import type { CatalogVariant } from '@modules/catalog/catalog.domain';
@@ -51,6 +52,7 @@ type ActiveChange = (current: CartRecord | null) => PendingWrite;
 export class CartService {
   /** One partner's cart writes, one at a time, on this instance. */
   private readonly writes = new KeyedSerialQueue();
+  private readonly logger = new Logger(CartService.name);
 
   constructor(
     private readonly carts: CartRepository,
@@ -115,9 +117,28 @@ export class CartService {
   ): Promise<CartView> {
     await this.requireCustomer(partner, dto.pii_id);
 
-    return this.mutate(partner, token, (current) =>
+    const view = await this.mutate(partner, token, (current) =>
       writeOf(current?.items ?? [], dto.pii_id),
     );
+    if (dto.pii_id && dto.pii_id !== partner.pii_id && dto.location) {
+      await this.noteWhere(partner.agent_id, dto.pii_id, dto.location);
+    }
+    return view;
+  }
+
+  /** Where the farmer may be, from ordering for them — never fails the cart. */
+  private async noteWhere(
+    agentId: string,
+    piiId: string,
+    location: LocationDto,
+  ): Promise<void> {
+    try {
+      await this.leads.recordLocation(agentId, piiId, location);
+    } catch (error) {
+      this.logger.warn(
+        `Location for ${piiId} not kept: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   /** AppContext `clearCart()`: empties the lines and clears the customer. */

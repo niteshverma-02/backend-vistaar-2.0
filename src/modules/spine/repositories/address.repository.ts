@@ -36,6 +36,20 @@ export class AddressRepository {
       .exec();
   }
 
+  /** The farm's GPS on the row this source filed — never another writer's. */
+  async setGeo(
+    piiId: string,
+    source: string,
+    geo: { lat: number; lng: number },
+  ): Promise<void> {
+    await this.model
+      .updateOne(
+        { pii_id: piiId, source },
+        { $set: { geo, updated_at: new Date() } },
+      )
+      .exec();
+  }
+
   /** `false` when `address_id` was already taken (the counter is behind). */
   async insert(
     row: Omit<Address, 'created_at' | 'updated_at'>,
