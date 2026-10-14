@@ -4,6 +4,11 @@
 Only an **approved** partner can add farmers. Screens: Add lead, Leads (list / board), Lead
 detail, Home "follow-ups due" (PRD C2, C4, C9, H5).
 
+> **Updated 2026-10-14 — won is automatic.** When Katyayani confirms the first order you
+> placed for a farmer, the lead moves to `won` by itself (`by: system`), with
+> `customer_at` and `last_order_at` set; it then also shows in `GET /customers`
+> (CUSTOMERS-APP.md). No route or field changed.
+>
 > **Updated 2026-10-13 (2) — a farmer is released when not worked.** New on the lead:
 > `releases_at`, `held_since`, `last_worked_at`, `last_order_at`. New `GET /leads/check`
 > status `released`. See *One farmer, one partner* and *Keeping a farmer*. Nothing removed.
@@ -12,7 +17,8 @@ detail, Home "follow-ups due" (PRD C2, C4, C9, H5).
 > *Ordering for a lead* (the cart accepts every farmer you hold, linked ones too).
 
 A partner adds **farmers only**. One farmer belongs to **one partner**. A lead becomes a
-customer — stage `won` — with its first order; the partner never sets `won`.
+customer — stage `won` — when the first order the partner placed for them is **confirmed**
+by Katyayani; the partner never sets `won` (CUSTOMERS-APP.md).
 
 ## One farmer, one partner
 
@@ -189,7 +195,7 @@ Only what is sent changes; `null` clears.
 { "next_follow_up": null, "expected_value": 3000 }
 ```
 
-- `won` is refused (`409 STAGE_NOT_ALLOWED`) — it comes from the first order. A won lead's
+- `won` is refused (`409 STAGE_NOT_ALLOWED`) — it comes from the first confirmed order. A won lead's
   stage is fixed.
 - A lost lead reopens by moving it to any other stage (the reason is cleared).
 - Each stage move is logged in `stage_history` and as a `stage_change` activity.
@@ -206,7 +212,7 @@ Only what is sent changes; `null` clears.
 | `FARMER_TAKEN` | 409 | another partner's farmer |
 | `NOT_A_FARMER` | 409 | registered as a retailer / business |
 | `CONSENT_OUTDATED` | 409 | wording changed — reload `GET /leads/consent`, show it, ask again |
-| `STAGE_NOT_ALLOWED` | 409 | `won` (first order only), or the lead is already a customer |
+| `STAGE_NOT_ALLOWED` | 409 | `won` (set by the first confirmed order), or the lead is already a customer |
 | `STAGE_CHANGED` | 409 | the lead changed meanwhile — reload it |
 | `PARTNER_NOT_APPROVED` / `ACCOUNT_BLOCKED` | 403 | |
 | `NOT_FOUND` | 404 | not one of your leads |

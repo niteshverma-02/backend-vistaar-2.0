@@ -89,6 +89,17 @@ export const envSchema = z.object({
     .regex(/^\d{4,6}$/)
     .optional(),
 
+  // ── Order events (server to server) ────────────────────────────────────
+  /**
+   * Shared secret the order service sends (`x-webhook-secret`) when Stockship
+   * confirms a Vistaar order — that makes the farmer a customer. Unset = the
+   * route answers 503 ORDER_EVENTS_NOT_CONFIGURED.
+   */
+  ORDER_EVENTS_SECRET: z
+    .string()
+    .min(24, 'ORDER_EVENTS_SECRET must be at least 24 characters')
+    .optional(),
+
   // ── HO portal (SSO) ────────────────────────────────────────────────────
   /** HO staff use the company SSO token; only its signature is checked here. */
   SSO_JWKS_URL: z.url().default('https://sso.ko-tech.in/.well-known/jwks.json'),

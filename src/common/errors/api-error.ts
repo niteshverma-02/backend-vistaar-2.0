@@ -108,6 +108,8 @@ export const API_ERROR_CODES = [
   'CONSENT_OUTDATED',
   'LEADS_NOT_CONFIGURED',
   'LEADS_UNAVAILABLE',
+  // The order service's confirmed-order call is off on this server (no secret).
+  'ORDER_EVENTS_NOT_CONFIGURED',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

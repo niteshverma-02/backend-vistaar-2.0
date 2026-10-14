@@ -34,6 +34,15 @@ const PROJECTION = {
 /** HO also needs whose order it is and where it ships (state / city / pincode filters). */
 const ADMIN_PROJECTION = { ...PROJECTION, agent: 1 } as const;
 
+/** One customer's confirmed business with one partner. */
+export interface CustomerOrderStats {
+  pii_id: string;
+  orders: number;
+  spend: number;
+  last_order_at: Date;
+  last_status: string;
+}
+
 /** What HO narrows the whole Vistaar book by. */
 export interface AdminOrderFilter {
   statuses: string[] | null;
@@ -58,10 +67,12 @@ export class OrderRepository {
     statuses: string[] | null,
     skip: number,
     limit: number,
+    piiId: string | null = null,
   ): Promise<[OrderRecord[], number]> {
     const filter = {
       ...this.ownFilter(partnerId),
       ...(statuses ? { order_status: { $in: statuses } } : {}),
+      ...(piiId ? { pii_id: piiId } : {}),
     };
 
     const rows = await this.model
@@ -83,6 +94,48 @@ export class OrderRepository {
     return this.model
       .findOne({ ...this.ownFilter(partnerId), order_id: orderId }, PROJECTION)
       .lean<OrderRecord>()
+      .exec();
+  }
+
+  /**
+   * Per farmer: the partner's orders in `statuses`, their total and the
+   * latest. One pass over the partner's own orders (`{ agent, order_status,
+   * date }` index) — a partner has hundreds, not millions.
+   */
+  customerStats(
+    partnerId: string,
+    statuses: readonly string[],
+  ): Promise<CustomerOrderStats[]> {
+    return this.model
+      .aggregate<CustomerOrderStats>([
+        {
+          $match: {
+            ...this.ownFilter(partnerId),
+            order_status: { $in: statuses },
+            pii_id: { $type: 'string' },
+          },
+        },
+        { $sort: { date: -1 } },
+        {
+          $group: {
+            _id: '$pii_id',
+            orders: { $sum: 1 },
+            spend: { $sum: { $ifNull: ['$total_amount', 0] } },
+            last_order_at: { $first: '$date' },
+            last_status: { $first: '$order_status' },
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            pii_id: '$_id',
+            orders: 1,
+            spend: 1,
+            last_order_at: 1,
+            last_status: 1,
+          },
+        },
+      ])
       .exec();
   }
 

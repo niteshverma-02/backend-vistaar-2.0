@@ -90,6 +90,16 @@ describe('OrderService', () => {
     expect(statuses).toBeNull();
   });
 
+  it("narrows to one customer's orders (the Orders tab)", async () => {
+    list.mockResolvedValue([[], 0]);
+    await service.list(
+      PARTNER,
+      Object.assign(new OrdersQueryDto(), { customer: 'PII-7' }),
+    );
+    const call = list.mock.calls[0] as unknown[];
+    expect(call[4]).toBe('PII-7');
+  });
+
   it('shows a shop-stock order (the partner’s own pii) as self', async () => {
     findOne.mockResolvedValue(order({ pii_id: 'PII-9' }));
     const view = await service.get(PARTNER, 'KSK-1');

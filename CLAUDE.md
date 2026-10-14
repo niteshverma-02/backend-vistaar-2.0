@@ -184,7 +184,7 @@ index is declared in code.
 | Sessions | `vistaar_v2_sessions` | SHA-256 of refresh tokens, TTL |
 | OTP attempts | `vistaar_v2_otp_attempts` | `_id` `send:<phone>` or `verify:<phone>`, sliding window of hits, one atomic pipeline update; TTL. Shared OTP limits across processes |
 | Settings | `vistaar_v2_settings` | Default owner, farmer-lead owner, farmer-consent wording (versioned), lead / customer release days, conflict radius |
-| Leads | `vistaar_v2_leads` | One row per farmer a partner holds (unique `pii_id`): holder (released when not worked, HO transfer), stage, follow-up, activity, consent; copy of the farmer basics for lists. The farmer is the org's `leads_v2` / `contacts_v2` |
+| Leads | `vistaar_v2_leads` | One row per farmer a partner holds (unique `pii_id`): holder (released when not worked, HO transfer), stage, follow-up, activity, consent; copy of the farmer basics for lists. The farmer is the org's `leads_v2` / `contacts_v2`. A **customer** is a row at `won` — set by the order service's confirmed-order call (`/hooks/orders/confirmed`), business read from `orders_v2` |
 | Counters | `vistaar_v2_counters` | `VST-` series (not `app_counters`, not legacy `sequences`) |
 | Banners | `vistaar_v2_banners` | HO-managed Home carousel: own image (`vistaar/banners/`, public token URL) or text banner; cohort-targeted, scheduled; app reads cached ≤ 60 s |
 | Attendance | `vistaar_v2_attendance` | One row per partner per IST day (`_id` `<agent_id>:<date>`), punch sessions with location at in/out only; server time |

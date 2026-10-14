@@ -3,11 +3,15 @@ import { MongooseModule } from '@nestjs/mongoose';
 
 import { AccessModule } from '@modules/access/access.module';
 import { AgentsModule } from '@modules/agents/agents.module';
+import { OrdersModule } from '@modules/orders/orders.module';
 import { SettingsModule } from '@modules/settings/settings.module';
 import { SpineModule } from '@modules/spine/spine.module';
 
 import { AdminLeadsController } from './controllers/admin-leads.controller';
+import { CustomersController } from './controllers/customers.controller';
 import { LeadsController } from './controllers/leads.controller';
+import { OrderEventsController } from './controllers/order-events.controller';
+import { OrderEventsGuard } from './guards/order-events.guard';
 import { OrgLeadsRepository } from './repositories/org-leads.repository';
 import { VistaarLeadsRepository } from './repositories/vistaar-leads.repository';
 import {
@@ -17,6 +21,7 @@ import {
   OrgLeadSchema,
 } from './schemas/org-lead.schemas';
 import { VistaarLead, VistaarLeadSchema } from './schemas/vistaar-lead.schema';
+import { CustomersService } from './services/customers.service';
 import { LeadsService } from './services/leads.service';
 
 /**
@@ -34,11 +39,23 @@ import { LeadsService } from './services/leads.service';
     ]),
     AccessModule,
     AgentsModule,
+    OrdersModule,
     SettingsModule,
     SpineModule,
   ],
-  controllers: [LeadsController, AdminLeadsController],
-  providers: [OrgLeadsRepository, VistaarLeadsRepository, LeadsService],
+  controllers: [
+    LeadsController,
+    AdminLeadsController,
+    CustomersController,
+    OrderEventsController,
+  ],
+  providers: [
+    OrgLeadsRepository,
+    VistaarLeadsRepository,
+    LeadsService,
+    CustomersService,
+    OrderEventsGuard,
+  ],
   exports: [LeadsService],
 })
 export class LeadsModule {}

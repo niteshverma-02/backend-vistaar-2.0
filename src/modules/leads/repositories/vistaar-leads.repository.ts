@@ -25,7 +25,7 @@ export interface LeadListFilter {
   origin?: 'created' | 'linked';
   from?: Date;
   to?: Date;
-  /** Contained in the name, village or a crop. */
+  /** Contained in the name, village, district or a crop. */
   text?: string;
   /** Digits contained in the mobile. */
   phone?: string;
@@ -76,13 +76,14 @@ export class VistaarLeadsRepository {
 
   /**
    * The partner's own row, changed only if it still holds `expect` (the
-   * stage the caller decided from); `null` = not theirs, or it moved meanwhile.
+   * stage the caller decided from, or "not a customer yet"); `null` = not
+   * theirs, or it moved meanwhile.
    */
   update(
     piiId: string,
     agentId: string,
     update: UpdateQuery<VistaarLeadDocument>,
-    expect: { stage?: LeadStage } = {},
+    expect: { stage?: LeadStage; customer_at?: null } = {},
   ): Promise<VistaarLeadRecord | null> {
     return this.model
       .findOneAndUpdate(
@@ -91,6 +92,20 @@ export class VistaarLeadsRepository {
         { returnDocument: 'after' },
       )
       .lean<VistaarLeadRecord | null>()
+      .exec();
+  }
+
+  /**
+   * Every row that matches, unpaged — for one partner's customers, which the
+   * app sorts by business the rows do not hold. Capped as a guard.
+   */
+  all(filter: LeadListFilter, cap = 5000): Promise<VistaarLeadBrief[]> {
+    return this.model
+      .find(this.toQuery(filter))
+      .select(BRIEF)
+      .sort({ created_at: -1 })
+      .limit(cap)
+      .lean<VistaarLeadBrief[]>()
       .exec();
   }
 
@@ -356,7 +371,12 @@ export class VistaarLeadsRepository {
     }
     if (filter.text) {
       const like = new RegExp(escapeRegex(filter.text), 'i');
-      query.$or = [{ name: like }, { village: like }, { crops: like }];
+      query.$or = [
+        { name: like },
+        { village: like },
+        { district: like },
+        { crops: like },
+      ];
     }
     return query;
   }

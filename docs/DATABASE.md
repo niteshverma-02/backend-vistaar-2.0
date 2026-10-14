@@ -153,7 +153,13 @@ or webhook.
 **Which partner a farmer belongs to is `vistaar_v2_leads.agent_id`, never
 `leads_v2.lead_owner`.** The owner is HO staff (it must be an `agents_v2` account, and
 ko-sales' upsert refuses any other); partners are not staff. The cart's "Ordering for" and
-draft orders check the partner through `LeadsService.holds()`. The hold lapses after
+draft orders check the partner through `LeadsService.holds()`.
+
+**Customers** are these rows at stage `won`: the order service's call
+(`POST /hooks/orders/confirmed`, ORDER-EVENTS.md) on the first confirmed order the holding
+partner placed sets `stage: won`, `customer_at`, `last_order_at` (by `system`), once; later
+orders move `last_order_at`. `customers` (written by ko-sales from Stockship) and
+`leads_v2` are not touched — as across the org, a customer is a person with an order. The hold lapses after
 `lead_release_days` without work (or `customer_release_days` without an order, or at once
 when the partner is blocked); the next partner to add the farmer takes the row over
 (guarded on `updated_at`), and HO can transfer it. `leads_v2` is not touched by either.
@@ -213,7 +219,7 @@ with the next number, up to 3 times.
 
 | Collection | Why |
 |---|---|
-| `orders_v2` (owner: Stockship) | the partner's orders: `{ source: 'vistaar', agent: <VST id> }`, newest by `date`; status filter is `order_status $in`. Rides Stockship's `{ agent, order_status, date }` index. Never written here |
+| `orders_v2` (owner: Stockship) | the partner's orders: `{ source: 'vistaar', agent: <VST id> }`, newest by `date`; status filter is `order_status $in`, `?customer=` adds `pii_id`. Customers: each farmer's confirmed business (count, Σ `total_amount`, latest) grouped by `pii_id` over the same filter; one order by `order_id` when the order service says it was confirmed. Rides Stockship's `{ agent, order_status, date }` index. Never written here |
 | `products_v2` (owner: Stockship) | name, `hero_image`, `variant` of an order's skus, one `$in` per page, on its `sku` index |
 | `agents_v2` | HO role (`user_role`) and owner names |
 | `pincode_map_v2` | pincode → state / district (cached 6 h) |
