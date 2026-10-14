@@ -6,6 +6,7 @@ import {
   UpdateTestimonialDto,
   type CreateTestimonialDto,
 } from '../dto/testimonial.dto';
+import type { SubmissionRepository } from '../repositories/submission.repository';
 import type {
   TestimonialRepository,
   TestimonialRow,
@@ -55,9 +56,16 @@ function setup() {
     productExists: jest.fn().mockResolvedValue(true),
     comboExists: jest.fn().mockResolvedValue(true),
   };
+  const submissions = {
+    linkedTestimonials: jest.fn().mockResolvedValue(new Set<string>()),
+  };
   return {
     repo,
-    service: new TestimonialsService(repo as unknown as TestimonialRepository),
+    submissions,
+    service: new TestimonialsService(
+      repo as unknown as TestimonialRepository,
+      submissions as unknown as SubmissionRepository,
+    ),
   };
 }
 
@@ -112,7 +120,8 @@ describe('TestimonialsService', () => {
       profile_image: null,
     });
     expect(saved.verified).toBe(false);
-    expect(saved.created_by).toBe(BY);
+    expect(saved.verified_by).toBeNull();
+    expect(saved.deleted_by).toBeNull();
     expect(view.status).toBe('pending');
     expect(view._id).toBe(ID);
   });
@@ -153,7 +162,7 @@ describe('TestimonialsService', () => {
     const view = await service.update(ID, { verified: true }, BY);
     expect(repo.update).toHaveBeenCalledWith(ID, {
       verified: true,
-      updated_by: BY,
+      verified_by: BY,
     });
     expect(view.status).toBe('approved');
     expect([view.likes, view.dislikes]).toEqual([2, 1]);
@@ -164,7 +173,6 @@ describe('TestimonialsService', () => {
     await service.update(ID, { name: ' Ramu Kaka ' }, BY);
     expect(repo.update).toHaveBeenCalledWith(ID, {
       'user.name': 'Ramu Kaka',
-      updated_by: BY,
     });
   });
 
@@ -174,7 +182,7 @@ describe('TestimonialsService', () => {
     await service.update(ID, dto, BY);
     expect(repo.update).toHaveBeenCalledWith(ID, {
       verified: true,
-      updated_by: BY,
+      verified_by: BY,
     });
   });
 
@@ -196,5 +204,16 @@ describe('TestimonialsService', () => {
       'NOT_FOUND',
     );
     expect(await code(service.remove(ID))).toBe('NOT_FOUND');
+  });
+
+  it("refuses to change or delete a partner's testimonial from this desk", async () => {
+    const { repo, submissions, service } = setup();
+    submissions.linkedTestimonials.mockResolvedValue(new Set([ID]));
+    expect(await code(service.update(ID, { verified: false }, BY))).toBe(
+      'TESTIMONIAL_FROM_PARTNER',
+    );
+    expect(await code(service.remove(ID))).toBe('TESTIMONIAL_FROM_PARTNER');
+    expect(repo.update).not.toHaveBeenCalled();
+    expect(repo.remove).not.toHaveBeenCalled();
   });
 });

@@ -391,10 +391,10 @@ export class StoriesService {
       name: t.name,
       quote: t.quote,
       product: t.product,
-      crop: null,
-      village: null,
-      district: null,
-      stars: null,
+      crop: t.crop,
+      village: t.village,
+      district: t.district,
+      stars: t.stars,
       media: t.media,
     }));
     this.content = { at: Date.now(), farmer };

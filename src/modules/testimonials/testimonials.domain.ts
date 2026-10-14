@@ -60,3 +60,112 @@ export const escapeRegex = (s: string): string =>
   s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export const MEDIA_URL = /^https:\/\/\S+$/i;
+
+// ---------------------------------------------------------------------------
+// Partner submissions — what a partner sends from the app, before and after
+// HO's decision. The submission itself is `vistaar_v2_testimonials`; the
+// shared Stockship rows are written only on approval, so Stockship's own
+// queues and the product's average rating never see an undecided one.
+// ---------------------------------------------------------------------------
+
+export const PRODUCT_REVIEWS_COLLECTION = 'product_reviews';
+
+/** The app's three kinds. `text` is a quote only — a review row, no media. */
+export const SUBMISSION_KINDS = ['video', 'photo', 'text'] as const;
+export type SubmissionKind = (typeof SUBMISSION_KINDS)[number];
+
+export const SUBMISSION_STATUSES = [
+  'submitted',
+  'approved',
+  'rejected',
+  'removed',
+] as const;
+export type SubmissionStatus = (typeof SUBMISSION_STATUSES)[number];
+
+/** Stockship's `media.media_type` for each kind that carries a file. */
+export const MEDIA_TYPE_OF: Record<
+  Exclude<SubmissionKind, 'text'>,
+  MediaType
+> = { video: 'video', photo: 'image' };
+
+export type HoAction = 'approve' | 'reject' | 'remove';
+
+/**
+ * Which status each HO action may start from. Approving a removed or rejected
+ * one is how HO changes its mind; a withdrawn consent refuses it separately.
+ */
+export const ACTION_FROM: Record<HoAction, readonly SubmissionStatus[]> = {
+  approve: ['submitted', 'rejected', 'removed'],
+  reject: ['submitted'],
+  remove: ['approved'],
+};
+
+export const ACTION_TO: Record<HoAction, SubmissionStatus> = {
+  approve: 'approved',
+  reject: 'rejected',
+  remove: 'removed',
+};
+
+export const canAct = (action: HoAction, from: SubmissionStatus): boolean =>
+  ACTION_FROM[action].includes(from);
+
+/** Upload rules per kind. A minute of phone video at 720p is ~20–40 MB. */
+export const UPLOAD_RULES: Record<
+  Exclude<SubmissionKind, 'text'>,
+  { maxBytes: number; types: Record<string, string> }
+> = {
+  video: {
+    maxBytes: 60 * 1024 * 1024,
+    types: {
+      'video/mp4': 'mp4',
+      'video/quicktime': 'mov',
+      'video/3gpp': '3gp',
+      'video/webm': 'webm',
+    },
+  },
+  photo: {
+    maxBytes: 10 * 1024 * 1024,
+    types: {
+      'image/jpeg': 'jpg',
+      'image/png': 'png',
+      'image/webp': 'webp',
+      'image/heic': 'heic',
+      'image/heif': 'heif',
+    },
+  },
+};
+
+/** The app asks for "30–60 sec"; a little slack for the phone's own trim. */
+export const VIDEO_MAX_SECONDS = 90;
+/** How long a signed upload URL stays usable. */
+export const UPLOAD_URL_TTL_MS = 30 * 60 * 1000;
+
+export const testimonialFolder = (agentId: string): string =>
+  `vistaar/testimonials/${agentId}`;
+
+const MEDIA_PATH =
+  /^vistaar\/testimonials\/VST-\d+\/(video|photo)\/[0-9a-f-]{36}\.[a-z0-9]{2,4}$/;
+
+/** `vistaar/testimonials/<agent>/<kind>/<uuid>.<ext>` — the kind is in the path. */
+export const mediaPathFor = (
+  agentId: string,
+  kind: Exclude<SubmissionKind, 'text'>,
+  id: string,
+  ext: string,
+): string => `${testimonialFolder(agentId)}/${kind}/${id}.${ext}`;
+
+/**
+ * Only a file in the caller's own folder, uploaded for this kind, may be
+ * attached — a partner cannot put another partner's video on their story.
+ */
+export const ownsMedia = (
+  agentId: string,
+  kind: Exclude<SubmissionKind, 'text'>,
+  path: string,
+): boolean =>
+  MEDIA_PATH.test(path) &&
+  path.startsWith(`${testimonialFolder(agentId)}/${kind}/`);
+
+/** The 1–5 stars the app asks for. */
+export const RATING_MIN = 1;
+export const RATING_MAX = 5;

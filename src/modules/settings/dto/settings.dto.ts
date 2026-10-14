@@ -97,6 +97,16 @@ export class UpdateSettingsDto {
   @Max(365, { message: 'Customer release can be at most 365 days.' })
   customer_release_days?: number;
 
+  @ApiPropertyOptional({
+    type: ConsentTextDto,
+    description:
+      'The wording a farmer agrees to before a partner sends their testimonial; a change makes a new version',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => ConsentTextDto)
+  testimonial_consent_text?: ConsentTextDto;
+
   @ApiPropertyOptional({ example: 5, minimum: 0.5, maximum: 50 })
   @IsOptional()
   @IsNumber()

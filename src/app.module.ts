@@ -23,6 +23,7 @@ import { CropCalendarModule } from '@modules/crop-calendar/crop-calendar.module'
 import { DraftOrderModule } from '@modules/draft-order/draft-order.module';
 import { EventsModule } from '@modules/events/events.module';
 import { FaqsModule } from '@modules/faqs/faqs.module';
+import { FeedbackModule } from '@modules/feedback/feedback.module';
 import { HealthModule } from '@modules/health/health.module';
 import { InfoPagesModule } from '@modules/info-pages/info-pages.module';
 import { LeadsModule } from '@modules/leads/leads.module';
@@ -97,6 +98,7 @@ import { UploadsModule } from '@modules/uploads/uploads.module';
     StoriesModule,
     TermsModule,
     FaqsModule,
+    FeedbackModule,
     InfoPagesModule,
     LeadsModule,
     TodayModule,

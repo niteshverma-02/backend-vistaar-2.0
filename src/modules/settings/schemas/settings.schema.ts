@@ -8,6 +8,16 @@ export interface FarmerConsent {
   text: { en: string; hi?: string };
 }
 
+/**
+ * The Feedback screen's follow-up question and reason chips per NPS bucket
+ * (`detractor`, `passive`, `promoter`). The feedback module owns the shape
+ * and the built-in copy; this only keeps HO's edit.
+ */
+export type FeedbackReasons = Record<
+  string,
+  { question: string; chips: string[] }
+>;
+
 /** One document of programme settings the HO desk can change without a release. */
 @Schema({ collection: 'vistaar_v2_settings', versionKey: false })
 export class Settings {
@@ -43,6 +53,19 @@ export class Settings {
 
   @Prop({ type: Number, default: 45 })
   customer_release_days!: number;
+
+  /**
+   * The farmer's permission to show their testimonial — face, voice, words,
+   * name — on Katyayani's product pages and to other partners. Versioned like
+   * `farmer_consent`; each consent row keeps the words it was given under.
+   * `null` = the built-in first version.
+   */
+  @Prop({ type: SchemaTypes.Mixed, default: null })
+  testimonial_consent!: FarmerConsent | null;
+
+  /** `null` = the app's built-in reasons. */
+  @Prop({ type: SchemaTypes.Mixed, default: null })
+  feedback_reasons!: FeedbackReasons | null;
 
   /** How far the approval screen looks for existing network, in km. */
   @Prop({ type: Number, default: 5 })

@@ -62,6 +62,10 @@ export const CAPABILITIES = {
   'stories.write': ['head'],
   /** See every partner's placed orders (Stockship `orders_v2`, source vistaar). Read-only. */
   'orders.read': ['head'],
+  /** See partners' NPS answers, call-backs and product suggestions. */
+  'feedback.read': ['head'],
+  /** Close or reopen call-backs, edit the reason chips, triage suggestions. */
+  'feedback.write': ['head'],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Capability = keyof typeof CAPABILITIES;

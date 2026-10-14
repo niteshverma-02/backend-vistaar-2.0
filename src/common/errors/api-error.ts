@@ -75,6 +75,14 @@ export const API_ERROR_CODES = [
   'BANNERS_CHANGED',
   // testimonials: the bulk / family is not in Stockship's catalogue.
   'PRODUCT_NOT_FOUND',
+  // the attached video / photo was never uploaded, or is not this kind (400).
+  'MEDIA_NOT_FOUND',
+  // HO: the submission's status no longer allows that action (409).
+  'TESTIMONIAL_NOT_ALLOWED',
+  // HO: the farmer withdrew consent — it can never be shown again (409).
+  'CONSENT_WITHDRAWN',
+  // HO: a partner's testimonial is decided on the submissions desk, not here (409).
+  'TESTIMONIAL_FROM_PARTNER',
   // attendance. All 409: the day's stored state, not the request, is what refused it.
   'ALREADY_PUNCHED_IN',
   'NOT_PUNCHED_IN',
@@ -110,6 +118,8 @@ export const API_ERROR_CODES = [
   'LEADS_UNAVAILABLE',
   // The order service's confirmed-order call is off on this server (no secret).
   'ORDER_EVENTS_NOT_CONFIGURED',
+  // feedback: a partner's answers or product suggestions for the IST day are used up (429).
+  'FEEDBACK_LIMIT',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

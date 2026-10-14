@@ -7,6 +7,7 @@ import type { UpdateSettingsDto } from '../dto/settings.dto';
 import {
   SettingsRepository,
   type FarmerConsent,
+  type FeedbackReasons,
   type SettingsRecord,
 } from '../repositories/settings.repository';
 
@@ -19,17 +20,28 @@ const FIRST_CONSENT: FarmerConsent = {
   },
 };
 
+/** The app's testimonial screen, until HO changes it. */
+const FIRST_TESTIMONIAL_CONSENT: FarmerConsent = {
+  version: 1,
+  text: {
+    en: 'Farmer agreed that Katyayani may show this video, photo or quote, with their name and village, on its product pages and to its partners.',
+    hi: 'किसान ने सहमति दी है कि कात्यायनी यह वीडियो, फ़ोटो या बात, उनके नाम और गाँव के साथ, अपने प्रोडक्ट पेज पर और अपने पार्टनर्स को दिखा सकती है।',
+  },
+};
+
 const DEFAULTS: SettingsRecord = {
   default_owner_agent_id: null,
   lead_owner_agent_id: null,
   farmer_consent: FIRST_CONSENT,
   lead_release_days: 15,
   customer_release_days: 45,
+  testimonial_consent: FIRST_TESTIMONIAL_CONSENT,
   conflict_radius_km: 5,
+  feedback_reasons: null,
 };
 const CACHE_MS = 60_000;
 
-export type { FarmerConsent, SettingsRecord };
+export type { FarmerConsent, FeedbackReasons, SettingsRecord };
 
 @Injectable()
 export class SettingsService {
@@ -49,6 +61,8 @@ export class SettingsService {
       ...DEFAULTS,
       ...stored,
       farmer_consent: stored.farmer_consent ?? FIRST_CONSENT,
+      testimonial_consent:
+        stored.testimonial_consent ?? FIRST_TESTIMONIAL_CONSENT,
     };
     this.cached = { at: Date.now(), value };
     return value;
@@ -69,23 +83,42 @@ export class SettingsService {
         );
       }
     }
-    const { farmer_consent_text, ...rest } = dto;
+    const { farmer_consent_text, testimonial_consent_text, ...rest } = dto;
     const set: Partial<SettingsRecord> = { ...rest, updated_by: by };
-    if (farmer_consent_text) {
-      const current = (await this.get()).farmer_consent;
-      const changed =
-        current.text.en !== farmer_consent_text.en ||
-        (current.text.hi ?? '') !== (farmer_consent_text.hi ?? '');
-      // Same words, same version: leads already given under it stay current.
-      if (changed) {
-        set.farmer_consent = {
-          version: current.version + 1,
-          text: farmer_consent_text,
-        };
-      }
-    }
+    const current = await this.get();
+    const farmer = nextConsent(current.farmer_consent, farmer_consent_text);
+    if (farmer) set.farmer_consent = farmer;
+    const testimonial = nextConsent(
+      current.testimonial_consent,
+      testimonial_consent_text,
+    );
+    if (testimonial) set.testimonial_consent = testimonial;
     await this.settings.write(set);
     this.cached = null;
     return this.get();
   }
+
+  /** The feedback module validates the shape; this only stores it. */
+  async setFeedbackReasons(
+    reasons: FeedbackReasons,
+    by: string,
+  ): Promise<SettingsRecord> {
+    await this.settings.write({ feedback_reasons: reasons, updated_by: by });
+    this.cached = null;
+    return this.get();
+  }
+}
+
+/**
+ * The next version when the words changed; `null` when they did not — the
+ * same words keep the version, so consents given under it stay current.
+ */
+function nextConsent(
+  current: FarmerConsent,
+  text: FarmerConsent['text'] | undefined,
+): FarmerConsent | null {
+  if (!text) return null;
+  const changed =
+    current.text.en !== text.en || (current.text.hi ?? '') !== (text.hi ?? '');
+  return changed ? { version: current.version + 1, text } : null;
 }

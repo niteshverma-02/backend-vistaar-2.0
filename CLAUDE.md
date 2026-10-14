@@ -171,6 +171,16 @@ row's existing `__v` (version = `__v + 1`, user's decision 2026-10-13); a new
 Vistaar's document holds both the privacy policy and the partner terms. No
 index is declared in code.
 
+**Exception — `product_reviews` + `product_testimonials`** (owned by Stockship
+v3): partner testimonials are written there by the user's decision
+(2026-10-14) — the collections are Stockship's, the APIs are ours. Only on HO's
+approval (pending ones live in `vistaar_v2_testimonials`), always with
+`source: 'vistaar'`, Stockship's row shape exactly (`verified_by` /
+`deleted_by` = HO email, `__v: 0`), upsert by the `_id` reserved at submit, and
+every write filters on `_id` + `source`. The farmer's consent is its own
+collection, `vistaar_v2_testimonial_consents`, never deleted. No index is
+declared in code.
+
 ---
 
 ## Collections
@@ -183,7 +193,7 @@ index is declared in code.
 | Cohorts | `vistaar_v2_cohorts` | HO-managed partner types |
 | Sessions | `vistaar_v2_sessions` | SHA-256 of refresh tokens, TTL |
 | OTP attempts | `vistaar_v2_otp_attempts` | `_id` `send:<phone>` or `verify:<phone>`, sliding window of hits, one atomic pipeline update; TTL. Shared OTP limits across processes |
-| Settings | `vistaar_v2_settings` | Default owner, farmer-lead owner, farmer-consent wording (versioned), lead / customer release days, conflict radius |
+| Settings | `vistaar_v2_settings` | Default owner, farmer-lead owner, farmer-consent wording (versioned), lead / customer release days, conflict radius, Feedback reason chips |
 | Leads | `vistaar_v2_leads` | One row per farmer a partner holds (unique `pii_id`): holder (released when not worked, HO transfer), stage, follow-up, activity, consent; copy of the farmer basics for lists. The farmer is the org's `leads_v2` / `contacts_v2`. A **customer** is a row at `won` — set by the order service's confirmed-order call (`/hooks/orders/confirmed`), business read from `orders_v2` |
 | Counters | `vistaar_v2_counters` | `VST-` series (not `app_counters`, not legacy `sequences`) |
 | Banners | `vistaar_v2_banners` | HO-managed Home carousel: own image (`vistaar/banners/`, public token URL) or text banner; cohort-targeted, scheduled; app reads cached ≤ 60 s |
@@ -199,6 +209,10 @@ index is declared in code.
 | FAQs | `vistaar_v2_faqs` + `vistaar_v2_faq_sections` | HO-managed sections (`_id` = key, delete only when empty) and help FAQs `{category = section key, q, a}`, unique normalised question; `GET /faqs` returns live sections + FAQs, cached ≤ 60 s |
 | Terms | `terms_and_conditions` (shared, `profiles: ['vistaar']`) | Existing shape exactly: `toc_id` `TOC-n`, `title`, `link` to the document, `is_active` (one active Vistaar row); public app read cached ≤ 60 s. See *Shared records* |
 | Info pages | `vistaar_v2_info_pages` | HO-edited About Vistaar, About Katyayani, Contact Us: one row per page (`_id` = page), own CRUD per page (`/admin/about-program` …), `content` checked by the page's DTO, optimistic `version`; public app read cached ≤ 60 s, Contact Us `open_now` per request |
+| Feedback | `vistaar_v2_feedback` + `vistaar_v2_product_suggestions` | Feedback screen: NPS (bucket server-side), reasons, comment, stars; a detractor opens a call-back due in 2 working days (Mon–Sat IST) for the partner's owner. "Suggest a product" rows `_id` `SUG-n` (`vistaar_v2_counters`), grouped by `product_key`. Partner snapshot copied at submit; 10 answers / 20 suggestions per IST day |
+| Testimonials | `vistaar_v2_testimonials` | One row per testimonial a partner sends (`_id` = app's UUID): farmer (own lead), product, crop, kind video/photo/text, rating, private media under `vistaar/testimonials/<agent_id>/`, status submitted/approved/rejected/removed + reason, reserved `review_id` / `testimonial_id`, views/shares. Library = approved |
+| Testimonial consents | `vistaar_v2_testimonial_consents` | Farmer's consent per testimonial (`_id` = its id): version + exact words + lang, given/withdrawn. Never deleted; wording versioned in settings `testimonial_consent` |
+| testimonials | `product_reviews`, `product_testimonials` (shared, `source: 'vistaar'`) | Written on HO approval only; Stockship's shape exactly. See *Shared records* |
 | cart | `carts` (shared, `source: 'vistaar'`) | B2B's row shape exactly, no `user_id`; `pii_id` = farmer (partner's own for shop stock), `_id` derived from the partner. See `docs/DATABASE.md` |
 | draft-order | `draft_orders` (shared, `entry_path: 'vistaar'`) | Existing shape + `reminder_sent`; partner in `agent_id`; id from `app_counters`. See `docs/DATABASE.md` |
 | leads | `leads_v2`, `contacts_v2`, `addresses` (shared, `source: 'vistaar'`) | Farmers partners add; new people only; `created_by` = `VST-…`. See `docs/DATABASE.md` |

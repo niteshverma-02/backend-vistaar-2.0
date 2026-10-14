@@ -65,6 +65,24 @@ db.vistaar_v2_leads.createIndex({ agent_id: 1, stage: 1 })
 db.vistaar_v2_leads.createIndex({ agent_id: 1, next_follow_up: 1 })
 db.vistaar_v2_leads.createIndex({ created_at: -1 })
 db.vistaar_v2_leads.createIndex({ phone: 1 })
+db.vistaar_v2_testimonials.createIndex({ agent_id: 1, created_at: -1 })
+db.vistaar_v2_testimonials.createIndex({ status: 1, created_at: -1 })
+db.vistaar_v2_testimonials.createIndex({ status: 1, shares: -1 })
+db.vistaar_v2_testimonials.createIndex({ status: 1, bulk: 1, created_at: -1 })
+db.vistaar_v2_testimonials.createIndex({ status: 1, crop: 1, created_at: -1 })
+db.vistaar_v2_testimonials.createIndex({ status: 1, state: 1, district: 1, created_at: -1 })
+db.vistaar_v2_testimonials.createIndex({ testimonial_id: 1 }, { partialFilterExpression: { testimonial_id: { $type: 'objectId' } } })
+db.vistaar_v2_testimonials.createIndex({ pii_id: 1 })
+db.vistaar_v2_testimonial_consents.createIndex({ pii_id: 1, given_at: -1 })
+db.vistaar_v2_testimonial_consents.createIndex({ agent_id: 1, given_at: -1 })
+db.vistaar_v2_feedback.createIndex({ agent_id: 1, created_at: -1 })
+db.vistaar_v2_feedback.createIndex({ created_at: -1 })
+db.vistaar_v2_feedback.createIndex({ bucket: 1, created_at: -1 })
+db.vistaar_v2_feedback.createIndex({ 'follow_up.status': 1, 'follow_up.due_at': 1 }, { partialFilterExpression: { 'follow_up.status': { $exists: true } } })
+db.vistaar_v2_product_suggestions.createIndex({ agent_id: 1, created_at: -1 })
+db.vistaar_v2_product_suggestions.createIndex({ status: 1, created_at: -1 })
+db.vistaar_v2_product_suggestions.createIndex({ created_at: -1 })
+db.vistaar_v2_product_suggestions.createIndex({ product_key: 1, created_at: -1 })
 ```
 
 ⚠️ **Beta (2026-10-09): none of these exist** — the beta Mongo host is out of disk and every
@@ -84,6 +102,7 @@ race; onboarding create re-reads on a race; sessions are deleted on refresh (no 
 
 - SMS template / DLT for Vistaar on the utilities OTP service.
 - Firebase service account for uploads (same project as ko-sales, or a new one).
+- **Stockship (testimonials):** add `vistaar` to `REVIEW_SOURCES` (`product_reviews`), so their list filter and desk accept our rows; recompute `bulk_v2` / `combos_v2` average ratings over **verified** rows only (today unverified count too) and know that our approvals do not trigger their `syncRating` — the average catches up on their next write for that product; build `{ source, verified, deleted, created_at }` and `{ bulk, verified, deleted }` indexes on `product_reviews` and `product_testimonials` (both have only `_id` today).
 ### `carts` (shared, owned by B2B Sales — build with their sign-off)
 
 Nothing to build: every Vistaar read and write is by `_id` (derived from the
@@ -182,6 +201,22 @@ few thousand orders per partner; past that, ask Stockship for
 - [ ] `node dist/scripts/seed-info-pages.js --apply` once (the app's current text, v1 of each page).
 - [ ] HO replaces the placeholders the app marked "to confirm": About Katyayani stats, helpline `1800-000-0000`, social links (bare youtube/instagram/facebook), Contact Us helpline `1800123456` and WhatsApp `9876543000`, the Play Store link.
 - [ ] App build that reads `GET /about-program`, `/about-company`, `/contact-us` (instead of `help_seed.dart` / `content_seed.dart`) shipped.
+
+## Feedback (NPS, app stars, Suggest a product) — before switching on
+
+- [ ] The eight `vistaar_v2_feedback` / `vistaar_v2_product_suggestions` indexes built (above) — `{agent_id, created_at}` is what keeps the daily cap a cheap count.
+- [ ] HO roles that may read / act on feedback get `feedback.read` / `feedback.write` (today: the head roles).
+- [ ] Product agrees the detractor promise in the app ("Your Prasar Officer will call you within 2 working days") — due = end of the 2nd working day (Mon–Sat, IST); the owner officer is the partner's `owner_agent_id`.
+- [ ] App build that calls `/feedback`, `/feedback/suggestions` and reads `/feedback/reasons` shipped (see `FEEDBACK-APP.md`).
+
+## Testimonials (partner submissions) — before switching on
+
+- [ ] The ten `vistaar_v2_testimonials` / `vistaar_v2_testimonial_consents` indexes built (above).
+- [ ] `FIREBASE_*` set; videos and photos go **private** under `vistaar/testimonials/<agent_id>/<kind>/`, uploaded by the app straight to the bucket with a signed PUT (≤ 60 MB video, ≤ 10 MB photo). On approval the file gets a Firebase download token (the link product pages play); removal takes the token away, a consent withdrawal deletes the file.
+- [ ] Only for a **web** build of the app: bucket CORS allows `PUT` with `Content-Type` and `x-goog-content-length-range` from the app's origin. The mobile app needs nothing.
+- [ ] Stockship team told and agreed (see *Owed by other teams*).
+- [ ] HO reviews the testimonial-consent wording (`PUT /admin/settings { testimonial_consent_text }`) — the built-in v1 is a draft, not legal-approved.
+- [ ] App build on `/testimonials/*` shipped (see `TESTIMONIALS-APP.md`): farmer picked from **My farmers** only (a new farmer is added as a lead first), product = `bulk` SKU, a client UUID per testimonial.
 
 ## Run
 
