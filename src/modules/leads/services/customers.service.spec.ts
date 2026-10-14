@@ -98,6 +98,7 @@ function setup(opts: {
   );
   const orders = {
     businessByCustomer: jest.fn().mockResolvedValue(business),
+    buyersIn: jest.fn().mockResolvedValue(new Set(['PII-C'])),
   };
   const settings = {
     get: jest.fn().mockResolvedValue({
@@ -110,7 +111,7 @@ function setup(opts: {
     orders as unknown as OrderService,
     settings as unknown as SettingsService,
   );
-  return { service, repo };
+  return { service, repo, orders };
 }
 
 async function codeOf(promise: Promise<unknown>): Promise<string> {
@@ -237,6 +238,13 @@ describe('CustomersService — the Customers screen', () => {
     expect(byName.items.map((c) => c.name)).toEqual(['Asha', 'Bhola', 'Chand']);
     const wheat = await service.list(ME, query({ crop: 'WHEAT' }));
     expect(wheat.items.map((c) => c.pii_id).sort()).toEqual(['PII-A', 'PII-B']);
+  });
+
+  it('narrows to customers ordered for in a month (Reports)', async () => {
+    const { service, orders } = setup({ rows: customers, business });
+    const page = await service.list(ME, query({ ordered_in: '2026-09' }));
+    expect(page.items.map((c) => c.pii_id)).toEqual(['PII-C']);
+    expect(orders.buyersIn).toHaveBeenCalledWith(ME.agent_id, '2026-09');
   });
 
   it('counts the tiles: total, active in 30 days, business, crop chips', async () => {

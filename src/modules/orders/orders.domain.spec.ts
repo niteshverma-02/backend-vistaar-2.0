@@ -1,4 +1,6 @@
 import {
+  isCounted,
+  markTimes,
   BUSINESS_STATUSES,
   addressLine,
   firstUrl,
@@ -150,5 +152,48 @@ describe('customer business', () => {
     expect(BUSINESS_STATUSES).not.toContain('rto');
     expect(BUSINESS_STATUSES).not.toContain('cancelled');
     expect(BUSINESS_STATUSES).not.toContain('pending');
+  });
+});
+
+describe('markTimes', () => {
+  const at = (iso: string) => new Date(iso);
+
+  it('dates delivery and a return from the first entry into each', () => {
+    expect(
+      markTimes(
+        [
+          { stage_name: 'Delivered', timestamp: at('2026-10-05T10:00:00Z') },
+          { stage_name: 'delivered', timestamp: at('2026-10-06T10:00:00Z') },
+          {
+            stage_name: 'rto_initiated',
+            timestamp: at('2026-10-09T10:00:00Z'),
+          },
+        ],
+        'rto_delivered',
+        at('2026-10-10T10:00:00Z'),
+      ),
+    ).toEqual({
+      delivered_at: at('2026-10-05T10:00:00Z'),
+      off_at: at('2026-10-09T10:00:00Z'),
+    });
+  });
+
+  it('takes the last status time when Stockship jumped straight to it', () => {
+    const last = at('2026-10-07T10:00:00Z');
+    expect(markTimes([], 'delivered', last)).toEqual({
+      delivered_at: last,
+      off_at: null,
+    });
+    expect(markTimes([], 'cancelled', last).off_at).toEqual(last);
+    expect(markTimes([], 'in_transit', last)).toEqual({
+      delivered_at: null,
+      off_at: null,
+    });
+  });
+
+  it('leaves split parents, merged orders and non-orders out of the count', () => {
+    for (const s of ['split', 'merged', 'failed', 'pseudo', ' Split '])
+      expect(isCounted(s)).toBe(false);
+    expect(isCounted('delivered')).toBe(true);
   });
 });

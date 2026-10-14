@@ -2,8 +2,6 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import { IsOptional, Matches } from 'class-validator';
 
-import { DATE_PATTERN } from '@modules/attendance/attendance.domain';
-
 import type { OrderView } from './order-view.dto';
 import { OrdersQueryDto } from './order-request.dto';
 
@@ -22,26 +20,6 @@ export class AdminOrdersQueryDto extends OrdersQueryDto {
   )
   @Matches(PARTNER_ID_PATTERN, { message: 'This partner id is not valid.' })
   agent_id?: string;
-
-  @ApiPropertyOptional({
-    example: '2026-10-01',
-    description: 'First IST day placed, included',
-  })
-  @IsOptional()
-  @Matches(DATE_PATTERN, {
-    message: 'Please choose a valid start date, for example 2026-10-01.',
-  })
-  from?: string;
-
-  @ApiPropertyOptional({
-    example: '2026-10-13',
-    description: 'Last IST day placed, included',
-  })
-  @IsOptional()
-  @Matches(DATE_PATTERN, {
-    message: 'Please choose a valid end date, for example 2026-10-13.',
-  })
-  to?: string;
 }
 
 /** The partner an order belongs to, as HO lists them. */

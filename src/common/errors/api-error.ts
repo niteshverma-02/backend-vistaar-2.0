@@ -131,6 +131,15 @@ export const API_ERROR_CODES = [
   'CREDENTIALS_NOT_TESTED',
   // the two-person rule: the submitter cannot approve their own keys (403).
   'APPROVER_IS_SUBMITTER',
+  // Commission plans: one per cohort and month (409); past months are paid out, so locked (409).
+  'PLAN_EXISTS',
+  'PLAN_LOCKED',
+  // Wallet. 400 for the amount; 409 when the stored state refused it.
+  'BELOW_MIN_WITHDRAWAL',
+  'NOT_ENOUGH_BALANCE',
+  'WITHDRAWAL_OPEN',
+  'BANK_NOT_VERIFIED',
+  'WITHDRAWAL_CHANGED',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

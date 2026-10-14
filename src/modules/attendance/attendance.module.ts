@@ -24,5 +24,6 @@ import { AttendanceService } from './services/attendance.service';
   ],
   controllers: [AttendanceController, AdminAttendanceController],
   providers: [AttendanceRepository, AttendanceService, AdminAttendanceService],
+  exports: [AttendanceService],
 })
 export class AttendanceModule {}

@@ -19,6 +19,11 @@ export interface SettingsRecord {
   lead_release_days: number;
   customer_release_days: number;
   testimonial_consent: FarmerConsent;
+  return_window_days: number;
+  min_withdrawal: number;
+  tds_rate_with_pan: number;
+  tds_rate_without_pan: number;
+  monthly_target: number;
   conflict_radius_km: number;
   feedback_reasons: FeedbackReasons | null;
   updated_by?: string;

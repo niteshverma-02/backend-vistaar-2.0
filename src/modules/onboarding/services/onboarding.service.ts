@@ -25,6 +25,7 @@ import {
   progress,
   requiredDocuments,
   withUrls,
+  type FieldDef,
   type RawData,
   type StepDef,
 } from '../form.domain';
@@ -49,6 +50,26 @@ function labelsOf(steps: StepDef[], keys: string[]): string {
     .map((key) => fields.get(key)?.label?.en?.trim() || key.replace(/_/g, ' '))
     .join(', ');
 }
+
+/** The KYC a payout rests on: PAN for the TDS rate, the bank account to pay into. */
+export interface PayoutFacts {
+  pan_number: string | null;
+  pan_verified: boolean;
+  bank_verified: boolean;
+  bank_account: {
+    account_holder: string | null;
+    account_number: string | null;
+    ifsc: string | null;
+  } | null;
+}
+
+/** ko-sales' `piis.documents` keys the form's PAN and bank-proof fields carry. */
+const PAN_DOCUMENT = 'pan';
+const BANK_DOCUMENT = 'bank_details';
+const BANK_ACCOUNT_FIELD = 'details.bank_account';
+
+const text = (v: unknown): string | null =>
+  typeof v === 'string' && v.trim() ? v.trim() : null;
 
 export interface OnboardingView {
   onboarding_id: string;
@@ -448,6 +469,52 @@ export class OnboardingService {
         { completion_pct: r.completion_pct, submitted_at: r.submitted_at },
       ]),
     );
+  }
+
+  /**
+   * Per partner (`agent_ref`): PAN, bank account, and whether HO verified the
+   * PAN and the bank proof. The fields are found by what they are on the
+   * partner's own form version (`org_document`, `maps_to`), not by key, so a
+   * cohort whose form names them differently still pays.
+   */
+  async payoutFacts(
+    agentRefs: readonly string[],
+  ): Promise<Map<string, PayoutFacts>> {
+    if (agentRefs.length === 0) return new Map();
+    const docs = await this.onboarding.forPayout(agentRefs);
+    const out = new Map<string, PayoutFacts>();
+    for (const doc of docs) {
+      const fields = [
+        ...fieldIndex(
+          (await this.configs.version(doc.cohort, doc.config_version)).steps,
+        ).values(),
+      ];
+      const keyOf = (match: (f: FieldDef) => boolean) =>
+        fields.find(match)?.key ?? null;
+      const pan = keyOf((f) => f.org_document === PAN_DOCUMENT);
+      const proof = keyOf((f) => f.org_document === BANK_DOCUMENT);
+      const bank = keyOf((f) => f.maps_to === BANK_ACCOUNT_FIELD);
+      const raw = doc.raw_data ?? {};
+      const panValue = pan ? (raw[pan] as { number?: unknown } | null) : null;
+      const account = bank
+        ? (raw[bank] as Record<string, unknown> | null)
+        : null;
+      const verified = (key: string | null) =>
+        !!key && doc.documents_review?.[key]?.status === 'verified';
+      out.set(doc.agent_ref, {
+        pan_number: text(panValue?.number)?.toUpperCase() ?? null,
+        pan_verified: verified(pan),
+        bank_verified: verified(proof),
+        bank_account: account
+          ? {
+              account_holder: text(account.account_holder),
+              account_number: text(account.account_number),
+              ifsc: text(account.ifsc)?.toUpperCase() ?? null,
+            }
+          : null,
+      });
+    }
+    return out;
   }
 
   nearby(

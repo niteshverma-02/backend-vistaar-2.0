@@ -3,6 +3,7 @@ import {
   istDayStart,
   istDaysBetween,
 } from '@common/utils/ist-day.util';
+import { NOT_AN_ORDER } from '@modules/orders/orders.domain';
 
 /**
  * Home's "Today's tasks" (PRD H5; Lovable TodayTasks.tsx): what the partner
@@ -21,9 +22,6 @@ export type TaskType = (typeof TASK_TYPES)[number];
 
 /** A saved cart idle this many days is urgent (Lovable). */
 export const CART_URGENT_DAYS = 3;
-
-/** Raw statuses read as "placed" that are not a live order to confirm. */
-const NOT_AN_ORDER: ReadonlySet<string> = new Set(['failed', 'pseudo']);
 
 interface TaskBase {
   /** The record's id — what the app opens. */

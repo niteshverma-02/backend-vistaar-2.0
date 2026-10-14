@@ -46,6 +46,18 @@ export class AttendanceRepository {
   }
 
   /** Days in `[from, to]`, newest first — an `_id` range, since the id starts with the partner. */
+  /** Days punched in between two day keys — a day row exists only once punched in. */
+  countDays(agentId: string, from: string, to: string): Promise<number> {
+    return this.model
+      .countDocuments({
+        _id: {
+          $gte: attendanceDayId(agentId, from),
+          $lte: attendanceDayId(agentId, to),
+        },
+      })
+      .exec();
+  }
+
   range(agentId: string, from: string, to: string): Promise<AttendanceDay[]> {
     return this.model
       .find({

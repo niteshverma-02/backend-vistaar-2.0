@@ -94,6 +94,27 @@ export const BUSINESS_STATUSES: readonly string[] = [
   ...statusesFor('delivered'),
 ];
 
+/** The app's `selfLabel`: whose name a shop-stock order shows. */
+export const SELF_LABEL = 'Self (shop stock)';
+
+/** Raw statuses read as "placed" that are not a live order: a failed payment, a placeholder. */
+export const NOT_AN_ORDER: ReadonlySet<string> = new Set(['failed', 'pseudo']);
+
+/**
+ * Not an order of its own for sales and commission: besides `NOT_AN_ORDER`,
+ * a parent `split` into `-S1` / `-S2` children and an order `merged` into
+ * another (checked 2026-10-14) — the children and the surviving order carry
+ * the lines, so counting the parent too would count them twice.
+ */
+export const NOT_COUNTED: ReadonlySet<string> = new Set([
+  ...NOT_AN_ORDER,
+  'split',
+  'merged',
+]);
+
+export const isCounted = (status: string | null | undefined): boolean =>
+  !NOT_COUNTED.has(normalise(status));
+
 /** The app's stage for a raw `order_status`. */
 export function stageOf(status: string | null | undefined): OrderStage {
   return RAW_STATUS[normalise(status)]?.stage ?? 'placed';
@@ -226,3 +247,49 @@ export function firstUrl(value: string | null | undefined): string | null {
   const first = (value ?? '').split(/(?=https?:\/\/)/)[0]?.trim();
   return first ? first : null;
 }
+
+/**
+ * When an order was delivered and when it left the line (cancelled or
+ * returned), from its status history. A delivered order with no `delivered`
+ * entry (Stockship jumped to it) takes its last status time.
+ */
+export function markTimes(
+  marks: readonly OrderStatusEntry[],
+  status: string | null | undefined,
+  lastAt: Date | null,
+): { delivered_at: Date | null; off_at: Date | null } {
+  let delivered: Date | null = null;
+  let off: Date | null = null;
+  for (const m of marks) {
+    if (!m.timestamp) continue;
+    const at = new Date(m.timestamp);
+    const stage = stageOf(m.stage_name);
+    if (stage === 'delivered' && (!delivered || at < delivered)) delivered = at;
+    if ((stage === 'cancelled' || stage === 'returned') && (!off || at < off))
+      off = at;
+  }
+  const now = stageOf(status);
+  if (now === 'delivered') delivered ??= lastAt;
+  if (now === 'cancelled' || now === 'returned') off ??= lastAt;
+  return { delivered_at: delivered, off_at: off };
+}
+
+/** The latest time in a status history; `null` when it has none. */
+export function lastStatusAt(
+  history: readonly OrderStatusEntry[] | null | undefined,
+): Date | null {
+  let last: Date | null = null;
+  for (const e of history ?? []) {
+    if (!e.timestamp) continue;
+    const at = new Date(e.timestamp);
+    if (!last || at > last) last = at;
+  }
+  return last;
+}
+
+/** Every raw status `markTimes` reads — what a query keeps of the history. */
+export const MARK_STATUSES: readonly string[] = [
+  ...statusesFor('delivered'),
+  ...statusesFor('cancelled'),
+  ...statusesFor('returned'),
+];

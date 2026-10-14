@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 
 import { AccessModule } from '@modules/access/access.module';
 import { AgentsModule } from '@modules/agents/agents.module';
+import { CommissionModule } from '@modules/commission/commission.module';
 
 import { AdminOrderController } from './controllers/admin-order.controller';
 import { OrderController } from './controllers/order.controller';
@@ -17,6 +18,7 @@ import { OrderService } from './services/order.service';
     MongooseModule.forFeature([{ name: Order.name, schema: OrderSchema }]),
     AccessModule,
     AgentsModule,
+    CommissionModule,
   ],
   controllers: [OrderController, AdminOrderController],
   providers: [

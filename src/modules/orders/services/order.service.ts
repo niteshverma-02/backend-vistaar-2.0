@@ -1,15 +1,28 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 
 import type { PartnerRef } from '@common/auth/current-partner.decorator';
-import { notFound } from '@common/errors/api-error';
+import { badRequest, notFound } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
+import {
+  addMonths,
+  istDayRange,
+  istMonthStart,
+} from '@common/utils/ist-day.util';
+import {
+  CommissionService,
+  type OrderCommission,
+} from '@modules/commission/services/commission.service';
 
 import type { OrdersQueryDto } from '../dto/order-request.dto';
 import type { OrderView } from '../dto/order-view.dto';
 import {
   BUSINESS_STATUSES,
+  NOT_COUNTED,
+  SELF_LABEL,
   addressLine,
   firstUrl,
+  lastStatusAt,
+  markTimes,
   personName,
   sizeLabel,
   stageOf,
@@ -24,9 +37,6 @@ import {
 } from '../repositories/product-lookup.repository';
 import type { OrderRecord } from '../schemas/order.schema';
 
-/** The app's `selfLabel`: whose name a shop-stock order shows. */
-const SELF_LABEL = 'Self (shop stock)';
-
 /** A customer's confirmed business with their partner (returns and cancellations left out). */
 export interface CustomerBusiness {
   orders: number;
@@ -37,9 +47,12 @@ export interface CustomerBusiness {
 
 @Injectable()
 export class OrderService {
+  private readonly logger = new Logger(OrderService.name);
+
   constructor(
     private readonly orders: OrderRepository,
     private readonly products: ProductLookupRepository,
+    private readonly commission: CommissionService,
   ) {}
 
   async list(
@@ -52,14 +65,20 @@ export class OrderService {
       query.skip,
       query.limit,
       query.customer ?? null,
+      checkedRange(query.from, query.to),
     );
     // One lookup for the whole page, not one per order.
-    const products = await this.products.bySku(
-      rows.flatMap((o) => (o.items ?? []).map((i) => i.sku)),
-    );
+    const [products, commission] = await Promise.all([
+      this.products.bySku(
+        rows.flatMap((o) => (o.items ?? []).map((i) => i.sku)),
+      ),
+      this.commissionOf(partner.agent_id, rows.length > 0),
+    ]);
 
     return new PageResult(
-      rows.map((o) => orderView(o, partner, products)),
+      rows.map((o) =>
+        orderView(o, partner, products, commission.get(o.order_id) ?? null),
+      ),
       total,
       query,
     );
@@ -89,15 +108,65 @@ export class OrderService {
     );
   }
 
+  /** Who the partner ordered for in IST month `YYYY-MM` (cancelled orders and non-orders left out). */
+  async buyersIn(agentId: string, month: string): Promise<Set<string>> {
+    const ids = await this.orders.buyersBetween(
+      agentId,
+      istMonthStart(month),
+      istMonthStart(addMonths(month, 1)),
+      [...NOT_COUNTED, ...statusesFor('cancelled')],
+    );
+    return new Set(ids);
+  }
+
   async get(partner: PartnerRef, id: string): Promise<OrderView> {
     const order = await this.orders.findOne(partner.agent_id, id);
     if (!order) throw notFound('This order could not be found.');
 
-    const products = await this.products.bySku(
-      (order.items ?? []).map((i) => i.sku),
+    const [products, commission] = await Promise.all([
+      this.products.bySku((order.items ?? []).map((i) => i.sku)),
+      this.commissionOf(partner.agent_id, true),
+    ]);
+    return orderView(
+      order,
+      partner,
+      products,
+      commission.get(order.order_id) ?? null,
     );
-    return orderView(order, partner, products);
   }
+
+  /**
+   * The partner's commission per order (`CommissionService`, a minute's
+   * cache). An order screen still opens if it cannot be worked out.
+   */
+  async commissionOf(
+    agentId: string,
+    wanted: boolean,
+  ): Promise<Map<string, OrderCommission>> {
+    if (!wanted) return new Map();
+    try {
+      return await this.commission.forOrders(agentId);
+    } catch (error) {
+      this.logger.warn(
+        `Commission not shown for ${agentId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return new Map();
+    }
+  }
+}
+
+/** `from` / `to` IST days as instants; 400 when the start is after the end. */
+export function checkedRange(
+  from?: string,
+  to?: string,
+): { from: Date | null; to: Date | null } {
+  const range = istDayRange(from, to);
+  if (range.from && range.to && range.from >= range.to)
+    throw badRequest(
+      'VALIDATION_FAILED',
+      'The start date must be on or before the end date.',
+    );
+  return range;
 }
 
 /** One `orders_v2` row as the app shows it; HO's view adds the partner on top. */
@@ -105,6 +174,7 @@ export function orderView(
   order: OrderRecord,
   partner: PartnerRef,
   products: Map<string, OrderProduct>,
+  commission: OrderCommission | null = null,
 ): OrderView {
   const isSelf = !order.pii_id || order.pii_id === partner.pii_id;
   const items = (order.items ?? []).map((item) => {
@@ -153,5 +223,11 @@ export function orderView(
     courier: order.booking_details?.booking_courier || null,
     tracking_steps: trackingSteps(status, order.order_status_map, placedAt),
     created_at: placedAt ?? new Date(0),
+    delivered_at: markTimes(
+      order.order_status_map ?? [],
+      status,
+      lastStatusAt(order.order_status_map) ?? placedAt,
+    ).delivered_at,
+    commission,
   };
 }
