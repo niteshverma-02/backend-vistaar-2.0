@@ -30,6 +30,8 @@ describe('validateEnv', () => {
       MONGODB_MAX_POOL_SIZE: 50,
       MONGODB_MIN_POOL_SIZE: 5,
       WEB_CONCURRENCY: 0,
+      // No environment takes online payment until ops turns it on.
+      PAYMENTS_ONLINE_ENABLED: false,
     });
   });
 

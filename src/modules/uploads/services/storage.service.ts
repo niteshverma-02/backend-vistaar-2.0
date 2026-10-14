@@ -105,8 +105,9 @@ export class StorageService {
     buffer: Buffer,
     mime: string,
     extra: Record<string, string> = {},
+    ext?: string,
   ): Promise<{ path: string; url: string }> {
-    const path = `${folder}/${randomUUID()}.${EXT[mime] ?? 'bin'}`;
+    const path = `${folder}/${randomUUID()}.${ext ?? EXT[mime] ?? 'bin'}`;
     const token = randomUUID();
     await this.bucket()
       .file(path)
@@ -179,6 +180,84 @@ export class StorageService {
     } catch (error) {
       if ((error as { code?: number }).code === 404) return null;
       throw error;
+    }
+  }
+
+  /**
+   * A URL the app PUTs one file to, straight into the bucket — a minute of
+   * video never passes through this server. The signature pins the path, the
+   * type and the size range: the app must send exactly `headers`, and a bigger
+   * file is refused by the bucket itself.
+   */
+  async signedUpload(
+    path: string,
+    contentType: string,
+    maxBytes: number,
+    ttlMs: number,
+  ): Promise<{ url: string; headers: Record<string, string>; expires: Date }> {
+    const expires = new Date(Date.now() + ttlMs);
+    const headers = {
+      'Content-Type': contentType,
+      'x-goog-content-length-range': `1,${maxBytes}`,
+    };
+    const [url] = await this.bucket()
+      .file(path)
+      .getSignedUrl({
+        version: 'v4',
+        action: 'write',
+        expires,
+        contentType,
+        extensionHeaders: {
+          'x-goog-content-length-range': headers['x-goog-content-length-range'],
+        },
+      });
+    return { url, headers, expires };
+  }
+
+  /** What the bucket holds at `path`; `null` when nothing was uploaded there. */
+  async stat(
+    path: string,
+  ): Promise<{ size: number; contentType: string } | null> {
+    try {
+      const [meta] = await this.bucket().file(path).getMetadata();
+      return {
+        size: Number(meta.size ?? 0),
+        contentType: String(meta.contentType ?? ''),
+      };
+    } catch (error) {
+      if ((error as { code?: number }).code === 404) return null;
+      throw error;
+    }
+  }
+
+  /**
+   * Opens a private file to anyone with the link: gives it a download token
+   * (reusing one it has) and answers the token URL — what Stockship's product
+   * pages play. `unpublish` takes the token away and the link dies.
+   */
+  async publish(path: string): Promise<string> {
+    const file = this.bucket().file(path);
+    const [meta] = await file.getMetadata();
+    const existing = String(
+      meta.metadata?.firebaseStorageDownloadTokens ?? '',
+    ).split(',')[0];
+    if (existing) return this.downloadUrl(path, existing);
+    const token = randomUUID();
+    await file.setMetadata({
+      metadata: { firebaseStorageDownloadTokens: token },
+    });
+    return this.downloadUrl(path, token);
+  }
+
+  /** Best-effort, like `remove`: the caller has already hidden the row. */
+  async unpublish(path: string): Promise<void> {
+    try {
+      await this.bucket()
+        .file(path)
+        .setMetadata({ metadata: { firebaseStorageDownloadTokens: null } });
+    } catch (error) {
+      if ((error as { code?: number }).code === 404) return;
+      this.logger.warn(`Could not unpublish ${path}: ${String(error)}`);
     }
   }
 

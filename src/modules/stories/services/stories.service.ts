@@ -6,10 +6,6 @@ import { ConfigService } from '@nestjs/config';
 import { badRequest, notFound } from '@common/errors/api-error';
 import { imageInfo } from '@common/utils/image-size.util';
 import type { Env } from '@config/env.schema';
-import {
-  CropCalendarService,
-  type CropView,
-} from '@modules/crop-calendar/services/crop-calendar.service';
 import { EventsService } from '@modules/events/services/events.service';
 import { TestimonialsService } from '@modules/testimonials/services/testimonials.service';
 import { StorageService } from '@modules/uploads/services/storage.service';
@@ -118,8 +114,6 @@ export interface StoryContentView {
   festivals: PartnerFestivalView[];
   /** Real testimonials first, then HO's ready-made ones. */
   farmer_stories: FarmerStoryView[];
-  /** For the "Crop tip" template. */
-  crop_calendar: CropView[];
   /** Upcoming events for the caller's cohort, soonest first. */
   meetings: MeetingOptionView[];
 }
@@ -154,7 +148,6 @@ export class StoriesService {
     private readonly designs: StoryDesignsService,
     private readonly templates: StoryTemplatesService,
     private readonly samples: StorySamplesService,
-    private readonly crops: CropCalendarService,
     private readonly events: EventsService,
     private readonly testimonials: TestimonialsService,
     private readonly storage: StorageService,
@@ -335,15 +328,13 @@ export class StoriesService {
     if (this.shared && Date.now() - this.shared.at < SHARED_TTL_MS) {
       return this.shared.value;
     }
-    const [templates, designs, festivals, real, samples, crops] =
-      await Promise.all([
-        this.templates.live(),
-        this.designs.live(),
-        this.festivals.live(),
-        this.farmerStories(),
-        this.samples.live(),
-        this.crops.live(),
-      ]);
+    const [templates, designs, festivals, real, samples] = await Promise.all([
+      this.templates.live(),
+      this.designs.live(),
+      this.festivals.live(),
+      this.farmerStories(),
+      this.samples.live(),
+    ]);
     const value = {
       templates,
       designs,
@@ -363,7 +354,6 @@ export class StoriesService {
           media: null,
         })),
       ],
-      crop_calendar: crops,
     };
     this.shared = { at: Date.now(), value };
     return value;
@@ -391,10 +381,10 @@ export class StoriesService {
       name: t.name,
       quote: t.quote,
       product: t.product,
-      crop: null,
-      village: null,
-      district: null,
-      stars: null,
+      crop: t.crop,
+      village: t.village,
+      district: t.district,
+      stars: t.stars,
       media: t.media,
     }));
     this.content = { at: Date.now(), farmer };

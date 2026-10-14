@@ -10,13 +10,19 @@
 /** Offline Head — the HO portal head, and the owner of farmer leads. */
 export const OFFLINE_HEAD_ROLE = 'USR-1037';
 
-export const HEAD_ROLE_CODES: ReadonlySet<string> = new Set([
-  OFFLINE_HEAD_ROLE,
+/** Company admins: everything a head can do, plus the merchant payment keys. */
+export const ADMIN_ROLE_CODES: ReadonlySet<string> = new Set([
   'USR-1000', // Super Admin
   'USR-1001', // Admin
 ]);
 
-export type Role = 'head';
+export const HEAD_ROLE_CODES: ReadonlySet<string> = new Set([
+  OFFLINE_HEAD_ROLE,
+  ...ADMIN_ROLE_CODES,
+]);
+
+/** `admin` holds every `head` capability, so the table names only what is admin-only. */
+export type Role = 'head' | 'admin';
 
 /**
  * One table, so a route cannot ship without a rule. Add a role (e.g. a KYC
@@ -62,12 +68,28 @@ export const CAPABILITIES = {
   'stories.write': ['head'],
   /** See every partner's placed orders (Stockship `orders_v2`, source vistaar). Read-only. */
   'orders.read': ['head'],
+  /** See partners' NPS answers, call-backs and product suggestions. */
+  'feedback.read': ['head'],
+  /** Close or reopen call-backs, edit the reason chips, triage suggestions. */
+  'feedback.write': ['head'],
+  /** See the app's online payment options and who changed them. */
+  'payments.read': ['head'],
+  /** Switch a payment option on or off, rename, retarget or reorder it. */
+  'payments.write': ['head'],
+  /**
+   * Submit, check, approve, reject and revoke merchant keys. Company admins
+   * only — not the Offline Head — and the two-person rule means a second
+   * admin approves what one submitted.
+   */
+  'payments.credentials': ['admin'],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Capability = keyof typeof CAPABILITIES;
 
-export const can = (role: Role, cap: Capability): boolean =>
-  (CAPABILITIES[cap] as readonly Role[]).includes(role);
+export const can = (role: Role, cap: Capability): boolean => {
+  const roles = CAPABILITIES[cap] as readonly Role[];
+  return roles.includes(role) || (role === 'admin' && roles.includes('head'));
+};
 
 export const capabilitiesOf = (role: Role): Capability[] =>
   (Object.keys(CAPABILITIES) as Capability[]).filter((c) => can(role, c));
@@ -78,5 +100,6 @@ export function roleOf(
   active: boolean,
 ): Role | null {
   if (!active || !userRole) return null;
+  if (ADMIN_ROLE_CODES.has(userRole)) return 'admin';
   return HEAD_ROLE_CODES.has(userRole) ? 'head' : null;
 }

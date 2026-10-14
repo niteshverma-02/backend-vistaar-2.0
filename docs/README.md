@@ -24,9 +24,11 @@ Contract docs, one per feature, named by who reads them:
 | [ORDERS-APP.md](./ORDERS-APP.md) | app | My orders: list by stage, details, tracking steps (read from `orders_v2`) |
 | [ATTENDANCE-APP.md](./ATTENDANCE-APP.md) | app | Punch in / out, today's state, monthly log and summary |
 | [ATTENDANCE-HO.md](./ATTENDANCE-HO.md) | HO portal | Day board across partners, 14-day trend, one partner's month |
-| [TESTIMONIALS-HO.md](./TESTIMONIALS-HO.md) | HO portal | Vistaar's product testimonials (source vistaar): review, approve, remove, add |
-| [STORIES-APP.md](./STORIES-APP.md) | app | My Story: save / list / re-share / delete stories, images, festivals, farmer stories, crop calendar (`GET /crop-calendar` too) |
-| [STORIES-HO.md](./STORIES-HO.md) | HO portal | Festivals, ready-made farmer stories, crop calendar, sharing activity, partners' saved stories |
+| [TESTIMONIALS-APP.md](./TESTIMONIALS-APP.md) | App | Send a farmer testimonial (video / photo / quote) with consent; my submissions; the library |
+| [TESTIMONIALS-HO.md](./TESTIMONIALS-HO.md) | HO portal | Partner submissions: approve, reject, remove, consent withdrawal; and Vistaar's testimonials filed by HO |
+| [STORIES-APP.md](./STORIES-APP.md) | app | My Story: save / list / re-share / delete stories, images, festivals, farmer stories |
+| [STORIES-HO.md](./STORIES-HO.md) | HO portal | Festivals, ready-made farmer stories, sharing activity, partners' saved stories |
+| [CARTS-HO.md](./CARTS-HO.md) | HO portal | Partners' open carts and saved carts (read-only) |
 | [EVENTS-APP.md](./EVENTS-APP.md) | app | Farmer events for my cohort, register / give back a seat (also My Story meetings) |
 | [EVENTS-HO.md](./EVENTS-HO.md) | HO portal | Event calendar: add, schedule, target, seats, who registered |
 | [TERMS-APP.md](./TERMS-APP.md) | app | The Vistaar partner T&C document link for Privacy & Terms and the login screen (public) |
@@ -35,6 +37,8 @@ Contract docs, one per feature, named by who reads them:
 | [FAQS-HO.md](./FAQS-HO.md) | HO portal | Manage FAQ sections and the FAQs in them |
 | [INFO-PAGES-APP.md](./INFO-PAGES-APP.md) | app | About Vistaar, About Katyayani and Contact Us text and HO contacts (public) |
 | [INFO-PAGES-HO.md](./INFO-PAGES-HO.md) | HO portal | Edit About Vistaar, About Katyayani and Contact Us |
+| [FEEDBACK-APP.md](./FEEDBACK-APP.md) | app | Feedback screen: NPS + reasons + comment + app stars, Suggest a product, HO-edited chips |
+| [FEEDBACK-HO.md](./FEEDBACK-HO.md) | HO portal | NPS dashboard, answers list, detractor call-backs, reason chips, product suggestions |
 | [DATABASE.md](./DATABASE.md) | both | Every collection this service reads or writes |
 | [TEST-DATA.md](./TEST-DATA.md) | everyone testing on beta | Test partners and farmers, what each is for, how to seed and remove them |
 | [PROD-CHECKLIST.md](./PROD-CHECKLIST.md) | backend | What must exist in production before a feature goes live |

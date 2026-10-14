@@ -1,21 +1,28 @@
 import { Injectable } from '@nestjs/common';
+import { Types } from 'mongoose';
 
-import { badRequest, notFound } from '@common/errors/api-error';
+import { badRequest, conflict, notFound } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
 import { normalizeMobile } from '@common/utils/phone.util';
+import { StorageService } from '@modules/uploads/services/storage.service';
 
 import type {
   CreateTestimonialDto,
   TestimonialListQueryDto,
   UpdateTestimonialDto,
 } from '../dto/testimonial.dto';
+import { SubmissionRepository } from '../repositories/submission.repository';
 import {
   TestimonialRepository,
   type TestimonialRow,
 } from '../repositories/testimonial.repository';
 import {
+  HO_MEDIA_FOLDER,
+  HO_MEDIA_RULES,
+  MEDIA_TYPE_OF,
   OBJECT_ID,
   VISTAAR_SOURCE,
+  hoMediaTypeOf,
   statusOf,
   toContact,
   type MediaType,
@@ -38,8 +45,10 @@ export interface AdminTestimonialView {
   status: TestimonialStatus;
   likes: number;
   dislikes: number;
-  created_by: string | null;
-  updated_by: string | null;
+  /** A partner's, sent from the app — decided on the submissions desk. */
+  from_partner: boolean;
+  verified_by: string | null;
+  deleted_by: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -51,7 +60,12 @@ export interface FarmerStoryView {
   quote: string;
   /** Trade name, else the SKU or combo family. */
   product: string | null;
-  media: { media_type: MediaType; media_url: string };
+  /** Known for a partner's testimonial; `null` for one HO filed. */
+  crop: string | null;
+  village: string | null;
+  district: string | null;
+  stars: number | null;
+  media: { media_type: MediaType; media_url: string } | null;
   created_at: Date;
 }
 
@@ -60,23 +74,112 @@ const TESTIMONIAL_NOT_FOUND =
 
 @Injectable()
 export class TestimonialsService {
-  constructor(private readonly testimonials: TestimonialRepository) {}
+  constructor(
+    private readonly testimonials: TestimonialRepository,
+    private readonly submissions: SubmissionRepository,
+    private readonly storage: StorageService,
+  ) {}
 
-  /** What My Story's "Farmer story" template picks from; product named when Stockship knows it. */
+  /**
+   * Stores a photo, video or voice note HO picked for a testimonial it files,
+   * as a public object, and answers the lasting link to send as `media_url`.
+   * Each upload gets a new path, so nothing is ever overwritten.
+   */
+  async uploadMedia(
+    buffer: Buffer,
+    mime: string,
+    by: string,
+  ): Promise<{
+    media_type: MediaType;
+    media_url: string;
+    content_type: string;
+    size: number;
+  }> {
+    const type = hoMediaTypeOf(mime);
+    if (!type) {
+      throw badRequest(
+        'FILE_TYPE_NOT_ALLOWED',
+        'Please choose a photo (JPG, PNG, WEBP), a video (MP4, MOV, WEBM) or a voice note (MP3, M4A, AAC, OGG, WAV).',
+      );
+    }
+    const rule = HO_MEDIA_RULES[type];
+    if (buffer.length > rule.maxBytes) {
+      throw badRequest(
+        'FILE_TOO_LARGE',
+        `This file is too big. ${type === 'image' ? 'Photos' : type === 'video' ? 'Videos' : 'Voice notes'} can be up to ${rule.maxBytes / (1024 * 1024)} MB.`,
+      );
+    }
+    if (buffer.length === 0) {
+      throw badRequest(
+        'FILE_REQUIRED',
+        'This file is empty. Please choose another.',
+      );
+    }
+    const { url } = await this.storage.savePublic(
+      HO_MEDIA_FOLDER,
+      buffer,
+      mime,
+      { uploadedBy: by },
+      rule.types[mime],
+    );
+    return {
+      media_type: type,
+      media_url: url,
+      content_type: mime,
+      size: buffer.length,
+    };
+  }
+
+  /**
+   * What My Story's "Farmer story" template picks from, newest first:
+   * partners' approved testimonials (quotes included, with crop, place and
+   * stars) and the ones HO filed. A partner's appears once, from its own row.
+   */
   async forStories(limit: number): Promise<FarmerStoryView[]> {
-    const rows = await this.testimonials.approvedWithReview(limit);
-    const names = await this.testimonials.tradeNames([
-      ...new Set(rows.flatMap((r) => (r.bulk ? [r.bulk] : []))),
+    const [partners, filed] = await Promise.all([
+      this.submissions.approvedQuotes(limit),
+      this.testimonials.approvedWithReview(limit),
     ]);
-    return rows.map((r) => ({
-      id: r._id.toHexString(),
-      name: r.user.name,
-      quote: r.review,
-      product:
-        (r.bulk ? names.get(r.bulk) : null) ?? r.bulk ?? r.family ?? null,
-      media: r.media,
-      created_at: r.created_at,
-    }));
+    const linked = await this.submissions.linkedTestimonials(
+      filed.map((r) => r._id),
+    );
+    const own = filed.filter((r) => !linked.has(r._id.toHexString()));
+    const names = await this.testimonials.tradeNames([
+      ...new Set(own.flatMap((r) => (r.bulk ? [r.bulk] : []))),
+    ]);
+    const stories: FarmerStoryView[] = [
+      ...partners.map((r) => ({
+        id: r._id,
+        name: r.farmer_name,
+        quote: r.text,
+        product: r.product_name ?? r.bulk ?? r.family,
+        crop: r.crop,
+        village: r.village,
+        district: r.district,
+        stars: r.rating,
+        media:
+          r.kind !== 'text' && r.media_url
+            ? { media_type: MEDIA_TYPE_OF[r.kind], media_url: r.media_url }
+            : null,
+        created_at: r.created_at,
+      })),
+      ...own.map((r) => ({
+        id: r._id.toHexString(),
+        name: r.user.name,
+        quote: r.review,
+        product:
+          (r.bulk ? names.get(r.bulk) : null) ?? r.bulk ?? r.family ?? null,
+        crop: null,
+        village: null,
+        district: null,
+        stars: null,
+        media: r.media,
+        created_at: r.created_at,
+      })),
+    ];
+    return stories
+      .sort((a, b) => b.created_at.getTime() - a.created_at.getTime())
+      .slice(0, limit);
   }
 
   async list(
@@ -93,7 +196,14 @@ export class TestimonialsService {
       query.limit,
       query.sortSpec,
     );
-    return new PageResult(rows.map(toView), total, query);
+    const linked = await this.submissions.linkedTestimonials(
+      rows.map((r) => r._id),
+    );
+    return new PageResult(
+      rows.map((r) => toView(r, linked.has(r._id.toHexString()))),
+      total,
+      query,
+    );
   }
 
   summary(): Promise<Record<TestimonialStatus, number>> {
@@ -101,7 +211,8 @@ export class TestimonialsService {
   }
 
   async get(id: string): Promise<AdminTestimonialView> {
-    return toView(await this.require(id));
+    const row = await this.require(id);
+    return toView(row, await this.fromPartner(row._id));
   }
 
   async create(
@@ -145,12 +256,13 @@ export class TestimonialsService {
         name: dto.user.name?.trim() || null,
         profile_image: null,
       },
+      verified_by: dto.verified ? by : null,
+      deleted_by: null,
       created_at: now,
       updated_at: now,
-      created_by: by,
-      updated_by: by,
+      __v: 0,
     });
-    return toView(saved);
+    return toView(saved, false);
   }
 
   async update(
@@ -162,29 +274,50 @@ export class TestimonialsService {
     // The validated DTO carries every declared field, unsent ones `undefined`,
     // and the raw driver would store those as `null` over the row's values.
     const sent = Object.entries(rest).filter(([, v]) => v !== undefined);
-    const set: Partial<TestimonialRow> & Record<string, unknown> = {
-      ...Object.fromEntries(sent),
-      updated_by: by,
-    };
+    const set: Partial<TestimonialRow> & Record<string, unknown> =
+      Object.fromEntries(sent);
     if (rest.review !== undefined) set.review = rest.review.trim();
     if (name !== undefined) set['user.name'] = name.trim() || null;
-    if (Object.keys(set).length === 1)
+    if (Object.keys(set).length === 0)
       throw invalid(
         'Nothing was changed. Please edit something before saving.',
       );
+    // Who decided, as Stockship's own desk records it.
+    if (rest.verified !== undefined)
+      set.verified_by = rest.verified ? by : null;
+    if (rest.deleted !== undefined) set.deleted_by = rest.deleted ? by : null;
 
     checkId(id);
+    await this.refusePartners(id);
     const updated = await this.testimonials.update(id, set);
     if (!updated) throw notFound(TESTIMONIAL_NOT_FOUND);
-    return toView(updated);
+    return toView(updated, false);
   }
 
   /** For good. Removing (`deleted: true`) is the undoable way. */
   async remove(id: string): Promise<{ deleted: true }> {
     checkId(id);
+    await this.refusePartners(id);
     if (!(await this.testimonials.remove(id)))
       throw notFound(TESTIMONIAL_NOT_FOUND);
     return { deleted: true };
+  }
+
+  /**
+   * A partner's testimonial has its status, reason and consent on its own
+   * row; changing the shared copy from here would leave the two disagreeing.
+   */
+  private async refusePartners(id: string): Promise<void> {
+    if (await this.fromPartner(new Types.ObjectId(id))) {
+      throw conflict(
+        'TESTIMONIAL_FROM_PARTNER',
+        "This is a partner's testimonial. Please approve or remove it from Partner testimonials.",
+      );
+    }
+  }
+
+  private async fromPartner(id: Types.ObjectId): Promise<boolean> {
+    return (await this.submissions.linkedTestimonials([id])).size > 0;
   }
 
   private async require(id: string): Promise<TestimonialRow> {
@@ -206,7 +339,10 @@ function invalid(message: string) {
   return badRequest('VALIDATION_FAILED', message, [message]);
 }
 
-export function toView(t: TestimonialRow): AdminTestimonialView {
+export function toView(
+  t: TestimonialRow,
+  fromPartner: boolean,
+): AdminTestimonialView {
   const feedbacks = t.feedbacks ?? [];
   const likes = feedbacks.filter((f) => f.status).length;
   return {
@@ -227,8 +363,9 @@ export function toView(t: TestimonialRow): AdminTestimonialView {
     status: statusOf({ verified: !!t.verified, deleted: !!t.deleted }),
     likes,
     dislikes: feedbacks.length - likes,
-    created_by: t.created_by ?? null,
-    updated_by: t.updated_by ?? null,
+    from_partner: fromPartner,
+    verified_by: t.verified_by ?? null,
+    deleted_by: t.deleted_by ?? null,
     created_at: t.created_at,
     updated_at: t.updated_at,
   };

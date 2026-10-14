@@ -15,9 +15,9 @@ writes its retailers.
 | `vistaar_v2_onboarding_configs` | cohort × version | `_id` `<cohort>@<version>`, `status` draft/published/archived, `steps[]`, `published_at/by` |
 | `vistaar_v2_cohorts` | partner type | `_id` key, `label{}`, `description{}`, `icon`, `sub_types[]`, `order`, `is_active` |
 | `vistaar_v2_sessions` | signed-in device | `_id` = SHA-256 of the refresh token, `agent_ref`, `expires_at` (TTL) |
-| `vistaar_v2_settings` | — (`_id: vistaar`) | `default_owner_agent_id`, `lead_owner_agent_id` (override owner of farmer leads; `null` = the Offline Head), `farmer_consent { version, text { en, hi } }` (`null` = built-in version 1), `lead_release_days` (15), `customer_release_days` (45), `conflict_radius_km` |
+| `vistaar_v2_settings` | — (`_id: vistaar`) | `default_owner_agent_id`, `lead_owner_agent_id` (override owner of farmer leads; `null` = the Offline Head), `farmer_consent { version, text { en, hi } }` (`null` = built-in version 1), `testimonial_consent` (same shape; the wording a farmer agrees to before a partner sends their testimonial), `lead_release_days` (15), `customer_release_days` (45), `conflict_radius_km`, `feedback_reasons { detractor, passive, promoter: { question, chips[] } }` (`null` = the app's built-in chips) |
 | `vistaar_v2_leads` | farmer a partner holds (unique `pii_id`) | `_id` UUID, `pii_id`, `agent_id` (`VST-…`), `lead_id` (org `L-…`, `null` until written / contact-only person), `origin` `created`/`linked`, farmer copy `name`, `phone`, `village`, `district`, `state`, `pincode`, `crops[]`, `acreage`; `found_via`, `expected_value`, `stage` (prospect · contacted · interested · negotiation · won · lost), `stage_history[]` (last 50), `next_follow_up`, `lost_reason`, `activities[]` `{id, type, text, at, by}` (last 100), `consent {version, at}`, `ex_employee_declared_at`, `customer_at` (first order), `last_order_at`, `held_since`, `last_worked_at`, `holder_history[]` `{agent_id, from, to, reason released·partner_blocked·transferred, by, note?}` (last 20), `location` (GeoJSON point or `null`), `location_source` (`visit` · `add` · `order` · `pincode`), `location_at`, timestamps |
-| `vistaar_v2_counters` | id series | `_id: agent_id`, `seq` |
+| `vistaar_v2_counters` | id series | `_id` `agent_id` / `product_suggestion`, `seq` |
 | `vistaar_v2_banners` | Home banner (HO) | `_id` UUID, `title{}` (localized, `en` required), `subtitle{}` / `cta{}` (required unless an image), `image_path` + `image_url` + `image_width/height` (HO art), `link` (in-app route), `tone`, `emoji`, `cohorts[]` (empty = everyone), `starts_at` / `ends_at`, `order`, `is_active`, `created_by/updated_by`, timestamps. Deleted for good by HO |
 | `vistaar_v2_attendance` | partner × IST day | `_id` `<agent_id>:<YYYY-MM-DD>`, `agent_id`, `date`, `sessions[]{in_at, in_location, out_at, out_location}` (location = `lat`, `lng`, `accuracy_m`, `label`, `source` gps/registered; at most 10), `punched_in`, `first_in_at`, `last_out_at`, `worked_ms` (closed sessions), timestamps. Times are server time. Never deleted |
 | `vistaar_v2_stories` | partner's saved My Story (≤ 20 each) | `_id` UUID, `agent_id`, `signature` (SHA-256 of config + photo path), `template`, `lang`, `theme` (design key), `card` (custom card key or null), `fields{emoji,headline,body,detail1-3,price,mrp,stars}`, `show_whatsapp`, `photo_mode`, `selection{}`, `image_path` (+ `image_width/height`) and `photo_path` (private, `vistaar/stories/<agent_id>/`), `share_count`, `last_shared_at`, `last_used_at` (list order), timestamps. Oldest beyond 20 deleted with their files |
@@ -29,10 +29,17 @@ writes its retailers.
 | `vistaar_v2_story_samples` | ready-made farmer quote (HO) | `_id` UUID, `key` (unique), `name`, `village`, `district`, `state`, `product`, `crop`, `quote`, `stars`, `order`, `is_active`, `created_by/updated_by`, timestamps |
 | `vistaar_v2_faq_sections` | FAQ section / app category chip (HO) | `_id` = section key (`payments`), `label`, `emoji`, `order`, `is_active` (off hides its FAQs too), `created_by/updated_by`, timestamps. Deleted by HO only when empty |
 | `vistaar_v2_faqs` | help FAQ (HO) | `_id` UUID, `category` = a section key, `q`, `a`, `q_key` (normalised `q`, unique), `order`, `is_active`, `created_by/updated_by`, timestamps. Deleted for good by HO |
-| `vistaar_v2_crop_calendar` | crop (HO) | `_id` = crop key (`wheat`), `crop`, `emoji`, `season` kharif/rabi/zaid, `sowing`, `harvest`, `stages[]{stage, month, advice, products[]}`, `order`, `is_active`, `created_by/updated_by`, timestamps |
+| `vistaar_v2_crop_calendar` | **retired 2026-10-14** (module removed; crops are ko-sales `/crops`) | no code reads it; the beta rows are still there, drop the collection when ready |
 | `vistaar_v2_events` | farmer event (HO) | `_id` UUID, `title`, `type` kisan_mela/training/webinar/field_day, `starts_at`, `location`, `note`, `seats`, `registered_count` (conditional `$inc`), `cohorts[]` (empty = everyone), `is_active`, `created_by/updated_by`, timestamps |
 | `vistaar_v2_event_registrations` | partner's seat | `_id` `<event_id>:<agent_id>`, `event_id`, `agent_id`, `created_at`. Deleted on un-register or with the event |
 | `vistaar_v2_info_pages` | info page (HO) | `_id` = page `about_program` / `about_company` / `contact_us`, `content{}` (page's shape — see `INFO-PAGES-HO.md`), `version` (1 on first save, +1 each; a save names the one it was made from), `created_by/updated_by`, timestamps. Read only by `_id`; never deleted |
+| `vistaar_v2_feedback` | Feedback-screen answer | `_id` ObjectId, `agent_id`, `partner{name, phone, cohort, district, state, owner_agent_id}` (copy at submit), `nps` 0–10, `bucket` detractor/passive/promoter, `reasons[]` (chip text as shown), `comment`, `rating` 1–5 or null, `follow_up{status open/done, due_at, owner_agent_id, note, done_by, done_at}` (detractors only, else null), timestamps. Never edited by the partner; never deleted |
+| `vistaar_v2_product_suggestions` | "Suggest a product" | `_id` `SUG-000001` (`vistaar_v2_counters` `product_suggestion`), `agent_id`, `partner{…}` (as above), `product`, `product_key` (lower-case, single spaces — groups the same ask), `crop`, `monthly_demand` (free text), `note`, `status` new/reviewed/planned/declined, `ho_note`, `updated_by`, timestamps. Never deleted |
+| `vistaar_v2_payment_options` | online payment option (HO) | `_id` = provider `razorpay` / `cashfree` / `phonepe` (closed set in code), `label`, `hint`, `is_active`, `order`, `cohorts[]` (empty = everyone), `version` (1 on first save, +1 each; a save names the one it read), `updated_by`, timestamps. No row = off. **No merchant key, secret or URL — ever.** Never deleted |
+| `vistaar_v2_payment_credentials` | one set of merchant keys (admin) | `_id` UUID, `provider`, `mode` test/live, `status` pending/approved/active/superseded/revoked/rejected/expired, `public_fields{}` (Key ID, App ID…), `secrets{field: {kid, iv, tag, ct}}` (AES-256-GCM, AAD = row+provider+field; **`null` once not pending/active**), `masked{field: '••••abcd'}`, `note`, `submitted_by`, `expires_at` (24 h), `test{ok, message, by, at}`, `decided_by/at`, `reason`, `activated_at`, `retired_at/by`, timestamps. Unique: one `active` and one `pending` per provider. Never deleted |
+| `vistaar_v2_payment_option_audit` | who changed a payment option | `_id` UUID, `option_id` (provider, `*` for a reorder), `action` update/reorder/credentials_*, `before`, `after` (just the changed fields), `by` (HO email), `at`. Insert-only, **never deleted** |
+| `vistaar_v2_testimonials` | testimonial a partner sent in | `_id` UUID (made by the app), `agent_id`, `partner_name` (copy), farmer `pii_id` (one of the partner's leads) + `farmer_name`, `farmer_contact` `+91…`, `village`, `district`, `state` (copies); `type` product/combo, `bulk` / `family`, `product_name` (copy), `crop`, `kind` video/photo/text, `text`, `rating` 1–5, `media_path` (private) + `media_url` (download-token link, while approved) + `duration_sec`; `status` submitted/approved/rejected/removed, `reason`, `decided_by/at`, `approved_at`; `review_id` / `testimonial_id` (ids reserved at submit for the shared rows written on approval; `testimonial_id` null for a quote), `gig_id` (reserved), `views`, `shares`, timestamps |
+| `vistaar_v2_testimonial_consents` | the farmer's consent for one testimonial | `_id` = the testimonial's, `agent_id`, `pii_id`, `farmer_name`, `version`, `text` (the exact words shown), `lang` en/hi, `given_at` (server time), `status` given/withdrawn, `withdrawn_at/by/reason`, timestamps. **Never deleted** |
 
 ### Indexes (declared on the schemas; listed in PROD-CHECKLIST)
 
@@ -50,14 +57,32 @@ writes its retailers.
 - otp_attempts: `{expires_at}` TTL
 - story_designs: `{key}` unique · `{is_active, order}`
 - story_templates: `_id` only (a few dozen rows, read whole)
-- crop_calendar: `{is_active, order}`
 - faq_sections: `{is_active, order}`
 - faqs: `{q_key}` unique · `{is_active, order}` · `{category, order}`
 - events: `{is_active, starts_at}`
 - event_registrations: `{event_id, created_at}`; a partner's seat is an `_id` lookup
+- feedback: `{agent_id, created_at:-1}` (daily cap) · `{created_at:-1}` · `{bucket, created_at:-1}` · `{follow_up.status, follow_up.due_at}` partial (detractors)
+- testimonials: `{agent_id, created_at:-1}` · `{status, created_at:-1}` · `{status, shares:-1}` · `{status, bulk, created_at:-1}` · `{status, crop, created_at:-1}` · `{status, state, district, created_at:-1}` · `{testimonial_id}` partial (ObjectId) · `{pii_id}`
+- testimonial_consents: `{pii_id, given_at:-1}` · `{agent_id, given_at:-1}`
+- product_suggestions: `{agent_id, created_at:-1}` · `{status, created_at:-1}` · `{created_at:-1}` · `{product_key, created_at:-1}`
 
 ## Shared — written
 ## Shared — written by this service with `source: 'vistaar'`
+
+### `product_reviews` and `product_testimonials` (owner: Stockship v3 — its rows are `kkd_app`, `kkd_website`, `retailer`)
+
+Written **only when HO approves** a partner's testimonial (`vistaar_v2_testimonials`), never
+while it waits — Stockship's queues and product averages never see an undecided one. Raw driver,
+no schema or index declared here; every write filters on `_id` + `source: 'vistaar'`.
+
+| Collection | Row (Stockship's shape exactly) | When |
+|---|---|---|
+| `product_reviews` | `_id` (reserved at submit), `source: 'vistaar'`, `verified`, `deleted`, `verified_by` / `deleted_by` (HO email), `rating`, `review`, `images: []`, `pii_id` (farmer), `user{contact +91…, email: null, name, profile_image: null}`, `type`, `bulk`, `family`, `created_at`, `updated_at`, `__v: 0` | every kind, on approval (upsert by `_id`); removal sets `deleted: true`; consent withdrawal deletes it |
+| `product_testimonials` | `_id` (reserved), `source: 'vistaar'`, `type`, `bulk`, `family`, `verified`, `deleted`, `verified_by` / `deleted_by`, `media{media_type video/image, media_url}` (download-token link), `review`, `pii_id`, `user{contact, name, profile_image: null}`, `feedbacks: []`, timestamps, `__v: 0` | video / photo only, as above |
+
+HO can also file a testimonial directly on `product_testimonials` (`/admin/testimonials`); a
+row a partner sent is refused there (`409 TESTIMONIAL_FROM_PARTNER`) and decided on
+`/admin/testimonial-submissions`. Stockship's own app likes (`feedbacks[]`) are left alone.
 
 ### `carts` (owner: B2B Sales — its rows are `source: 'b2b' | 'retailer'`)
 
@@ -266,6 +291,7 @@ db.vistaar_v2_agents.find({ agent_id: { $type: 'string' }, pii_id: null })   // 
 |---|---|---|
 | `KO-documents/<pii_id>/<purpose>/` | private, signed URLs (1 h) | `POST /uploads` (partner KYC) |
 | `vistaar/banners/<uuid>.<ext>` | anyone with the URL (Firebase download token); `Cache-Control: public, max-age=31536000, immutable` | `POST /admin/banners/image` (HO). Width and height stored as object metadata. Deleted when no banner uses it |
+| `vistaar/testimonials/<agent_id>/<video\|photo>/<uuid>.<ext>` | private (signed URLs, 1 h) until approved; then a Firebase download token (the link on product pages), taken away on removal | the app, by a signed PUT from `POST /testimonials/uploads`. Deleted when the farmer withdraws consent |
 
 ## External
 

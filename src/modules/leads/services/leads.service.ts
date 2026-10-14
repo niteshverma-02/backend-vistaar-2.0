@@ -140,6 +140,15 @@ const notFarmer = () =>
     'This number is registered with Katyayani as a retailer or business, not a farmer.',
   );
 
+/** A farmer as HO's cart lists name them. */
+export interface FarmerCard {
+  pii_id: string;
+  name: string;
+  phone: string;
+  village: string;
+  district: string | null;
+}
+
 /**
  * Farmers partners add, and the partner's work on them (PRD C2, C4, C9).
  * ko-sales' `/leads/upsert` is the reference for the org records, written
@@ -412,6 +421,26 @@ export class LeadsService {
    * The cart's "Ordering for" asks; the org lead's `lead_owner` is the HO
    * head, so it cannot answer this.
    */
+  /** `PII-` id → the farmer as a partner holds them, for HO's cart lists. */
+  async farmersByPii(
+    piiIds: readonly string[],
+  ): Promise<Map<string, FarmerCard>> {
+    if (piiIds.length === 0) return new Map();
+    const rows = await this.rows.findByPiis([...new Set(piiIds)]);
+    return new Map(
+      rows.map((r) => [
+        r.pii_id,
+        {
+          pii_id: r.pii_id,
+          name: r.name,
+          phone: r.phone,
+          village: r.village,
+          district: r.district ?? null,
+        },
+      ]),
+    );
+  }
+
   async holds(agentId: string, piiId: string): Promise<boolean> {
     return this.rows.isHeldBy(piiId.toUpperCase(), agentId.toUpperCase());
   }

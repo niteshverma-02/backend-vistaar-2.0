@@ -19,16 +19,17 @@ import { AuthModule } from '@modules/auth/auth.module';
 import { BannersModule } from '@modules/banners/banners.module';
 import { TestimonialsModule } from '@modules/testimonials/testimonials.module';
 import { CartModule } from '@modules/cart/cart.module';
-import { CropCalendarModule } from '@modules/crop-calendar/crop-calendar.module';
 import { DraftOrderModule } from '@modules/draft-order/draft-order.module';
 import { EventsModule } from '@modules/events/events.module';
 import { FaqsModule } from '@modules/faqs/faqs.module';
+import { FeedbackModule } from '@modules/feedback/feedback.module';
 import { HealthModule } from '@modules/health/health.module';
 import { InfoPagesModule } from '@modules/info-pages/info-pages.module';
 import { LeadsModule } from '@modules/leads/leads.module';
 import { OnboardingModule } from '@modules/onboarding/onboarding.module';
 import { OrdersModule } from '@modules/orders/orders.module';
 import { PartnerDeskModule } from '@modules/partner-desk/partner-desk.module';
+import { PaymentsModule } from '@modules/payments/payments.module';
 import { SettingsModule } from '@modules/settings/settings.module';
 import { StoriesModule } from '@modules/stories/stories.module';
 import { TermsModule } from '@modules/terms/terms.module';
@@ -62,6 +63,8 @@ import { UploadsModule } from '@modules/uploads/uploads.module';
               'req.body.otp',
               'req.body.refresh_token',
               'req.body.data',
+              // Merchant keys HO submits.
+              'req.body.fields',
             ],
             remove: true,
           },
@@ -92,14 +95,15 @@ import { UploadsModule } from '@modules/uploads/uploads.module';
     BannersModule,
     TestimonialsModule,
     AttendanceModule,
-    CropCalendarModule,
     EventsModule,
     StoriesModule,
     TermsModule,
     FaqsModule,
+    FeedbackModule,
     InfoPagesModule,
     LeadsModule,
     TodayModule,
+    PaymentsModule,
   ],
   providers: [
     // Auth is global and opted out of with @Public(). Ahead of the throttler,

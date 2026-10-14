@@ -6,6 +6,9 @@ import {
   UpdateTestimonialDto,
   type CreateTestimonialDto,
 } from '../dto/testimonial.dto';
+import type { StorageService } from '@modules/uploads/services/storage.service';
+
+import type { SubmissionRepository } from '../repositories/submission.repository';
 import type {
   TestimonialRepository,
   TestimonialRow,
@@ -55,9 +58,27 @@ function setup() {
     productExists: jest.fn().mockResolvedValue(true),
     comboExists: jest.fn().mockResolvedValue(true),
   };
+  const submissions = {
+    linkedTestimonials: jest.fn().mockResolvedValue(new Set<string>()),
+  };
+  const storage = {
+    savePublic: jest.fn(
+      (folder: string, _b: Buffer, _m: string, _e: unknown, ext: string) =>
+        Promise.resolve({
+          path: `${folder}/x.${ext}`,
+          url: `https://cdn/${folder}/x.${ext}?token=t`,
+        }),
+    ),
+  };
   return {
     repo,
-    service: new TestimonialsService(repo as unknown as TestimonialRepository),
+    submissions,
+    storage,
+    service: new TestimonialsService(
+      repo as unknown as TestimonialRepository,
+      submissions as unknown as SubmissionRepository,
+      storage as unknown as StorageService,
+    ),
   };
 }
 
@@ -112,7 +133,8 @@ describe('TestimonialsService', () => {
       profile_image: null,
     });
     expect(saved.verified).toBe(false);
-    expect(saved.created_by).toBe(BY);
+    expect(saved.verified_by).toBeNull();
+    expect(saved.deleted_by).toBeNull();
     expect(view.status).toBe('pending');
     expect(view._id).toBe(ID);
   });
@@ -153,7 +175,7 @@ describe('TestimonialsService', () => {
     const view = await service.update(ID, { verified: true }, BY);
     expect(repo.update).toHaveBeenCalledWith(ID, {
       verified: true,
-      updated_by: BY,
+      verified_by: BY,
     });
     expect(view.status).toBe('approved');
     expect([view.likes, view.dislikes]).toEqual([2, 1]);
@@ -164,7 +186,6 @@ describe('TestimonialsService', () => {
     await service.update(ID, { name: ' Ramu Kaka ' }, BY);
     expect(repo.update).toHaveBeenCalledWith(ID, {
       'user.name': 'Ramu Kaka',
-      updated_by: BY,
     });
   });
 
@@ -174,7 +195,7 @@ describe('TestimonialsService', () => {
     await service.update(ID, dto, BY);
     expect(repo.update).toHaveBeenCalledWith(ID, {
       verified: true,
-      updated_by: BY,
+      verified_by: BY,
     });
   });
 
@@ -196,5 +217,70 @@ describe('TestimonialsService', () => {
       'NOT_FOUND',
     );
     expect(await code(service.remove(ID))).toBe('NOT_FOUND');
+  });
+
+  it("refuses to change or delete a partner's testimonial from this desk", async () => {
+    const { repo, submissions, service } = setup();
+    submissions.linkedTestimonials.mockResolvedValue(new Set([ID]));
+    expect(await code(service.update(ID, { verified: false }, BY))).toBe(
+      'TESTIMONIAL_FROM_PARTNER',
+    );
+    expect(await code(service.remove(ID))).toBe('TESTIMONIAL_FROM_PARTNER');
+    expect(repo.update).not.toHaveBeenCalled();
+    expect(repo.remove).not.toHaveBeenCalled();
+  });
+});
+
+describe('uploadMedia', () => {
+  it('stores a video under the HO folder with its own extension and answers the lasting link', async () => {
+    const { service, storage } = setup();
+    const out = await service.uploadMedia(
+      Buffer.from('abc'),
+      'video/quicktime',
+      'ho@katyayani.com',
+    );
+    expect(storage.savePublic).toHaveBeenCalledWith(
+      'vistaar/testimonials',
+      expect.any(Buffer),
+      'video/quicktime',
+      { uploadedBy: 'ho@katyayani.com' },
+      'mov',
+    );
+    expect(out).toEqual({
+      media_type: 'video',
+      media_url: 'https://cdn/vistaar/testimonials/x.mov?token=t',
+      content_type: 'video/quicktime',
+      size: 3,
+    });
+  });
+
+  it('knows a voice note and a photo by type', async () => {
+    const { service } = setup();
+    expect(
+      (await service.uploadMedia(Buffer.from('a'), 'audio/mpeg', 'x'))
+        .media_type,
+    ).toBe('audio');
+    expect(
+      (await service.uploadMedia(Buffer.from('a'), 'image/png', 'x'))
+        .media_type,
+    ).toBe('image');
+  });
+
+  it('refuses other types, empty files and a photo over 10 MB', async () => {
+    const { service, storage } = setup();
+    await expect(
+      service.uploadMedia(Buffer.from('a'), 'application/pdf', 'x'),
+    ).rejects.toThrow(/photo/i);
+    await expect(
+      service.uploadMedia(Buffer.alloc(0), 'image/png', 'x'),
+    ).rejects.toThrow(/empty/i);
+    await expect(
+      service.uploadMedia(
+        Buffer.alloc(10 * 1024 * 1024 + 1),
+        'image/jpeg',
+        'x',
+      ),
+    ).rejects.toThrow(/10 MB/);
+    expect(storage.savePublic).not.toHaveBeenCalled();
   });
 });

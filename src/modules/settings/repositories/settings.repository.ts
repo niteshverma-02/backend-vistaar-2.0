@@ -6,10 +6,11 @@ import {
   SETTINGS_ID,
   Settings,
   type FarmerConsent,
+  type FeedbackReasons,
   type SettingsDocument,
 } from '../schemas/settings.schema';
 
-export type { FarmerConsent };
+export type { FarmerConsent, FeedbackReasons };
 
 export interface SettingsRecord {
   default_owner_agent_id: string | null;
@@ -17,7 +18,9 @@ export interface SettingsRecord {
   farmer_consent: FarmerConsent;
   lead_release_days: number;
   customer_release_days: number;
+  testimonial_consent: FarmerConsent;
   conflict_radius_km: number;
+  feedback_reasons: FeedbackReasons | null;
   updated_by?: string;
   updated_at?: Date;
 }

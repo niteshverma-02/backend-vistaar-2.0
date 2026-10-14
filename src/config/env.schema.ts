@@ -100,6 +100,33 @@ export const envSchema = z.object({
     .min(24, 'ORDER_EVENTS_SECRET must be at least 24 characters')
     .optional(),
 
+  // ── Online payment ─────────────────────────────────────────────────────
+  /**
+   * Kill switch: off, `GET /payment-options` is empty whatever HO has switched
+   * on, so ops can stop online payment without a deploy. Off by default — no
+   * environment takes money until someone turns it on on purpose.
+   */
+  PAYMENTS_ONLINE_ENABLED: booleanFromString,
+  /**
+   * AES-256 key (32 random bytes, base64) that seals the merchant keys HO
+   * enters. Lives only here — never in Mongo. Unset = keys cannot be
+   * submitted (503 CREDENTIALS_NOT_CONFIGURED). Losing it means every stored
+   * set must be submitted again. `openssl rand -base64 32`.
+   */
+  PAYMENTS_CREDENTIALS_KEY: z
+    .string()
+    .refine((v) => Buffer.from(v, 'base64').length === 32, {
+      message: 'PAYMENTS_CREDENTIALS_KEY must be 32 bytes, base64',
+    })
+    .optional(),
+  /** Stored with every sealed value, so the key can be rotated later. */
+  PAYMENTS_CREDENTIALS_KEY_ID: z
+    .string()
+    .regex(/^[a-z0-9-]{1,16}$/)
+    .default('k1'),
+  /** Slack incoming webhook told of every key submit, approve, reject and revoke. */
+  PAYMENTS_ALERT_WEBHOOK_URL: z.url().optional(),
+
   // ── HO portal (SSO) ────────────────────────────────────────────────────
   /** HO staff use the company SSO token; only its signature is checked here. */
   SSO_JWKS_URL: z.url().default('https://sso.ko-tech.in/.well-known/jwks.json'),
@@ -131,6 +158,16 @@ const refinedEnvSchema = envSchema
     {
       message: 'OTP_TEST_NUMBERS must be empty in production',
       path: ['OTP_TEST_NUMBERS'],
+    },
+  )
+  .refine(
+    (env) =>
+      !env.PAYMENTS_ONLINE_ENABLED ||
+      env.PAYMENTS_CREDENTIALS_KEY !== undefined,
+    {
+      message:
+        'PAYMENTS_CREDENTIALS_KEY is required when PAYMENTS_ONLINE_ENABLED is true',
+      path: ['PAYMENTS_CREDENTIALS_KEY'],
     },
   )
   .refine((env) => env.MONGODB_MIN_POOL_SIZE <= env.MONGODB_MAX_POOL_SIZE, {

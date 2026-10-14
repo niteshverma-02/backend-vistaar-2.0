@@ -109,7 +109,11 @@ export class AdminOrderService {
   }
 }
 
-function partnerOf(agentId: string, a: AgentRecord | undefined): OrderPartner {
+/** The partner as every HO list names them; also used by HO carts and saved carts. */
+export function partnerOf(
+  agentId: string,
+  a: AgentRecord | undefined,
+): OrderPartner {
   return {
     agent_id: agentId,
     name: a?.profile?.name ?? a?.preview?.name ?? null,

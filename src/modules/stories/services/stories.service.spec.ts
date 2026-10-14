@@ -3,7 +3,6 @@ import type { ConfigService } from '@nestjs/config';
 
 import type { Env } from '@config/env.schema';
 
-import type { CropCalendarService } from '@modules/crop-calendar/services/crop-calendar.service';
 import type { EventsService } from '@modules/events/services/events.service';
 import type { TestimonialsService } from '@modules/testimonials/services/testimonials.service';
 import type { StorageService } from '@modules/uploads/services/storage.service';
@@ -144,7 +143,6 @@ function setup(
     {
       live: jest.fn().mockResolvedValue(opts.samples ?? []),
     } as unknown as StorySamplesService,
-    { live: jest.fn().mockResolvedValue([]) } as unknown as CropCalendarService,
     {
       upcoming: jest.fn().mockResolvedValue(opts.events ?? []),
     } as unknown as EventsService,

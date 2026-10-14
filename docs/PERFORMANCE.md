@@ -12,7 +12,7 @@ optimisations in section 3:
 
 | API | DB calls per request | Before | After | p50 after |
 |---|---|---|---|---|
-| `/faqs`, `/crop-calendar` (cached) | 0 | ~600 | **~1,700** | 27 ms |
+| `/faqs` (cached) | 0 | ~600 | **~1,700** | 27 ms |
 | `/banners` | 1 → **0** (cohort cached) | ~700 | **~1,630** | 28 ms |
 | `/attendance/today` | 1 | ~660 | **~880** | 54 ms |
 | `/events` | 2 → **1** | ~550 | **~840** | 56 ms |

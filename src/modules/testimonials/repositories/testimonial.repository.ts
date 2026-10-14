@@ -29,12 +29,19 @@ export interface TestimonialRow {
   review: string;
   pii_id: string | null;
   user: { contact: string; name: string | null; profile_image: string | null };
+  /** The HO email that approved / removed it, as Stockship's own desk writes. */
+  verified_by?: string | null;
+  deleted_by?: string | null;
   created_at: Date;
   updated_at: Date;
-  /** Ours, not Stockship's: who in HO filed or last changed it. */
-  created_by?: string;
-  updated_by?: string;
+  __v?: number;
 }
+
+/** What a partner submission's approval writes; the flags are the approval's own. */
+export type TestimonialContent = Pick<
+  TestimonialRow,
+  'type' | 'bulk' | 'family' | 'media' | 'review' | 'pii_id' | 'user'
+>;
 
 export interface TestimonialFilter {
   status?: TestimonialStatus;
@@ -111,6 +118,62 @@ export class TestimonialRepository {
 
   async remove(id: string): Promise<boolean> {
     return (await this.rows.deleteOne(byId(id))).deletedCount === 1;
+  }
+
+  /**
+   * A partner's approved testimonial: written the first time, shown again
+   * after a removal. The media link is refreshed — a re-approval mints a new
+   * download token.
+   */
+  async show(
+    id: Types.ObjectId,
+    content: TestimonialContent,
+    by: string,
+  ): Promise<void> {
+    const now = new Date();
+    const { media, ...rest } = content;
+    await this.rows.updateOne(
+      { _id: id, source: VISTAAR_SOURCE },
+      {
+        $setOnInsert: {
+          ...rest,
+          source: VISTAAR_SOURCE,
+          feedbacks: [],
+          created_at: now,
+          __v: 0,
+        },
+        $set: {
+          media,
+          verified: true,
+          deleted: false,
+          verified_by: by,
+          deleted_by: null,
+          updated_at: now,
+        },
+      },
+      { upsert: true },
+    );
+  }
+
+  /** Hidden everywhere; a no-op when it was never written. */
+  async hide(id: Types.ObjectId, by: string): Promise<void> {
+    await this.rows.updateOne(
+      { _id: id, source: VISTAAR_SOURCE },
+      { $set: { deleted: true, deleted_by: by, updated_at: new Date() } },
+    );
+  }
+
+  /** For good — a withdrawn consent leaves no copy of the farmer's face or words. */
+  async erase(id: Types.ObjectId): Promise<void> {
+    await this.rows.deleteOne({ _id: id, source: VISTAAR_SOURCE });
+  }
+
+  /** `combos_v2.name` for one family; `null` when there is none. */
+  async comboName(family: string): Promise<string | null> {
+    const row = await this.connection
+      .collection<{ family: string; name?: string }>(COMBO_COLLECTION)
+      .findOne({ family }, { projection: { _id: 0, name: 1 } });
+    return row?.name ?? null;
   }
 
   async productExists(bulk: string): Promise<boolean> {

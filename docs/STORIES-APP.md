@@ -14,7 +14,7 @@ is the token's; nothing in a path or body names one.
 
 | Method | Path | Body | Returns |
 |---|---|---|---|
-| `GET` | `/stories/content` | — | `{ templates, designs, festivals, farmer_stories, crop_calendar, meetings }` |
+| `GET` | `/stories/content` | — | `{ templates, designs, festivals, farmer_stories, meetings }` |
 | `POST` | `/stories/images?kind=render\|photo` | multipart `file` | `UploadedStoryImage` |
 | `POST` | `/stories` | `SaveStory` | `Story` |
 | `GET` | `/stories` | — | `Story[]`, newest first, at most 20 |
@@ -163,11 +163,6 @@ is the stories whose `created_at` is today.
       "product": "Humic + Fulvic Acid 98%", "crop": "Wheat", "village": "Rampur",
       "district": "Lucknow", "stars": 5, "media": null }
   ],
-  "crop_calendar": [
-    { "id": "wheat", "crop": "Wheat", "emoji": "🌾", "season": "rabi", "sowing": "Nov – Dec", "harvest": "Mar – Apr",
-      "stages": [ { "stage": "Sowing", "month": "Nov", "advice": "Seed treatment and basal zinc",
-                    "products": ["Zinc EDTA 12%", "Trichoderma Viride"] } ] }
-  ],
   "meetings": [
     { "key": "e:2b1f3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d", "kind": "event", "title": "Humic Acid Field Day",
       "starts_at": "2026-10-18T03:30:00.000Z", "place": "Ramesh Yadav farm, Rampur", "note": null, "registered": false }
@@ -185,9 +180,8 @@ is the stories whose `created_at` is today.
   template: `quote` → body, `name` → headline, `village, district` → detail1,
   `product · crop` → detail2, `stars` (5 when `null`). `id` goes in
   `selection.testimonial_id`.
-- **Crop calendar** replaces `cropCalendar` (`id` → `selection.crop_id`,
-  stage index → `stage_idx`). The same list is `GET /crop-calendar` for the
-  Learn screen. Keys are now names (`wheat`), not `cc1`.
+- **No crop calendar** (removed 2026-10-14): the "Crop tip" template keeps the app's built-in
+  `cropCalendar`; crop data lives in ko-sales `/crops` (the Crop Guide).
 - **Meetings** replace `meetingOptions()`: upcoming events for the partner's
   cohort, soonest first (`EVENTS-APP.md`). Fill: `title` → headline,
   `starts_at` → date (`storyDate`) and time, `place` → detail3, `note` → body
