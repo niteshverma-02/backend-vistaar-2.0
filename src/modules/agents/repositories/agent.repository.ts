@@ -194,6 +194,22 @@ export class AgentRepository {
       .exec();
   }
 
+  /** The pincode's state / district over the typed ones; `profile` only once approved. */
+  async setPlace(
+    id: string,
+    place: { state?: string; district?: string },
+    withProfile: boolean,
+  ): Promise<void> {
+    const set: Record<string, string> = {};
+    for (const [key, value] of Object.entries(place)) {
+      if (!value) continue;
+      set[`preview.${key}`] = value;
+      if (withProfile) set[`profile.${key}`] = value;
+    }
+    if (Object.keys(set).length === 0) return;
+    await this.model.updateOne({ _id: id }, { $set: set }).exec();
+  }
+
   setOwner(
     id: string,
     ownerAgentId: string,

@@ -3,6 +3,7 @@ import {
   configErrors,
   filePaths,
   mapProfile,
+  withPlace,
   missingRequired,
   progress,
   requiredDocuments,
@@ -322,5 +323,27 @@ describe('reading a form', () => {
     expect((dressed.crops as { photo: { url: string } }[])[0].photo.url).toBe(
       'https://signed/KO-documents/PII-1/crops/p.jpg',
     );
+  });
+});
+
+describe('withPlace', () => {
+  const typed = {
+    name: 'Manav',
+    state: 'MADHYA',
+    district: 'madh',
+    pincode: '455001',
+  };
+
+  it('takes state and district from a known pincode over what was typed', () => {
+    expect(
+      withPlace(typed, { state: 'MADHYA PRADESH', district: 'DEWAS' }),
+    ).toEqual({ ...typed, state: 'MADHYA PRADESH', district: 'DEWAS' });
+  });
+
+  it('keeps the typed values for an unknown pincode, or a half-known one', () => {
+    expect(withPlace(typed, null)).toBe(typed);
+    expect(
+      withPlace(typed, { state: 'MADHYA PRADESH', district: null }),
+    ).toEqual({ ...typed, state: 'MADHYA PRADESH' });
   });
 });

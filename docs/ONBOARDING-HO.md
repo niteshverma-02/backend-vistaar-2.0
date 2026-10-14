@@ -121,6 +121,12 @@ and checked as optional.
 `maps_to` (where an approved value lands on the partner): `name`, `email`, `sub_cohort`,
 `address_line`, `village`, `district`, `state`, `pincode`, `location`, or `details.<anything>`.
 
+**State and district come from the pincode** when the form maps a `pincode` the org's
+pincode list knows (`pincode_map_v2`): typed "MADHYA" / "madh" become `MADHYA PRADESH` /
+`DEWAS` on the partner (the desk's `preview` on every save, `profile` at approval). The
+state filter and "by state" counts therefore use the standard names. An unknown pincode
+keeps what was typed.
+
 `org_document` (document fields only, once per form): the `piis.documents` key a verified
 document is copied to — ko-sales spellings, e.g. `adhar`, `pan`, `bank_details`, `selfie`.
 

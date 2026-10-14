@@ -633,6 +633,24 @@ export function mapProfile(steps: StepDef[], raw: RawData): Mapped {
   return { profile, location: location ?? locationOf(steps, raw) };
 }
 
+/**
+ * State and district from the pincode when it is a known one
+ * (`pincode_map_v2`), over what was typed: the form takes them as free text,
+ * and a typed "MADHYA" / "madh" misses the desk's state filter and is copied
+ * on as a farmer's state. An unknown pincode keeps the typed values.
+ */
+export function withPlace<T extends Record<string, unknown>>(
+  target: T,
+  place: { state: string | null; district: string | null } | null,
+): T {
+  if (!place) return target;
+  return {
+    ...target,
+    ...(place.state ? { state: place.state } : {}),
+    ...(place.district ? { district: place.district } : {}),
+  };
+}
+
 /** Just enough for the desk's list and search, refreshed on every save. */
 export function previewOf(
   steps: StepDef[],
