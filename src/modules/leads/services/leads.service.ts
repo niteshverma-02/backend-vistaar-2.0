@@ -11,6 +11,7 @@ import {
   serviceUnavailable,
 } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
+import { DAY_MS, istDayStart } from '@common/utils/ist-day.util';
 import { normalizeMobile } from '@common/utils/phone.util';
 import { AccessService } from '@modules/access/services/access.service';
 import {
@@ -102,8 +103,6 @@ export type CheckStatus =
 const COUNTRY_CODE = '+91';
 /** Tries before giving up on ids the shared counter hands out already taken. */
 const ID_TRIES = 3;
-const IST_OFFSET_MS = 5.5 * 3600 * 1000;
-const DAY_MS = 24 * 3600 * 1000;
 
 const CHECK_STATUS: Record<Holder, CheckStatus> = {
   none: 'new',
@@ -128,13 +127,6 @@ const notFarmer = () =>
     'NOT_A_FARMER',
     'This number is registered with Katyayani as a retailer or business, not a farmer.',
   );
-
-/** Midnight IST that starts the day `now` falls in. */
-function istDayStart(now: Date): Date {
-  const ist = new Date(now.getTime() + IST_OFFSET_MS);
-  ist.setUTCHours(0, 0, 0, 0);
-  return new Date(ist.getTime() - IST_OFFSET_MS);
-}
 
 /**
  * Farmers partners add, and the partner's work on them (PRD C2, C4, C9).

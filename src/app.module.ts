@@ -32,6 +32,7 @@ import { PartnerDeskModule } from '@modules/partner-desk/partner-desk.module';
 import { SettingsModule } from '@modules/settings/settings.module';
 import { StoriesModule } from '@modules/stories/stories.module';
 import { TermsModule } from '@modules/terms/terms.module';
+import { TodayModule } from '@modules/today/today.module';
 import { UploadsModule } from '@modules/uploads/uploads.module';
 
 @Module({
@@ -98,6 +99,7 @@ import { UploadsModule } from '@modules/uploads/uploads.module';
     FaqsModule,
     InfoPagesModule,
     LeadsModule,
+    TodayModule,
   ],
   providers: [
     // Auth is global and opted out of with @Public(). Ahead of the throttler,

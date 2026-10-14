@@ -72,6 +72,16 @@ curl -X POST $VISTAAR_API/api/v2/hooks/orders/confirmed \
 — makes the farmer `won` and lists them in `GET /customers`. Shop stock (the partner's own
 `pii_id`) is answered `ignored / not_held`.
 
+## Today's tasks
+
+`GET /today` as **VST-000006** shows its follow-ups: Rajendra Singh (overdue), Gopal Meena
+(overdue), and those due on the day. The other kinds need real records, made through the
+app — the seed does not fake them in shared collections:
+
+- **saved cart** — VST-000006 saves a cart for a test farmer (Cart → Save for later);
+- **event** — register VST-000006 for an event happening today or tomorrow (Events);
+- **order to confirm** — an order placed and not yet confirmed by Stockship.
+
 ## Removing it
 
 Nothing deletes test data automatically: the farmers are also org records (`piis`,
