@@ -8,9 +8,11 @@ records are fake and what each one is for. Test farmers use the mobile series
 ## Before seeding
 
 New farmers need an owner: **one active Offline Head (USR-1037)** in `agents_v2`, or
-`settings.lead_owner_agent_id`. Beta has **neither** (2026-10-14; the override was removed
-on purpose so nobody forgets it) — until one exists, `--apply` stops at the first new
-farmer with `LEADS_NOT_CONFIGURED`, having written nothing.
+`settings.lead_owner_agent_id`. On beta the Offline Head is **A0-2691**
+(manavbarodiya@katyayaniorganics.com, moved from USR-1001 Admin on 2026-10-14, at his
+request); the settings override is **not** used, so nobody has to remember to remove it.
+Without an Offline Head, `--apply` — and adding a new farmer in the app — stops with
+`LEADS_NOT_CONFIGURED`, having written nothing.
 
 ## Partners
 
@@ -44,8 +46,11 @@ node dist/scripts/seed-test-leads.js --apply    # adds the missing ones; existin
 | 6000000111 | Om Prakash Lodhi | VST-000007 → VST-000006 | moved by HO; `holder_history` shows VST-000007 (reason `transferred`) |
 | 6000000112 | Hari Ram Kirar | VST-000006 | not worked for 13 days → "releases in 2 days" |
 
-101–108 exist (seeded 2026-10-13, under the then override owner A0-2691): `PII-1620690`–`697`,
-`L-4187744`–`751`. 109–112 are added by the next `--apply` once beta has an owner.
+On beta: 101–108 are `PII-1620690`–`697`, `L-4187744`–`751` (2026-10-13); 109–112 are
+`PII-1620709`–`712`, `L-4187763`–`766` (2026-10-14). Every org lead is owned by A0-2691.
+
+Not from the seed: **"Test", 7745963132** on VST-000006 — added from the app on 2026-10-13
+while testing the real add-lead flow.
 
 Dates are set relative to the seed day, so they drift: "due today" becomes overdue the next
 day, and "releases in 2 days" becomes released. For a fresh case, add a new mobile to the
