@@ -1,5 +1,10 @@
 # Farmer leads — HO portal
 
+> **Updated 2026-10-14 — won is automatic.** A lead moves to `won` (`by: system`) when
+> Katyayani confirms the first order its partner placed for the farmer; `customer_at`
+> and `last_order_at` are then set. Customers = `GET /admin/leads?stage=won`. No route or
+> field changed.
+>
 > **Updated 2026-10-13 (2) — release and transfer.** New: `POST /admin/leads/:piiId/transfer`
 > (capability `leads.transfer`); on every lead `releases_at`, `held_since`,
 > `last_worked_at`, `last_order_at`; on the detail `holder_history`; settings
@@ -74,8 +79,8 @@ interface LeadRow {
   next_follow_up: string | null;  // ISO
   lost_reason: string | null;
   consent_version: number;        // consent wording version the farmer agreed to
-  customer_at: string | null;     // first order (Customers epic)
-  last_order_at: string | null;   // last order (Customers epic)
+  customer_at: string | null;     // first confirmed order — "customer since"
+  last_order_at: string | null;   // latest confirmed order
   held_since: string | null;      // since when this partner holds the farmer (null = created_at)
   last_worked_at: string | null;  // the partner's last work on the lead
   releases_at: string;            // from then another partner may take the farmer
@@ -198,7 +203,7 @@ only what changed:
 | `found_via` | Meeting · Referral · Walk-in · Self · Campaign |
 | activity `type` | Call · Visit · WhatsApp · Note · Stage changed |
 
-Open stages = Prospect … Negotiation. Won = became a customer with the first order (the
+Open stages = Prospect … Negotiation. Won = became a customer with the first confirmed order (the
 partner never sets it).
 
 ## Errors
@@ -268,6 +273,6 @@ A partner keeps a farmer only while working them (user's rule, 2026-10-13):
 |---|---|
 | Charts by day / crop / village / state | summary facets — backend, on request |
 | Partners with no farmer yet | backend, on request |
-| Lead → customer page link | Customers epic |
+| A customers screen of its own (business per customer) | later — today `?stage=won` |
 | A partner asking HO for a farmer ("request transfer") | later |
 | Ex-employee lock list | HRMS (PRD AD8) |

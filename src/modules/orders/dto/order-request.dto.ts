@@ -30,4 +30,15 @@ export class OrdersQueryDto extends PageQueryDto {
   @IsOptional()
   @IsIn(ORDER_STAGES)
   status?: OrderStage;
+
+  @ApiPropertyOptional({
+    example: 'PII-1620690',
+    description: "One farmer's orders (a customer's Orders tab)",
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  )
+  @Matches(/^PII-[A-Z0-9-]{1,20}$/, { message: 'This customer is not valid.' })
+  customer?: string;
 }

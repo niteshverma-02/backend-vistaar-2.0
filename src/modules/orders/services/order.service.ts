@@ -7,6 +7,7 @@ import { PageResult } from '@common/http/page-result';
 import type { OrdersQueryDto } from '../dto/order-request.dto';
 import type { OrderView } from '../dto/order-view.dto';
 import {
+  BUSINESS_STATUSES,
   addressLine,
   firstUrl,
   personName,
@@ -14,6 +15,7 @@ import {
   stageOf,
   statusesFor,
   trackingSteps,
+  type OrderStage,
 } from '../orders.domain';
 import { OrderRepository } from '../repositories/order.repository';
 import {
@@ -24,6 +26,14 @@ import type { OrderRecord } from '../schemas/order.schema';
 
 /** The app's `selfLabel`: whose name a shop-stock order shows. */
 const SELF_LABEL = 'Self (shop stock)';
+
+/** A customer's confirmed business with their partner (returns and cancellations left out). */
+export interface CustomerBusiness {
+  orders: number;
+  spend: number;
+  last_order_at: Date;
+  last_order_stage: OrderStage;
+}
 
 @Injectable()
 export class OrderService {
@@ -41,6 +51,7 @@ export class OrderService {
       query.status ? statusesFor(query.status) : null,
       query.skip,
       query.limit,
+      query.customer ?? null,
     );
     // One lookup for the whole page, not one per order.
     const products = await this.products.bySku(
@@ -51,6 +62,24 @@ export class OrderService {
       rows.map((o) => orderView(o, partner, products)),
       total,
       query,
+    );
+  }
+
+  /** Each of the partner's customers' business, by `pii_id`. */
+  async businessByCustomer(
+    agentId: string,
+  ): Promise<Map<string, CustomerBusiness>> {
+    const rows = await this.orders.customerStats(agentId, BUSINESS_STATUSES);
+    return new Map(
+      rows.map((r) => [
+        r.pii_id,
+        {
+          orders: r.orders,
+          spend: r.spend,
+          last_order_at: r.last_order_at,
+          last_order_stage: stageOf(r.last_status),
+        },
+      ]),
     );
   }
 

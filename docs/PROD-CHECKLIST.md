@@ -23,6 +23,7 @@ What must exist in production before the matching feature is switched on.
 | `B2B_API_URL` | Production B2B Sales API — required, boot fails without it. No token here: each request brings the app's in `x-b2b-token` |
 | `B2B_MARKETPLACE_CODE` | `MKTP-1` unless the partner marketplace changes |
 | `CATALOG_CACHE_TTL_SECONDS` | `60` default |
+| `ORDER_EVENTS_SECRET` | 24+ random characters, shared **only** with the order service (`POST /hooks/orders/confirmed`). Unset = leads never turn into customers |
 
 ## Indexes (create by hand on prod)
 
@@ -122,6 +123,11 @@ Nothing to build to go live: the partner's list rides the existing
 memory, because `order_status` sits between `agent` and `date`. Fine for a
 few thousand orders per partner; past that, ask Stockship for
 `{ agent: 1, date: -1 }` on `orders_v2`.
+
+## Customers — before switching on
+
+- [ ] `ORDER_EVENTS_SECRET` set; the order service (TL) calls `POST /api/v2/hooks/orders/confirmed { order_id, pii_id, agent_id, order_date }` when an order is confirmed — contract in ORDER-EVENTS.md. The call is trusted as sent, so the secret goes to the order service only
+- [ ] Nothing to build in Mongo: customers are `vistaar_v2_leads` at stage `won`; their business is read from `orders_v2` on `{ agent, order_status, date }`
 
 ## Orders — before switching on
 

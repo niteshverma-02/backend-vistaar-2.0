@@ -17,7 +17,7 @@ orders come back. No `x-b2b-token` is needed.
 
 | Method | Path | Returns |
 |---|---|---|
-| `GET` | `/orders?page=1&limit=50&status=shipped` | `PageResult<OrderView>`, newest first. `limit` ≤ 200; `status` optional |
+| `GET` | `/orders?page=1&limit=50&status=shipped&customer=PII-123` | `PageResult<OrderView>`, newest first. `limit` ≤ 200; `status` and `customer` (one farmer's `pii_id` — a customer's Orders tab) optional |
 | `GET` | `/orders/:id` | `OrderView` |
 
 `:id` is the order's `order_id` (`KSK-341382`); case does not matter. An id with `/` (`ORD/K0-150/41350`) is sent URL-encoded: `/orders/ORD%2FK0-150%2F41350`.

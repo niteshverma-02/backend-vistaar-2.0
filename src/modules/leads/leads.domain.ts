@@ -162,6 +162,22 @@ export function releaseAtOf(
   return new Date(Math.max(lastWork, since) + window.lead_days * DAY_MS);
 }
 
+/** Who moves a lead to won: the first confirmed order, not a person. */
+export const SYSTEM_ACTOR = 'system';
+
+/** Digits look in the mobile; anything else, in the name, village and crops. */
+export function searchOf(q: string | undefined): {
+  text?: string;
+  phone?: string;
+} {
+  if (!q) return {};
+  if (/^[\d\s+-]+$/.test(q)) {
+    const digits = q.replace(/\D/g, '');
+    return { phone: digits.length > 10 ? digits.slice(-10) : digits };
+  }
+  return { text: q };
+}
+
 /** No profile yet, or a farmer one. */
 export function isFarmerProfile(profile: string | null | undefined): boolean {
   const value = profile?.trim().toLowerCase();

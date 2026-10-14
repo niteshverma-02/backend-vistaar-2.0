@@ -56,6 +56,22 @@ Dates are set relative to the seed day, so they drift: "due today" becomes overd
 day, and "releases in 2 days" becomes released. For a fresh case, add a new mobile to the
 script rather than editing an existing farmer.
 
+## Customers
+
+A customer needs a **confirmed order**, and `orders_v2` belongs to Stockship — the seed never
+fakes one. To test: as VST-000006, place a real order for a test farmer (e.g. 6000000101) in
+the app; once Stockship confirms it, the order service's call — or, until it is live, the
+same call by hand with the beta `ORDER_EVENTS_SECRET`:
+
+```bash
+curl -X POST $VISTAAR_API/api/v2/hooks/orders/confirmed \
+  -H "x-webhook-secret: $ORDER_EVENTS_SECRET" -H 'content-type: application/json' \
+  -d '{"order_id":"<the order id>","pii_id":"PII-1620690","agent_id":"VST-000006"}'
+```
+
+— makes the farmer `won` and lists them in `GET /customers`. Shop stock (the partner's own
+`pii_id`) is answered `ignored / not_held`.
+
 ## Removing it
 
 Nothing deletes test data automatically: the farmers are also org records (`piis`,

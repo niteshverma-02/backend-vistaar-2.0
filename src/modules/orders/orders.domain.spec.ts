@@ -1,4 +1,5 @@
 import {
+  BUSINESS_STATUSES,
   addressLine,
   firstUrl,
   personName,
@@ -138,5 +139,16 @@ describe('formatting', () => {
     );
     expect(firstUrl('')).toBeNull();
     expect(firstUrl(undefined)).toBeNull();
+  });
+});
+
+describe('customer business', () => {
+  it('counts business only from confirmed orders that were not returned', () => {
+    expect(BUSINESS_STATUSES).toEqual(
+      expect.arrayContaining(['confirmed', 'in_transit', 'delivered']),
+    );
+    expect(BUSINESS_STATUSES).not.toContain('rto');
+    expect(BUSINESS_STATUSES).not.toContain('cancelled');
+    expect(BUSINESS_STATUSES).not.toContain('pending');
   });
 });

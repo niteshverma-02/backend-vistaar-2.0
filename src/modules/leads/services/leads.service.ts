@@ -48,6 +48,7 @@ import {
   leadDocOf,
   leadUpdateOf,
   releaseAtOf,
+  searchOf,
   stageMoveError,
   titleCase,
   type FarmerInput,
@@ -61,30 +62,17 @@ import { OrgLeadsRepository } from '../repositories/org-leads.repository';
 import {
   VistaarLeadsRepository,
   type LeadListFilter,
-  type VistaarLeadBrief,
   type VistaarLeadRecord,
 } from '../repositories/vistaar-leads.repository';
-import type {
-  HolderMove,
-  LeadActivity,
-  StageMove,
-} from '../schemas/vistaar-lead.schema';
+import {
+  detailOf,
+  viewOf,
+  type LeadDetail,
+  type LeadView,
+} from '../lead-views';
+import type { HolderMove, LeadActivity } from '../schemas/vistaar-lead.schema';
 
-/** A lead as the app and the HO portal see it. */
-export type LeadView = Omit<
-  VistaarLeadBrief,
-  '_id' | 'consent' | 'ex_employee_declared_at'
-> & {
-  consent_version: number;
-  /** From then another partner may take the farmer, unless worked (or ordered for) before. */
-  releases_at: Date;
-};
-
-export interface LeadDetail extends LeadView {
-  stage_history: StageMove[];
-  /** Newest first. */
-  activities: LeadActivity[];
-}
+export type { LeadDetail, LeadView };
 
 /** `created` — new to Katyayani; `linked` — an existing Katyayani farmer, now yours; `updated` — yours already. */
 export interface SavedLead extends LeadDetail {
@@ -146,38 +134,6 @@ function istDayStart(now: Date): Date {
   const ist = new Date(now.getTime() + IST_OFFSET_MS);
   ist.setUTCHours(0, 0, 0, 0);
   return new Date(ist.getTime() - IST_OFFSET_MS);
-}
-
-function viewOf(
-  row: VistaarLeadBrief & { holder_history?: unknown },
-  window: ReleaseWindow,
-): LeadView {
-  const {
-    _id: _row,
-    consent,
-    ex_employee_declared_at: _declared,
-    holder_history: _before,
-    ...view
-  } = row;
-  return {
-    ...view,
-    consent_version: consent.version,
-    releases_at: releaseAtOf(row, window),
-  };
-}
-
-function detailOf(row: VistaarLeadRecord, window: ReleaseWindow): LeadDetail {
-  const {
-    stage_history: history,
-    activities,
-    holder_history: _before,
-    ...brief
-  } = row;
-  return {
-    ...viewOf(brief, window),
-    stage_history: history ?? [],
-    activities: [...(activities ?? [])].reverse(),
-  };
 }
 
 /**
@@ -408,7 +364,7 @@ export class LeadsService {
   ): Promise<PageResult<LeadView>> {
     const now = new Date();
     const filter: LeadListFilter = {
-      ...this.search(query.q),
+      ...searchOf(query.q),
       agent_id: partner.agent_id,
       stage: query.stage,
       due_before: query.due
@@ -566,7 +522,7 @@ export class LeadsService {
     const to = query.to ? new Date(query.to) : undefined;
     if (to && query.to?.length === 10) to.setUTCHours(23, 59, 59, 999);
     const filter: LeadListFilter = {
-      ...this.search(query.q),
+      ...searchOf(query.q),
       agent_id: query.agent_id?.toUpperCase(),
       stage: query.stage,
       origin: query.origin,
@@ -952,18 +908,6 @@ export class LeadsService {
     at: Date,
   ): LeadActivity {
     return { id: randomUUID(), type, text, at, by };
-  }
-
-  /** Digits look in the mobile; anything else, in the name, village and crops. */
-  private search(
-    q: string | undefined,
-  ): Pick<LeadListFilter, 'text' | 'phone'> {
-    if (!q) return {};
-    if (/^[\d\s+-]+$/.test(q)) {
-      const digits = q.replace(/\D/g, '');
-      return { phone: digits.length > 10 ? digits.slice(-10) : digits };
-    }
-    return { text: q };
   }
 
   private unavailable() {
