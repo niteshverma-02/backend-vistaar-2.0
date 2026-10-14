@@ -3,10 +3,12 @@ import {
   cropsOf,
   farmerBand,
   farmerCopyOf,
+  fixFits,
   holderOf,
   isFarmerProfile,
   leadDocOf,
   releaseAtOf,
+  replaceableBy,
   splitName,
   stageMoveError,
   type FarmerInput,
@@ -196,5 +198,26 @@ describe('holderOf — released', () => {
     expect(
       holderOf({ ...base, link: { agent_id: 'VST-000001' }, released: true }),
     ).toBe('mine');
+  });
+});
+
+describe('farmer location rules', () => {
+  it('takes a precise fix in India', () => {
+    expect(fixFits({ lat: 23.21, lng: 77.41, accuracy_m: 30 })).toBe(true);
+    expect(fixFits({ lat: 23.21, lng: 77.41 })).toBe(true);
+  });
+  it('refuses a vague fix, or one outside India (0,0 from a phone with no fix)', () => {
+    expect(fixFits({ lat: 23.21, lng: 77.41, accuracy_m: 900 })).toBe(false);
+    expect(fixFits({ lat: 0, lng: 0 })).toBe(false);
+  });
+  it('lets a source replace itself and weaker ones only', () => {
+    expect(replaceableBy('order')).toEqual(['pincode', 'order']);
+    expect(replaceableBy('visit')).toEqual([
+      'pincode',
+      'order',
+      'add',
+      'visit',
+    ]);
+    expect(replaceableBy('pincode')).toEqual(['pincode']);
   });
 });

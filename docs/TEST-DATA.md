@@ -82,6 +82,12 @@ app — the seed does not fake them in shared collections:
 - **event** — register VST-000006 for an event happening today or tomorrow (Events);
 - **order to confirm** — an order placed and not yet confirmed by Stockship.
 
+## Radar
+
+`GET /radar?lat=23.2599&lng=77.4126&km=50` as **VST-000006** (Bhopal) shows its farmers
+around Bhopal, nearest first — all approximate (pincode centres) until the app sends GPS
+with an add, visit or order. Placed on beta by `backfill-lead-location` (2026-10-14).
+
 ## Removing it
 
 Nothing deletes test data automatically: the farmers are also org records (`piis`,

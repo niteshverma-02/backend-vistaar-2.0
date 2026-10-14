@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -17,8 +17,10 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateNested,
 } from 'class-validator';
 
+import { LocationDto } from '@common/dto/location.dto';
 import { PageQueryDto } from '@common/dto/page-query.dto';
 import { MOBILE_EXAMPLE } from '@common/utils/phone.util';
 
@@ -155,6 +157,16 @@ export class AddFarmerDto {
   @IsOptional()
   @IsBoolean()
   ex_employee_declared?: boolean;
+
+  @ApiPropertyOptional({
+    type: LocationDto,
+    description:
+      'The phone GPS now, usually at the farm: places the farmer on the radar (else the pincode centre)',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => LocationDto)
+  location?: LocationDto;
 }
 
 /**
@@ -247,6 +259,16 @@ export class UpdateLeadDto {
   @Min(0)
   @Max(MAX_EXPECTED_VALUE)
   expected_value?: number | null;
+
+  @ApiPropertyOptional({
+    type: LocationDto,
+    description:
+      'Set the farmer place from the phone GPS, standing at the farm',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => LocationDto)
+  location?: LocationDto;
 }
 
 export class AddActivityDto {
@@ -260,6 +282,16 @@ export class AddActivityDto {
   @IsNotEmpty({ message: 'Write what happened.' })
   @MaxLength(500)
   text!: string;
+
+  @ApiPropertyOptional({
+    type: LocationDto,
+    description:
+      'For a visit: the phone GPS at the farm, the best place for the farmer',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => LocationDto)
+  location?: LocationDto;
 }
 
 /** HO moves a farmer to another partner (PRD AD8). */

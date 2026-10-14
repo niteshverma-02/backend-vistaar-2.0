@@ -10,7 +10,9 @@ import {
   notFound,
   serviceUnavailable,
 } from '@common/errors/api-error';
+import type { LocationDto } from '@common/dto/location.dto';
 import { PageResult } from '@common/http/page-result';
+import { toPoint, type GeoPoint } from '@common/utils/geo.util';
 import { DAY_MS, istDayStart } from '@common/utils/ist-day.util';
 import { normalizeMobile } from '@common/utils/phone.util';
 import { AccessService } from '@modules/access/services/access.service';
@@ -44,11 +46,13 @@ import {
   contactDocOf,
   contactUpdateOf,
   farmerCopyOf,
+  fixFits,
   holderOf,
   isOpenStage,
   leadDocOf,
   leadUpdateOf,
   releaseAtOf,
+  replaceableBy,
   searchOf,
   stageMoveError,
   titleCase,
@@ -57,6 +61,7 @@ import {
   type Holder,
   type LeadOwner,
   type LeadStage,
+  type LocationSource,
   type ReleaseWindow,
 } from '../leads.domain';
 import { OrgLeadsRepository } from '../repositories/org-leads.repository';
@@ -82,6 +87,13 @@ export interface SavedLead extends LeadDetail {
 
 export interface PartnerLeadView extends LeadView {
   partner: PartnerCard | null;
+}
+
+/** A farmer's place as a save decides it. */
+interface Spot {
+  location: GeoPoint | null;
+  location_source: LocationSource | null;
+  location_at: Date | null;
 }
 
 /** HO's view of one farmer: the lead, its partner and the partners before. */
@@ -225,6 +237,7 @@ export class LeadsService {
     const place = await this.placeOf(dto, agent);
     const copy = farmerCopyOf(farmer, place);
     const note = dto.note ? [this.activity('note', dto.note, by, now)] : [];
+    const spot = await this.spotFrom(dto.location, copy.pincode, 'add', now);
 
     let result: SavedLead['result'];
     const released = holder === 'released' ? found?.link : null;
@@ -284,6 +297,9 @@ export class LeadsService {
         row.lead_id = leadId;
       }
     }
+    if (row.agent_id === by && (await this.applySpot(piiId, by, spot))) {
+      Object.assign(row, spot);
+    }
     return { ...detailOf(row, await this.window()), result };
   }
 
@@ -326,6 +342,9 @@ export class LeadsService {
           held_since: now,
           last_worked_at: now,
           holder_history: [],
+          location: null,
+          location_source: null,
+          location_at: null,
         });
     if (claimed) return origin === 'created' ? 'created' : 'linked';
 
@@ -500,6 +519,11 @@ export class LeadsService {
         null,
       );
     }
+    if (dto.location || (dto.pincode && dto.pincode !== row.pincode)) {
+      const spot = await this.spotFrom(dto.location, saved.pincode, 'add', now);
+      if (await this.applySpot(saved.pii_id, by, spot))
+        Object.assign(saved, spot);
+    }
     return detailOf(saved, window);
   }
 
@@ -585,7 +609,60 @@ export class LeadsService {
       },
     );
     if (!saved) throw notFound('Farmer not found.');
+    // At a farm visit the partner stands at the farm: the best fix there is.
+    if (dto.type === 'visit' && dto.location) {
+      const spot = await this.spotFrom(
+        dto.location,
+        saved.pincode,
+        'visit',
+        now,
+      );
+      if (await this.applySpot(saved.pii_id, partner.agent_id, spot)) {
+        Object.assign(saved, spot);
+      }
+    }
     return detailOf(saved, await this.window());
+  }
+
+  /**
+   * A phone fix taken while ordering for the farmer (the cart's "Ordering
+   * for"). The weakest source: it never moves a dot set at a visit or an add.
+   */
+  async recordLocation(
+    agentId: string,
+    piiId: string,
+    fix: LocationDto,
+  ): Promise<boolean> {
+    const row = await this.rows.findByPii(piiId.toUpperCase());
+    if (!row || row.agent_id !== agentId) return false;
+    const spot = await this.spotFrom(fix, row.pincode, 'order', new Date());
+    return this.applySpot(row.pii_id, agentId, spot);
+  }
+
+  /**
+   * One-off: farmers with no place, or only a pincode's, get their pincode's
+   * centre as the book has it now (a GPS place is never touched). Safe to run
+   * again. Answers how many changed (or would).
+   */
+  async placeByPincode(apply: boolean): Promise<number> {
+    let changed = 0;
+    for (const row of await this.rows.placedByPincodeOrNot(50_000)) {
+      const spot = await this.spotFrom(
+        undefined,
+        row.pincode,
+        'pincode',
+        new Date(),
+      );
+      if (!spot.location) continue;
+      const [lng, lat] = spot.location.coordinates;
+      const same =
+        row.location?.coordinates[0] === lng &&
+        row.location?.coordinates[1] === lat;
+      if (same) continue;
+      changed += 1;
+      if (apply) await this.applySpot(row.pii_id, row.agent_id, spot);
+    }
+    return changed;
   }
 
   async list(query: AdminLeadQueryDto): Promise<PageResult<PartnerLeadView>> {
@@ -764,6 +841,66 @@ export class LeadsService {
       lead_days: s.lead_release_days,
       customer_days: s.customer_release_days,
     };
+  }
+
+  /**
+   * Where a save puts the farmer: the phone's fix when it fits (precise, in
+   * India), else the pincode's centre, else nowhere. Pure lookups — the
+   * pincode book is in memory.
+   */
+  private async spotFrom(
+    fix: LocationDto | undefined,
+    pincode: string | null | undefined,
+    source: LocationSource,
+    now: Date,
+  ): Promise<Spot> {
+    if (fix && fixFits(fix)) {
+      const at = fix.at ? new Date(fix.at) : now;
+      return {
+        location: toPoint(fix.lat, fix.lng),
+        location_source: source,
+        location_at: at.getTime() > now.getTime() ? now : at,
+      };
+    }
+    const centre = await this.pincodes.centre(pincode);
+    if (centre) {
+      return {
+        location: toPoint(centre.lat, centre.lng),
+        location_source: 'pincode',
+        location_at: now,
+      };
+    }
+    return { location: null, location_source: null, location_at: null };
+  }
+
+  /**
+   * Stores the spot unless a stronger source placed the farmer already. A
+   * real fix also lands on the org address row Vistaar filed (`geo`), so the
+   * org's maps see the farm too. `false` = nothing changed.
+   */
+  private async applySpot(
+    piiId: string,
+    agentId: string,
+    spot: Spot,
+  ): Promise<boolean> {
+    if (!spot.location || !spot.location_source || !spot.location_at) {
+      return false;
+    }
+    const changed = await this.rows.setLocation(
+      piiId,
+      agentId,
+      {
+        location: spot.location,
+        location_source: spot.location_source,
+        location_at: spot.location_at,
+      },
+      replaceableBy(spot.location_source),
+    );
+    if (changed && spot.location_source !== 'pincode') {
+      const [lng, lat] = spot.location.coordinates;
+      await this.piis.setAddressGeo(piiId, LEAD_SOURCE, { lat, lng });
+    }
+    return changed;
   }
 
   /** The new partner starts over; a customer stays a customer. */

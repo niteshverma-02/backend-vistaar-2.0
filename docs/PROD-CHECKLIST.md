@@ -83,6 +83,7 @@ db.vistaar_v2_product_suggestions.createIndex({ agent_id: 1, created_at: -1 })
 db.vistaar_v2_product_suggestions.createIndex({ status: 1, created_at: -1 })
 db.vistaar_v2_product_suggestions.createIndex({ created_at: -1 })
 db.vistaar_v2_product_suggestions.createIndex({ product_key: 1, created_at: -1 })
+db.vistaar_v2_leads.createIndex({ agent_id: 1, location: '2dsphere' })
 ```
 
 ⚠️ **Beta (2026-10-09): none of these exist** — the beta Mongo host is out of disk and every
@@ -125,6 +126,9 @@ Nothing to build: the lookups use the existing `pii_id`, `phone_number`,
 `created_by`).
 
 ## Farmer leads — before switching on
+
+- [ ] Radar: `node dist/scripts/backfill-lead-location.js` (dry run), then `--apply` — farmers saved before 2026-10-14 get their pincode's centre. Safe to run again
+- [ ] HO adds the farm location to the farmer-consent wording (DPDP) — `PUT /admin/settings { farmer_consent_text }`
 
 - [ ] One active Offline Head (USR-1037) in `agents_v2`, or `lead_owner_agent_id` set
 - [ ] `vistaar_v2_leads` indexes built — `{pii_id}` unique is what keeps one farmer with one partner

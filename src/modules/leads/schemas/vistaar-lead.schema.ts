@@ -1,13 +1,17 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { SchemaTypes, type HydratedDocument } from 'mongoose';
 
+import type { GeoPoint } from '@common/utils/geo.util';
+
 import {
   FOUND_VIA,
   LEAD_STAGES,
+  LOCATION_SOURCES,
   type ActivityType,
   type FoundVia,
   type HoldEnd,
   type LeadStage,
+  type LocationSource,
 } from '../leads.domain';
 
 export interface StageMove {
@@ -105,6 +109,14 @@ export class VistaarLead {
   @Prop({ type: [SchemaTypes.Mixed], default: [] })
   holder_history!: HolderMove[];
 
+  /** Where the farmer is (GeoJSON, lng first) — the radar's dot; `null` = unknown. */
+  @Prop({ type: SchemaTypes.Mixed, default: null })
+  location!: GeoPoint | null;
+  /** How `location` was learnt (a phone fix at a visit / add / order, or the pincode's centre). */
+  @Prop({ type: String, enum: LOCATION_SOURCES, default: null })
+  location_source!: LocationSource | null;
+  @Prop({ type: Date, default: null }) location_at!: Date | null;
+
   created_at!: Date;
   updated_at!: Date;
 }
@@ -118,3 +130,6 @@ VistaarLeadSchema.index({ agent_id: 1, stage: 1 });
 VistaarLeadSchema.index({ agent_id: 1, next_follow_up: 1 });
 VistaarLeadSchema.index({ created_at: -1 });
 VistaarLeadSchema.index({ phone: 1 });
+// The radar: one partner's farmers within N km. Rows with no location are
+// not in it (2dsphere skips them).
+VistaarLeadSchema.index({ agent_id: 1, location: '2dsphere' });

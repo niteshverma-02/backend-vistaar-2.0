@@ -11,6 +11,7 @@ import { AdminLeadsController } from './controllers/admin-leads.controller';
 import { CustomersController } from './controllers/customers.controller';
 import { LeadsController } from './controllers/leads.controller';
 import { OrderEventsController } from './controllers/order-events.controller';
+import { RadarController } from './controllers/radar.controller';
 import { OrderEventsGuard } from './guards/order-events.guard';
 import { OrgLeadsRepository } from './repositories/org-leads.repository';
 import { VistaarLeadsRepository } from './repositories/vistaar-leads.repository';
@@ -23,6 +24,7 @@ import {
 import { VistaarLead, VistaarLeadSchema } from './schemas/vistaar-lead.schema';
 import { CustomersService } from './services/customers.service';
 import { LeadsService } from './services/leads.service';
+import { RadarService } from './services/radar.service';
 
 /**
  * Farmers partners add (PRD C2, C4, C9). The farmer is the org's record —
@@ -48,12 +50,14 @@ import { LeadsService } from './services/leads.service';
     AdminLeadsController,
     CustomersController,
     OrderEventsController,
+    RadarController,
   ],
   providers: [
     OrgLeadsRepository,
     VistaarLeadsRepository,
     LeadsService,
     CustomersService,
+    RadarService,
     OrderEventsGuard,
   ],
   exports: [LeadsService],
