@@ -103,6 +103,22 @@ export const can = (role: Role, cap: Capability): boolean => {
 export const capabilitiesOf = (role: Role): Capability[] =>
   (Object.keys(CAPABILITIES) as Capability[]).filter((c) => can(role, c));
 
+/**
+ * People who never get a capability their role would give them, by email.
+ * In code, not in a setting, so taking someone off money takes a reviewed
+ * change rather than a click.
+ */
+const WITHHELD: Partial<Record<Capability, ReadonlySet<string>>> = {
+  // User's decision, 2026-10-14.
+  'payments.credentials': new Set(['robinsingh@katyayaniorganics.com']),
+};
+
+/** What this person may do: the role's capabilities minus any withheld from them. */
+export function capabilitiesFor(role: Role, email: string): Capability[] {
+  const who = email.trim().toLowerCase();
+  return capabilitiesOf(role).filter((c) => !WITHHELD[c]?.has(who));
+}
+
 /** The role an active account's `user_role` grants, or `null` for none. */
 export function roleOf(
   userRole: string | null | undefined,
