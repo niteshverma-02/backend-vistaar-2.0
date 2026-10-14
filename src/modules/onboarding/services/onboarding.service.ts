@@ -9,6 +9,7 @@ import {
   type AgentRecord,
 } from '@modules/agents/services/agents.service';
 import { PiiService } from '@modules/spine/services/pii.service';
+import { PincodeService } from '@modules/spine/services/pincode.service';
 import { StorageService } from '@modules/uploads/services/storage.service';
 
 import {
@@ -18,6 +19,7 @@ import {
   filePaths,
   locationOf,
   mapProfile,
+  withPlace,
   missingRequired,
   previewOf,
   progress,
@@ -90,6 +92,7 @@ export class OnboardingService {
     private readonly agents: AgentsService,
     private readonly storage: StorageService,
     private readonly piis: PiiService,
+    private readonly pincodes: PincodeService,
   ) {}
 
   // ── Partner ───────────────────────────────────────────────────────────
@@ -425,8 +428,12 @@ export class OnboardingService {
         pending,
       );
     }
-    const { profile, location } = mapProfile(config.steps, doc.raw_data);
-    return this.agents.approve(agent, by, profile, location);
+    const mapped = mapProfile(config.steps, doc.raw_data);
+    const profile = withPlace(
+      mapped.profile,
+      await this.placeOf(mapped.profile.pincode),
+    );
+    return this.agents.approve(agent, by, profile, mapped.location);
   }
 
   async progressFor(
@@ -698,13 +705,22 @@ export class OnboardingService {
     doc: OnboardingData,
     config: OnboardingConfig,
   ): Promise<void> {
-    const preview = previewOf(config.steps, doc.raw_data);
+    const typed = previewOf(config.steps, doc.raw_data);
+    const preview = withPlace(typed, await this.placeOf(typed.pincode));
     if (
       agent.cohort === doc.cohort &&
       JSON.stringify(agent.preview ?? {}) === JSON.stringify(preview)
     )
       return;
     await this.agents.setPreview(agent._id, doc.cohort, preview);
+  }
+
+  /** The pincode's state and district, `null` when unknown or not given. */
+  private placeOf(pincode: unknown) {
+    const code = typeof pincode === 'number' ? String(pincode) : pincode;
+    return typeof code === 'string'
+      ? this.pincodes.lookup(code.trim())
+      : Promise.resolve(null);
   }
 
   private async view(

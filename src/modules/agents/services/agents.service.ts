@@ -266,6 +266,13 @@ export class AgentsService {
     return this.agents.setPreview(id, cohort, preview);
   }
 
+  setPlace(
+    agent: AgentRecord,
+    place: { state?: string; district?: string },
+  ): Promise<void> {
+    return this.agents.setPlace(agent._id, place, agent.profile != null);
+  }
+
   async setOwner(
     agent: AgentRecord,
     ownerAgentId: string,

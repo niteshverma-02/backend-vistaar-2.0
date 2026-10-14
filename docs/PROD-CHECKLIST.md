@@ -78,6 +78,7 @@ race; onboarding create re-reads on a race; sessions are deleted on refresh (no 
 - Exactly one active **USR-1037 Offline Head** in `agents_v2` — the `lead_owner` of every farmer lead. Or `PUT /admin/settings { lead_owner_agent_id }` to name one. With neither, `POST /leads` answers 503.
 - Role **USR-1040 "Vistaar Partner"** in `userroles` (`{ UserRoleId, role_name, agent_categories: [], __v: 0 }`) — by the ko-sales owner (`POST /api/v1/agents/roles` takes max+1, so check the max is USR-1039 first). Not on beta yet either.
 - Forms published before 2026-10-09 by the seed: `seed-onboarding.js --apply --republish` (12-digit Aadhaar, `org_document`).
+- Partners saved or approved before state/district came from the pincode (2026-10-14): `node dist/scripts/backfill-partner-place.js` (dry run), then `--apply`. Only `vistaar_v2_agents`; safe to run again. Beta done 2026-10-14 (VST-000006).
 
 ## Owed by other teams
 
