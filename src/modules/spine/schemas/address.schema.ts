@@ -22,6 +22,11 @@ export class Address {
   @Prop({ type: String, default: 'India' }) country!: string;
   @Prop({ type: Boolean, default: false }) is_primary!: boolean;
   @Prop({ type: String, default: null }) source!: string | null;
+  /** A GPS fix of the place, as ko-sales and prasar's map read it. */
+  @Prop({ type: Object, default: undefined }) geo?: {
+    lat: number;
+    lng: number;
+  };
   @Prop({ type: String, default: null }) created_by!: string | null;
   @Prop({ type: Date }) created_at!: Date;
   @Prop({ type: Date }) updated_at!: Date;

@@ -2,7 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, mongo, type PipelineStage, type UpdateQuery } from 'mongoose';
 
-import { CLOSED_STAGES, type LeadStage } from '../leads.domain';
+import type { GeoPoint } from '@common/utils/geo.util';
+import { kmToRadians } from '@common/utils/geo.util';
+
+import {
+  CLOSED_STAGES,
+  type LeadStage,
+  type LocationSource,
+} from '../leads.domain';
 import {
   VistaarLead,
   type VistaarLeadDocument,
@@ -32,6 +39,41 @@ export interface LeadListFilter {
 }
 
 const BRIEF = { activities: 0, stage_history: 0, holder_history: 0 } as const;
+
+/** What a radar dot needs — nothing more crosses the wire. */
+const RADAR = {
+  _id: 0,
+  pii_id: 1,
+  name: 1,
+  phone: 1,
+  village: 1,
+  district: 1,
+  crops: 1,
+  acreage: 1,
+  stage: 1,
+  expected_value: 1,
+  customer_at: 1,
+  last_order_at: 1,
+  location: 1,
+  location_source: 1,
+} as const;
+
+export type RadarRow = Pick<
+  VistaarLead,
+  | 'pii_id'
+  | 'name'
+  | 'phone'
+  | 'village'
+  | 'district'
+  | 'crops'
+  | 'acreage'
+  | 'stage'
+  | 'expected_value'
+  | 'customer_at'
+  | 'last_order_at'
+  | 'location'
+  | 'location_source'
+>;
 
 const escapeRegex = (value: string): string =>
   value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -92,6 +134,91 @@ export class VistaarLeadsRepository {
         { returnDocument: 'after' },
       )
       .lean<VistaarLeadRecord | null>()
+      .exec();
+  }
+
+  /**
+   * The farmer's place, unless a stronger source already set it (a farm
+   * visit is not overwritten by an order placed from the shop). `false` =
+   * kept the one it had.
+   */
+  async setLocation(
+    piiId: string,
+    agentId: string,
+    set: {
+      location: GeoPoint;
+      location_source: LocationSource;
+      location_at: Date;
+    },
+    replaceable: LocationSource[],
+  ): Promise<boolean> {
+    const out = await this.model
+      .updateOne(
+        {
+          pii_id: piiId,
+          agent_id: agentId,
+          location_source: { $in: [...replaceable, null] },
+        },
+        { $set: set },
+      )
+      .exec();
+    return out.modifiedCount === 1;
+  }
+
+  /**
+   * One partner's farmers (open leads and customers) within `km` of a point.
+   * `$geoWithin` needs no geo index — `agent_id` narrows first — so it works
+   * on a host without the 2dsphere index too; with it, it is a range scan.
+   */
+  nearby(
+    agentId: string,
+    centre: { lat: number; lng: number },
+    km: number,
+    cap: number,
+  ): Promise<RadarRow[]> {
+    return this.model
+      .find({
+        agent_id: agentId,
+        stage: { $ne: 'lost' },
+        location: {
+          $geoWithin: {
+            $centerSphere: [[centre.lng, centre.lat], kmToRadians(km)],
+          },
+        },
+      })
+      .select(RADAR)
+      .limit(cap)
+      .lean<RadarRow[]>()
+      .exec();
+  }
+
+  /** The partner's open leads and customers the radar cannot place. */
+  countUnplaced(agentId: string): Promise<number> {
+    return this.model
+      .countDocuments({
+        agent_id: agentId,
+        stage: { $ne: 'lost' },
+        location: null,
+      })
+      .exec();
+  }
+
+  /** Rows with a pincode and no place, or only a pincode's — for the backfill. */
+  placedByPincodeOrNot(
+    limit: number,
+  ): Promise<
+    Pick<VistaarLead, 'pii_id' | 'agent_id' | 'pincode' | 'location'>[]
+  > {
+    return this.model
+      .find({
+        pincode: { $type: 'string' },
+        $or: [{ location: null }, { location_source: 'pincode' }],
+      })
+      .select('pii_id agent_id pincode location')
+      .limit(limit)
+      .lean<
+        Pick<VistaarLead, 'pii_id' | 'agent_id' | 'pincode' | 'location'>[]
+      >()
       .exec();
   }
 

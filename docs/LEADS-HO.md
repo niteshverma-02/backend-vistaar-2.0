@@ -1,6 +1,11 @@
 # Farmer leads — HO portal
 
-> **Updated 2026-10-14 (2).** Settings: an emptied owner field — `""` or `null` — now
+> **Updated 2026-10-14 (3).** Every lead now has `location { lat, lng, exact, source, at }`
+> (or `null`) — where the farmer is, from the partner's GPS (visit / add / order) or the
+> pincode's centre (`exact: false`). Settings: add the farm location to the farmer-consent
+> wording (DPDP) — e.g. "…and the location of their farm".
+>
+> **Updated 2026-10-14 (2). Settings: an emptied owner field — `""` or `null` — now
 > clears `lead_owner_agent_id` / `default_owner_agent_id` (was a 400). Partners can now
 > remove a lead added by mistake (not a customer): it leaves `/admin/leads`.
 >

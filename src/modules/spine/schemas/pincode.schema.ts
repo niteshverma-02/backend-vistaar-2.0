@@ -8,6 +8,8 @@ export class Pincode {
   @Prop({ type: String }) state?: string;
   @Prop({ type: String }) district?: string;
   @Prop({ type: String }) taluk?: string;
+  /** The pincode area's centre (India Post); missing on a few. */
+  @Prop({ type: Object }) geo?: { lat?: number | null; lng?: number | null };
 }
 
 export type PincodeDocument = HydratedDocument<Pincode>;

@@ -100,6 +100,15 @@ export class PiiService {
     );
   }
 
+  /** A GPS fix on the address row `source` filed for the person, if any. */
+  setAddressGeo(
+    piiId: string,
+    source: string,
+    geo: { lat: number; lng: number },
+  ): Promise<void> {
+    return this.addresses.setGeo(piiId, source, geo);
+  }
+
   /** The person on a phone, without creating one; same oldest-first rule as `resolve`. */
   findIdByPhone(phone: string): Promise<string | null> {
     return this.piis.findIdByPhone(phone);

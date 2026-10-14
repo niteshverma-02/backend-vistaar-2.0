@@ -65,11 +65,17 @@ export class OrderService {
     );
   }
 
-  /** Each of the partner's customers' business, by `pii_id`. */
+  /** Each of the partner's customers' business, by `pii_id` (only these, when given). */
   async businessByCustomer(
     agentId: string,
+    piiIds?: readonly string[],
   ): Promise<Map<string, CustomerBusiness>> {
-    const rows = await this.orders.customerStats(agentId, BUSINESS_STATUSES);
+    if (piiIds && piiIds.length === 0) return new Map();
+    const rows = await this.orders.customerStats(
+      agentId,
+      BUSINESS_STATUSES,
+      piiIds,
+    );
     return new Map(
       rows.map((r) => [
         r.pii_id,

@@ -105,6 +105,7 @@ export class OrderRepository {
   customerStats(
     partnerId: string,
     statuses: readonly string[],
+    piiIds?: readonly string[],
   ): Promise<CustomerOrderStats[]> {
     return this.model
       .aggregate<CustomerOrderStats>([
@@ -112,7 +113,7 @@ export class OrderRepository {
           $match: {
             ...this.ownFilter(partnerId),
             order_status: { $in: statuses },
-            pii_id: { $type: 'string' },
+            pii_id: piiIds ? { $in: piiIds } : { $type: 'string' },
           },
         },
         { $sort: { date: -1 } },

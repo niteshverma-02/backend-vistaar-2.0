@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type } from 'class-transformer';
 import {
   IsInt,
   IsOptional,
@@ -6,7 +7,10 @@ import {
   Max,
   Min,
   ValidateIf,
+  ValidateNested,
 } from 'class-validator';
+
+import { LocationDto } from '@common/dto/location.dto';
 
 import { MAX_QUANTITY } from '../cart.domain';
 
@@ -71,4 +75,14 @@ export class SetCartCustomerDto {
     message: 'This customer is not valid. Please choose the customer again.',
   })
   pii_id!: string | null;
+
+  @ApiPropertyOptional({
+    type: LocationDto,
+    description:
+      'The phone GPS now — kept as a rough place for the farmer (never over one from a visit or an add)',
+  })
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => LocationDto)
+  location?: LocationDto;
 }

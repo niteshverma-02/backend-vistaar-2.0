@@ -4,6 +4,11 @@
 Only an **approved** partner can add farmers. Screens: Add lead, Leads (list / board), Lead
 detail, Home "follow-ups due" (PRD C2, C4, C9, H5).
 
+> **Updated 2026-10-14 (3) — where the farmer is.** `POST /leads`, `PATCH /leads/:piiId` and
+> `POST /leads/:piiId/activities` (a `visit`) take an optional `location` — the phone's GPS
+> then; every lead now has `location { lat, lng, exact, source, at }` (or `null`). It feeds
+> the radar (RADAR-APP.md). Nothing removed.
+>
 > **Updated 2026-10-14 (2) — full CRUD.** `PATCH /leads/:piiId` now also edits the farmer
 > (name, village, district, pincode, crops, acreage — not the mobile): the Lovable edit
 > screen. New `DELETE /leads/:piiId` removes a lead added by mistake (not a customer).
@@ -138,7 +143,8 @@ The Flutter `Lead` (`features/customers/domain/entities/lead.dart`) maps like th
   "expected_value": 2500,           // optional — expected first order, ₹
   "next_follow_up": "2026-10-15T10:00:00+05:30",   // optional — future only
   "note": "Needs a fungicide",      // optional — saved as the first activity
-  "ex_employee_declared": true      // required for ex-employee partners (12-month declaration)
+  "ex_employee_declared": true,     // required for ex-employee partners (12-month declaration)
+  "location": { "lat": 23.21, "lng": 77.41, "accuracy_m": 20 }   // optional — the phone's GPS now (RADAR-APP.md)
 }
 ```
 
@@ -167,6 +173,7 @@ already).
   "last_worked_at": "…",            // your last work on it
   "last_order_at": null,            // last order (customers)
   "releases_at": "2026-10-28T…Z",   // another partner may take it from then, unless you work it
+  "location": { "lat": 23.21, "lng": 77.41, "exact": true, "source": "add", "at": "…" },  // or null; exact false = pincode area
   "created_at": "…", "updated_at": "…",
   // GET /leads/:piiId, PATCH, activities, POST only:
   "stage_history": [{ "from": null, "to": "prospect", "at": "…", "by": "VST-000001" }],
@@ -215,6 +222,8 @@ Only what is sent changes; `null` clears.
   hold).
 
 `POST /leads/:piiId/activities` `{ "type": "call|visit|whatsapp|note", "text": "…" }` (≤ 500).
+With a `visit`, send `location` (the phone's GPS at the farm) — the best place for the
+farmer. `PATCH` takes `location` too ("set the farm here").
 Activities are a log: added and read, never edited or deleted.
 
 ## `DELETE /leads/:piiId`

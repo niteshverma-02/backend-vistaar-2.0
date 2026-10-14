@@ -55,6 +55,22 @@ function fakeRows(seed: Row[] = []) {
     findByPii: jest.fn((pii: string) =>
       Promise.resolve(rows.has(pii) ? { ...rows.get(pii)! } : null),
     ),
+    setLocation: jest.fn(
+      (
+        pii: string,
+        agent: string,
+        set: Record<string, unknown>,
+        replaceable: string[],
+      ) => {
+        const row = rows.get(pii);
+        const current = (row?.location_source as string | null) ?? null;
+        if (!row || row.agent_id !== agent) return Promise.resolve(false);
+        if (current !== null && !replaceable.includes(current))
+          return Promise.resolve(false);
+        Object.assign(row, set);
+        return Promise.resolve(true);
+      },
+    ),
     isHeldBy: jest.fn((pii: string, agent: string) =>
       Promise.resolve(rows.get(pii)?.agent_id === agent),
     ),
@@ -167,8 +183,10 @@ function setup(
     resolve: jest.fn().mockResolvedValue({ pii_id: 'PII-9', created: true }),
     nextOrgNumber: jest.fn().mockImplementation(() => Promise.resolve(++n)),
     saveAddress: jest.fn().mockResolvedValue('ADDR-1'),
+    setAddressGeo: jest.fn().mockResolvedValue(undefined),
   };
   const pincodes = {
+    centre: jest.fn().mockResolvedValue(null),
     lookup: jest
       .fn()
       .mockResolvedValue({ state: 'MADHYA PRADESH', district: 'BHOPAL' }),
@@ -202,7 +220,7 @@ function setup(
     settings as unknown as SettingsService,
     access as unknown as AccessService,
   );
-  return { service, org, rows, piis };
+  return { service, org, rows, piis, pincodes };
 }
 
 async function codeOf(promise: Promise<unknown>): Promise<string> {
@@ -678,5 +696,128 @@ describe('LeadsService — edit, remove, cards', () => {
   it('counts conversion as won of all leads, as the app does', async () => {
     const { service } = setup();
     expect((await service.summaryMine(ME)).conversion_pct).toBe(20);
+  });
+});
+
+describe('LeadsService — where the farmer is', () => {
+  // Bhopal's 462026 centre, and a fix 2 km from it.
+  const CENTRE = { lat: 23.2, lng: 77.4 };
+  const NEAR = { lat: 23.21, lng: 77.41, accuracy_m: 20 };
+  const FAR = { lat: 23.6, lng: 77.4 }; // ~44 km away: the partner was elsewhere
+
+  it('places a new farmer at the phone fix when it fits, and on the org address', async () => {
+    const { service, rows, piis, pincodes } = setup();
+    pincodes.centre.mockResolvedValue(CENTRE);
+    const saved = await service.upsert(ME, { ...dto, location: NEAR });
+    expect(saved.location).toMatchObject({
+      lat: 23.21,
+      lng: 77.41,
+      exact: true,
+      source: 'add',
+    });
+    expect(rows.rows.get('PII-9')?.location_source).toBe('add');
+    expect(piis.setAddressGeo).toHaveBeenCalledWith('PII-9', 'vistaar', {
+      lat: 23.21,
+      lng: 77.41,
+    });
+  });
+
+  it('falls back to the pincode centre for a vague or missing fix', async () => {
+    const vague = setup();
+    vague.pincodes.centre.mockResolvedValue(CENTRE);
+    expect(
+      (
+        await vague.service.upsert(ME, {
+          ...dto,
+          location: { ...FAR, accuracy_m: 900 },
+        })
+      ).location,
+    ).toMatchObject({ lat: 23.2, exact: false, source: 'pincode' });
+    expect(vague.piis.setAddressGeo).not.toHaveBeenCalled();
+
+    const none = setup();
+    none.pincodes.centre.mockResolvedValue(CENTRE);
+    expect((await none.service.upsert(ME, dto)).location?.source).toBe(
+      'pincode',
+    );
+  });
+
+  it('trusts a precise fix even far from the pincode point (those points are often wrong)', async () => {
+    const { service, pincodes } = setup();
+    pincodes.centre.mockResolvedValue(CENTRE);
+    expect(
+      (await service.upsert(ME, { ...dto, location: FAR })).location,
+    ).toMatchObject({
+      exact: true,
+      source: 'add',
+    });
+  });
+
+  it('a farm visit outranks an add; an order never moves a visited farm', async () => {
+    const { service, rows, pincodes } = setup({
+      seed: [
+        myRow({
+          pincode: '462026',
+          location_source: 'add',
+          location: { type: 'Point', coordinates: [77.41, 23.21] },
+        }),
+      ],
+    });
+    pincodes.centre.mockResolvedValue(CENTRE);
+    await service.addActivity(ME, 'PII-9', {
+      type: 'visit',
+      text: 'At the farm',
+      location: { lat: 23.205, lng: 77.402 },
+    });
+    expect(rows.rows.get('PII-9')?.location_source).toBe('visit');
+
+    expect(
+      await service.recordLocation(ME.agent_id, 'PII-9', {
+        lat: 23.22,
+        lng: 77.42,
+      }),
+    ).toBe(false);
+    expect(rows.rows.get('PII-9')?.location_source).toBe('visit');
+  });
+
+  it('an order places a farmer known only by pincode; someone else’s farmer is ignored', async () => {
+    const { service, rows, pincodes } = setup({
+      seed: [
+        myRow({
+          pincode: '462026',
+          location_source: 'pincode',
+          location: { type: 'Point', coordinates: [77.4, 23.2] },
+        }),
+      ],
+    });
+    pincodes.centre.mockResolvedValue(CENTRE);
+    expect(await service.recordLocation(ME.agent_id, 'PII-9', NEAR)).toBe(true);
+    expect(rows.rows.get('PII-9')?.location_source).toBe('order');
+    expect(await service.recordLocation('VST-000002', 'PII-9', NEAR)).toBe(
+      false,
+    );
+  });
+
+  it('a new pincode re-centres a farmer placed only by pincode', async () => {
+    const { service, rows, pincodes } = setup({
+      seed: [
+        myRow({
+          pincode: '462026',
+          name: 'R',
+          phone: '9876543210',
+          village: 'V',
+          crops: ['Wheat'],
+          acreage: 5,
+          location_source: 'pincode',
+          location: { type: 'Point', coordinates: [77.4, 23.2] },
+        }),
+      ],
+    });
+    pincodes.centre.mockResolvedValue({ lat: 23.5, lng: 77.8 });
+    await service.update(ME, 'PII-9', { pincode: '464001' });
+    expect(rows.rows.get('PII-9')?.location).toEqual({
+      type: 'Point',
+      coordinates: [77.8, 23.5],
+    });
   });
 });

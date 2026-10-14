@@ -1,3 +1,5 @@
+import { isIndiaFix } from '@common/utils/geo.util';
+
 /**
  * Farmer leads partners add (PRD C2, C4, C9; Lovable add-lead / leads / lead
  * detail screens).
@@ -159,6 +161,37 @@ export function releaseAtOf(
   const lastWork = row.last_worked_at?.getTime() ?? since;
   return new Date(Math.max(lastWork, since) + window.lead_days * DAY_MS);
 }
+
+/**
+ * Where a farmer's dot comes from, weakest first (TL, 2026-10-14: the phone's
+ * GPS when the partner adds the farmer or orders for them). A farm visit is
+ * the best fix — the partner is at the farm; an order is the weakest — it is
+ * often placed from the shop. `pincode` = the pincode area's centre.
+ */
+export const LOCATION_SOURCES = ['pincode', 'order', 'add', 'visit'] as const;
+export type LocationSource = (typeof LOCATION_SOURCES)[number];
+
+/** A fix less precise than this places a room, not a farm. */
+export const MAX_FIX_ACCURACY_M = 500;
+
+/**
+ * Can this phone fix stand for where the farmer is? In India and precise.
+ * Not compared with the pincode's point: ~13% of those in the org's book are
+ * more than 60 km off (2026-10-14), so a check against them would throw good
+ * fixes away. A poor fix is corrected by a better source later (a visit).
+ */
+export function fixFits(fix: {
+  lat: number;
+  lng: number;
+  accuracy_m?: number;
+}): boolean {
+  if (!isIndiaFix(fix.lat, fix.lng)) return false;
+  return fix.accuracy_m == null || fix.accuracy_m <= MAX_FIX_ACCURACY_M;
+}
+
+/** The sources a new fix from `source` may replace: itself and weaker ones. */
+export const replaceableBy = (source: LocationSource): LocationSource[] =>
+  LOCATION_SOURCES.slice(0, LOCATION_SOURCES.indexOf(source) + 1);
 
 /** Who moves a lead to won: the first confirmed order, not a person. */
 export const SYSTEM_ACTOR = 'system';
