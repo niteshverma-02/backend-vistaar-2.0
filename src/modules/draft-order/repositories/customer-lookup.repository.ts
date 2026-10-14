@@ -20,6 +20,14 @@ interface ContactRow {
   pii_id?: string;
 }
 
+const isString = (v: string | null | undefined): v is string => !!v;
+
+/** How `piiIdsFor` keys a draft: its contact, else its phone. */
+export const draftKey = (d: {
+  contact_id: string | null;
+  contact_number: string | null;
+}): string => `${d.contact_id ?? ''}|${d.contact_number ?? ''}`;
+
 /**
  * Read-only lookups on ko-sales' identity records (`piis`, `leads_v2`,
  * `contacts_v2`), which a draft copies its customer fields from. Every read
@@ -66,6 +74,66 @@ export class CustomerLookupRepository {
       name: name || null,
       phone: pii.phone_number?.[0] ?? null,
     };
+  }
+
+  /**
+   * `piiIdFor` for a page of drafts in two reads: contacts by `contact_id`,
+   * then the rest by phone (oldest person first, as everywhere). Keyed by
+   * `draftKey`.
+   */
+  async piiIdsFor(
+    drafts: readonly {
+      contact_id: string | null;
+      contact_number: string | null;
+    }[],
+  ): Promise<Map<string, string>> {
+    const out = new Map<string, string>();
+    const contactIds = [
+      ...new Set(drafts.map((d) => d.contact_id).filter(isString)),
+    ];
+    const byContact = new Map<string, string>();
+    if (contactIds.length) {
+      const rows = await this.connection
+        .collection<ContactRow>('contacts_v2')
+        .find(
+          { contact_id: { $in: contactIds } },
+          { projection: { contact_id: 1, pii_id: 1 } },
+        )
+        .toArray();
+      for (const r of rows)
+        if (r.contact_id && r.pii_id) byContact.set(r.contact_id, r.pii_id);
+    }
+
+    const phones = [
+      ...new Set(
+        drafts
+          .filter((d) => !(d.contact_id && byContact.has(d.contact_id)))
+          .map((d) => d.contact_number)
+          .filter(isString),
+      ),
+    ];
+    const byPhone = new Map<string, string>();
+    if (phones.length) {
+      const rows = await this.connection
+        .collection<PiiRow>('piis')
+        .find(
+          { phone_number: { $in: phones } },
+          { projection: { pii_id: 1, phone_number: 1 }, sort: { _id: 1 } },
+        )
+        .toArray();
+      for (const r of rows)
+        for (const phone of r.phone_number ?? [])
+          if (phones.includes(phone) && !byPhone.has(phone))
+            byPhone.set(phone, r.pii_id);
+    }
+
+    for (const d of drafts) {
+      const pii =
+        (d.contact_id && byContact.get(d.contact_id)) ||
+        (d.contact_number && byPhone.get(d.contact_number));
+      if (pii) out.set(draftKey(d), pii);
+    }
+    return out;
   }
 
   /**

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsInt,
   IsNotEmpty,
@@ -27,30 +27,39 @@ export class ConsentTextDto {
   hi?: string;
 }
 
+/** An emptied field in the portal clears the owner, as `null` does. */
+const blankToNull = ({ value }: { value: unknown }) =>
+  typeof value === 'string' && value.trim() === '' ? null : value;
+
 export class UpdateSettingsDto {
   @ApiPropertyOptional({
     example: 'A0-2691',
-    description: '`agents_v2.agent_id` of an active HO user',
+    nullable: true,
+    description:
+      '`agents_v2.agent_id` of an active HO user; `null` or `""` clears it',
   })
+  @Transform(blankToNull)
   @IsOptional()
   @IsString()
   @Matches(/^A0-\d+$/, {
     message: "Please enter the default owner's staff ID, for example A0-1234.",
   })
-  default_owner_agent_id?: string;
+  default_owner_agent_id?: string | null;
 
   @ApiPropertyOptional({
     example: 'A0-1234',
+    nullable: true,
     description:
-      'Override owner of farmer leads (`lead_owner`); unset = the Offline Head (USR-1037)',
+      'Override owner of farmer leads (`lead_owner`); `null` or `""` clears it — then the Offline Head (USR-1037) owns them',
   })
+  @Transform(blankToNull)
   @IsOptional()
   @IsString()
   @Matches(/^A0-\d+$/, {
     message:
       "Please enter the farmer-lead owner's staff ID, for example A0-1234.",
   })
-  lead_owner_agent_id?: string;
+  lead_owner_agent_id?: string | null;
 
   @ApiPropertyOptional({
     type: ConsentTextDto,

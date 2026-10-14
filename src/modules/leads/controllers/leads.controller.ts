@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -107,7 +108,7 @@ export class LeadsController {
   @Patch(':piiId')
   @ApiOperation({
     summary:
-      'Stage (not won), lost reason, follow-up, expected value — only what is sent',
+      'Stage (not won), lost reason, follow-up, expected value, or the farmer’s details (not the mobile) — only what is sent',
   })
   update(
     @CurrentPartner() partner: PartnerRef,
@@ -115,6 +116,18 @@ export class LeadsController {
     @Body() dto: UpdateLeadDto,
   ): Promise<LeadDetail> {
     return this.leads.update(partner, params.piiId, dto);
+  }
+
+  @Delete(':piiId')
+  @ApiOperation({
+    summary:
+      'Remove a lead added by mistake — the farmer is free again; not a customer',
+  })
+  remove(
+    @CurrentPartner() partner: PartnerRef,
+    @Param() params: PiiParamDto,
+  ): Promise<{ removed: true }> {
+    return this.leads.remove(partner, params.piiId);
   }
 
   @Post(':piiId/activities')

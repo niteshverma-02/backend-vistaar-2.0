@@ -389,10 +389,10 @@ export class LeadsService {
       partner.agent_id,
       new Date(istDayStart(now).getTime() + DAY_MS - 1),
     );
-    const closed = s.won + s.lost;
+    // The app's tile: won of all leads (Lovable Leads.tsx), not of closed ones.
     return {
       ...s,
-      conversion_pct: closed ? Math.round((s.won * 100) / closed) : 0,
+      conversion_pct: s.total ? Math.round((s.won * 100) / s.total) : 0,
     };
   }
 
@@ -409,7 +409,10 @@ export class LeadsService {
     return detailOf(await this.mine(partner, piiId), await this.window());
   }
 
-  /** Stage, follow-up, lost reason, expected value — only what is sent. */
+  /**
+   * Stage, follow-up, lost reason, expected value, and the farmer's details
+   * (name, village, district, pincode, crops, acreage) — only what is sent.
+   */
   async update(
     partner: PartnerRef,
     piiId: string,
@@ -475,6 +478,9 @@ export class LeadsService {
     if (dto.expected_value !== undefined)
       set.expected_value = dto.expected_value;
 
+    const edit = await this.editOf(row, dto);
+    if (edit) Object.assign(set, farmerCopyOf(edit.farmer, edit.place));
+
     const window = await this.window();
     if (Object.keys(set).length === 0) return detailOf(row, window);
     // Any change is work on the lead: it renews the partner's hold.
@@ -491,7 +497,79 @@ export class LeadsService {
         'This lead changed meanwhile — reload it.',
       );
     }
+    // A farmer Vistaar created: the org's lead, contact and address follow.
+    if (edit && saved.origin === 'created') {
+      await this.writeOrgRecords(
+        edit.farmer,
+        saved.pii_id,
+        by,
+        edit.place,
+        now,
+        null,
+      );
+    }
     return detailOf(saved, window);
+  }
+
+  /**
+   * The partner drops a lead (added by mistake, wrong farmer): their row goes
+   * and the farmer is free for anyone. The org's records stay — Katyayani
+   * keeps the farmer. A customer cannot be removed: orders hang on them.
+   */
+  async remove(partner: PartnerRef, piiId: string): Promise<{ removed: true }> {
+    const row = await this.mine(partner, piiId);
+    if (row.stage === 'won') {
+      throw conflict(
+        'STAGE_NOT_ALLOWED',
+        'A customer cannot be removed — they have an order.',
+      );
+    }
+    if (!(await this.rows.remove(row.pii_id, row.agent_id))) {
+      throw conflict(
+        'STAGE_CHANGED',
+        'This lead changed meanwhile — reload it.',
+      );
+    }
+    return { removed: true };
+  }
+
+  /** The farmer as edited, and where they are; `null` when no detail was sent. */
+  private async editOf(
+    row: VistaarLeadRecord,
+    dto: UpdateLeadDto,
+  ): Promise<{
+    farmer: FarmerInput;
+    place: { state: string; district: string | null };
+  } | null> {
+    const { name, village, district, pincode, crops, acreage } = dto;
+    if (
+      [name, village, district, pincode, crops, acreage].every(
+        (v) => v === undefined,
+      )
+    ) {
+      return null;
+    }
+    const farmer: FarmerInput = {
+      phone: row.phone,
+      name: name ?? row.name,
+      village: village ?? row.village,
+      district: district ?? row.district ?? undefined,
+      pincode: pincode ?? row.pincode ?? undefined,
+      crops: crops ?? row.crops,
+      acreage: acreage ?? row.acreage,
+    };
+    // A new pincode moves the state (and the district, unless one is sent).
+    const found =
+      pincode && pincode !== row.pincode
+        ? await this.pincodes.lookup(pincode)
+        : null;
+    return {
+      farmer,
+      place: {
+        state: (found?.state ?? row.state ?? '').trim().toUpperCase(),
+        district: district || found?.district || row.district,
+      },
+    };
   }
 
   /** Call / visit / WhatsApp / note on the lead's log. */

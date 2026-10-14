@@ -32,6 +32,7 @@ All routes are under `/api/v2/draft-orders` and answer
 ```json
 {
   "id": "DFT-96",
+  "pii_id": "PII-1620690",
   "contact_id": "C0-201985",
   "customer_name": "Kishan Lal",
   "contact_number": "9876543210",
@@ -50,6 +51,8 @@ All routes are under `/api/v2/draft-orders` and answer
 ```
 
 - `customer_name` / `contact_number` `null` = the partner's own shop stock.
+- `pii_id` (*added 2026-10-14*) = the farmer the draft is for — the same id as the cart,
+  leads and customers; `null` = shop stock. Use it to show the draft on the farmer.
 - `price` / `subtotal` are **as of the save**. Restore re-prices from the
   catalogue and caps quantities at today's stock; packs no longer sold are
   left out (the returned `CartView` shows what came back).

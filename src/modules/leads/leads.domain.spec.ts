@@ -34,9 +34,12 @@ describe('holderOf', () => {
     );
   });
 
-  it('treats a Vistaar lead with no partner row as its creator’s', () => {
+  it('frees a Vistaar lead with no partner row (the partner removed it)', () => {
     const lead = { source: 'vistaar', created_by: 'VST-000002' };
-    expect(holderOf({ ...base, lead })).toBe('other_partner');
+    expect(holderOf({ ...base, lead })).toBe('katyayani');
+    expect(holderOf({ ...base, lead, agentId: 'VST-000002' })).toBe(
+      'katyayani',
+    );
   });
 
   it('links a farmer from another channel, refuses a non-farmer', () => {

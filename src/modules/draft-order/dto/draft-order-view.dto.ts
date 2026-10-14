@@ -33,6 +33,15 @@ export class DraftOrderView {
   @ApiProperty({
     type: String,
     nullable: true,
+    example: 'PII-1620690',
+    description:
+      "The farmer — the id the cart, leads and customers use; `null` = the partner's own stock.",
+  })
+  pii_id!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
     example: 'C0-201985',
     description: "The customer's CRM contact, when they have one.",
   })

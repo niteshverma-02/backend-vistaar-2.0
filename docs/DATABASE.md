@@ -155,6 +155,10 @@ or webhook.
 ko-sales' upsert refuses any other); partners are not staff. The cart's "Ordering for" and
 draft orders check the partner through `LeadsService.holds()`.
 
+A partner can **remove** a lead that is not a customer (`DELETE /leads/:piiId`): the row is
+deleted, the farmer is free (a Vistaar org lead with no partner row is just a Katyayani
+farmer), and the org's rows stay.
+
 **Customers** are these rows at stage `won`: the order service's call
 (`POST /hooks/orders/confirmed`, ORDER-EVENTS.md — trusted as sent, the order is not read
 again) on the first confirmed order the holding partner placed sets `stage: won`,

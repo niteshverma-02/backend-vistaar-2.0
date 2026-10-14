@@ -23,7 +23,10 @@ import {
 } from '../draft-order.domain';
 import type { DraftOrdersQueryDto } from '../dto/draft-order-request.dto';
 import type { DraftOrderView } from '../dto/draft-order-view.dto';
-import { CustomerLookupRepository } from '../repositories/customer-lookup.repository';
+import {
+  CustomerLookupRepository,
+  draftKey,
+} from '../repositories/customer-lookup.repository';
 import {
   DraftOrderRepository,
   type CustomerKey,
@@ -66,11 +69,16 @@ export class DraftOrderService {
       query.skip,
       query.limit,
     );
-    return new PageResult(rows.map(draftView), total, query);
+    const piis = await this.customers.piiIdsFor(rows.map(keyOf));
+    return new PageResult(
+      rows.map((d) => draftView(d, piis.get(draftKey(keyOf(d))) ?? null)),
+      total,
+      query,
+    );
   }
 
   async get(partnerId: string, id: string): Promise<DraftOrderView> {
-    return draftView(await this.found(this.drafts.findOne(partnerId, id)));
+    return this.viewOf(await this.found(this.drafts.findOne(partnerId, id)));
   }
 
   /**
@@ -101,7 +109,7 @@ export class DraftOrderService {
     partnerId: string,
     id: string,
   ): Promise<DraftOrderView> {
-    return draftView(
+    return this.viewOf(
       await this.found(this.drafts.markReminderSent(partnerId, id)),
     );
   }
@@ -168,7 +176,7 @@ export class DraftOrderService {
         write,
       );
       // Gone between the read and the write (deleted, or ordered): start anew.
-      if (replaced) return draftView(replaced);
+      if (replaced) return draftView(replaced, cart.pii_id);
     }
 
     const count = await this.drafts.nextCount();
@@ -181,6 +189,7 @@ export class DraftOrderService {
 
     return draftView(
       await this.drafts.insert(partnerId, draftOrderId(count), write),
+      cart.pii_id,
     );
   }
 
@@ -194,6 +203,15 @@ export class DraftOrderService {
     return customer;
   }
 
+  /** One draft, its farmer found again (the row holds no `pii_id`). */
+  private async viewOf(draft: DraftOrderRecord): Promise<DraftOrderView> {
+    const { contact_id, contact_number } = keyOf(draft);
+    return draftView(
+      draft,
+      await this.customers.piiIdFor(contact_id, contact_number),
+    );
+  }
+
   private async found(
     pending: Promise<DraftOrderRecord | null>,
   ): Promise<DraftOrderRecord> {
@@ -203,11 +221,20 @@ export class DraftOrderService {
   }
 }
 
-function draftView(draft: DraftOrderRecord): DraftOrderView {
+const keyOf = (draft: DraftOrderRecord) => ({
+  contact_id: draft.contact_id ?? null,
+  contact_number: draft.contact_number ?? null,
+});
+
+function draftView(
+  draft: DraftOrderRecord,
+  piiId: string | null,
+): DraftOrderView {
   const products = draft.form_data?.products ?? [];
 
   return {
     id: draft.draft_order_id,
+    pii_id: piiId,
     contact_id: draft.contact_id ?? null,
     customer_name: draft.customer_name ?? null,
     contact_number: draft.contact_number ?? null,
