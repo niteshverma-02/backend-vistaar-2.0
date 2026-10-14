@@ -145,7 +145,7 @@ Both go to the head roles today.
 |---|---|
 | `bulk` / `family` | Exactly one is required. It must exist in `bulk_v2.sku` or `combos_v2.family` |
 | `media.media_type` | `image`, `video` or `audio` |
-| `media.media_url` | An `https` link, at most 2000 characters. This API does not upload files |
+| `media.media_url` | An `https` link, at most 2000 characters — e.g. the `url` from `POST /admin/testimonials/media` |
 | `user.contact` | An Indian mobile number in any common form. It is stored as `+91XXXXXXXXXX` |
 | `user.name` | Optional, at most 80 characters |
 | `review` | Optional, at most 2000 characters |

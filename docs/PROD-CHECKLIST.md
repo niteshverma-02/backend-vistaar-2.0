@@ -124,9 +124,13 @@ routes to a single shard.
 
 ### `draft_orders` (shared — B2B order portal, Sankalp)
 
-Nothing to build. The collection already has `draft_order_id` (unique),
-`agent_id` and `status`; every Vistaar query starts from `agent_id` (a
-partner's handful of drafts) or `draft_order_id`.
+Nothing to build to go live. The collection already has `draft_order_id`
+(unique), `agent_id` and `status`; the app's queries start from `agent_id` (a
+partner's handful of drafts) or `draft_order_id`. HO's unfiltered list
+(`GET /admin/draft-orders`, `{ entry_path: 'vistaar', status: 'draft' }`
+sorted by `updated_at`) rides `status` and sorts in memory — fine at today's
+~100 rows; once the collection holds tens of thousands of drafts, ask B2B
+for `{ entry_path: 1, status: 1, updated_at: -1 }`.
 
 ### `piis`, `leads_v2`, `contacts_v2`, `addresses`
 
