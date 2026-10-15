@@ -64,6 +64,8 @@ describe('slabs', () => {
       /no upper limit/,
     );
     expect(slabsProblem([{ from: 100, to: null, rate: 5 }])).toMatch(/₹0/);
+    for (const rate of [1.1, 2.55, 8.2, 0.29, 99.99])
+      expect(slabsProblem([{ from: 0, to: null, rate }])).toBeNull();
     expect(slabsProblem([{ from: 0, to: null, rate: 7.555 }])).toMatch(
       /two decimals/,
     );
