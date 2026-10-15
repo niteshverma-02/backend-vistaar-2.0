@@ -34,22 +34,24 @@ At 200 connections, `/stories/content`'s slowest 1% went from **4.3 s to 0.38 s*
 The cached APIs scale with cores. The DB-bound ones roughly doubled; past that they were
 held back by the beta Mongo and its 28 ms round trip.
 
-### Commission, wallet, My Performance (2026-10-14, after merging PR #15)
+### Commission, wallet, My Performance (2026-10-14 / 15, after merging PR #15 and #16)
 
 Same setup, one process, 50 connections, 8 s each, partner VST-000006 (one order — the
-per-partner book is small on beta, so this measures the request path, not a big book):
+per-partner book is small on beta, so this measures the request path, not a big book).
+Successful responses only, with enough test tokens that the per-user limit never answers
+429. *Before* = beta 2de17d6; *after* = fix/merge-review (items 13–16 below).
 
-| API | DB calls per request | Requests/s | p50 | p99 |
-|---|---|---|---|---|
-| `/performance/standing` | 0 (5-min cache) | **~2,050** | 22 ms | 55 ms |
-| `/commission/summary`, `/commission/ledger` | 1 → **0** warm (orders and withdrawals cached 60 s) | **~860** | 59 ms | ~100 ms |
-| `/wallet` | 2 (withdrawals read fresh — the money screen; KYC facts) | **~590** | 81 ms | 136 ms |
-| `/performance?period=3m` | 3 → **2** (leads, attendance) | **~410** | 121 ms | 163 ms |
-| `/customers?ordered_in=` | 3 | **~370** | 129 ms | 208 ms |
-| `/orders` | 3 → **1** (the page; names from memory, withdrawals cached) | **~290** | 152 ms | 609 ms |
+| API | DB calls per request | Before | After | p50 after | p99 after |
+|---|---|---|---|---|---|
+| `/performance/standing` | 0 (5-min cache) | — | **~2,500/s** | 18 ms | 42 ms |
+| `/commission/summary` | 1 → **0** warm (orders and withdrawals cached 60 s) | ~750/s, 59 ms | **~2,160/s** | 21 ms | 49 ms |
+| `/commission/ledger` | 1 → **0** warm | ~750/s, 59 ms | **~1,850/s** | 25 ms | 54 ms |
+| `/wallet` | 2 (withdrawals read fresh — the money screen; KYC facts) | ~590/s, 81 ms | **~700/s** | 68 ms | 151 ms |
+| `/performance?period=3m` | 3 → **2** (leads, attendance) | ~410/s, 121 ms | **~640/s** | 76 ms | 117 ms |
+| `/orders` | 3 → **1** (the page; names from memory, withdrawals cached) | ~290/s, 152 ms | **~580/s** | 76 ms | 522 ms |
 
-Requests/s were measured before the `→` changes (fix/merge-review): each removed call is
-one ~28 ms round trip on beta. Re-measure once beta Mongo is reachable.
+Each call removed is one ~28 ms round trip to beta; in-region production saves less time
+per call but the same load on Mongo.
 
 A partner's commission book costs one aggregation a minute however many screens ask
 (`TtlCache`, shared by concurrent callers). Checked with `explain` on beta: the book,
