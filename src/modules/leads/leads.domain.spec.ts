@@ -5,6 +5,7 @@ import {
   farmerCopyOf,
   fixFits,
   holderOf,
+  inviteOrder,
   isFarmerProfile,
   leadDocOf,
   releaseAtOf,
@@ -219,5 +220,22 @@ describe('farmer location rules', () => {
       'visit',
     ]);
     expect(replaceableBy('pincode')).toEqual(['pincode']);
+  });
+});
+
+describe('inviteOrder', () => {
+  it("puts the meeting's village first, then sorts by name", () => {
+    const rows = [
+      { name: 'Suresh', village: 'Sehore' },
+      { name: 'Mahesh', village: ' rampur ' },
+      { name: 'Anil', village: 'Sehore' },
+      { name: 'Kamal', village: 'Rampur' },
+    ];
+    expect(inviteOrder(rows, 'Rampur').map((r) => r.name)).toEqual([
+      'Kamal',
+      'Mahesh',
+      'Anil',
+      'Suresh',
+    ]);
   });
 });

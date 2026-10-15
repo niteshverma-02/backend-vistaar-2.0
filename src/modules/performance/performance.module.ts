@@ -4,6 +4,7 @@ import { AccessModule } from '@modules/access/access.module';
 import { AgentsModule } from '@modules/agents/agents.module';
 import { AttendanceModule } from '@modules/attendance/attendance.module';
 import { CommissionModule } from '@modules/commission/commission.module';
+import { GigsModule } from '@modules/gigs/gigs.module';
 import { LeadsModule } from '@modules/leads/leads.module';
 import { SpineModule } from '@modules/spine/spine.module';
 
@@ -18,6 +19,7 @@ import { PerformanceService } from './services/performance.service';
     AgentsModule,
     AttendanceModule,
     CommissionModule,
+    GigsModule,
     LeadsModule,
     SpineModule,
   ],

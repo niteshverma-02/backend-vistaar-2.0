@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsInt,
   IsNotEmpty,
   IsNumber,
@@ -166,6 +167,64 @@ export class UpdateSettingsDto {
   @Min(1)
   @Max(100000000)
   monthly_target?: number;
+
+  @ApiPropertyOptional({
+    example: 250,
+    minimum: 0,
+    maximum: 100000,
+    description: 'Default pay for a new meeting gig, ₹',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100000)
+  gig_payout?: number;
+
+  @ApiPropertyOptional({
+    example: 15,
+    minimum: 1,
+    maximum: 300,
+    description: 'Default farmers present for a gig to be submitted',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(300)
+  gig_min_farmers?: number;
+
+  @ApiPropertyOptional({
+    example: 3,
+    minimum: 0,
+    maximum: 6,
+    description: 'Default photos for a gig to be submitted',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(6)
+  gig_photos_required?: number;
+
+  @ApiPropertyOptional({
+    example: 500,
+    minimum: 50,
+    maximum: 20000,
+    description:
+      'Check-in farther than this from a pinned venue is flagged (m)',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(50)
+  @Max(20000)
+  gig_checkin_radius_m?: number;
+
+  @ApiPropertyOptional({
+    example: false,
+    description:
+      'Approved gigs reach the wallet. Keep off until finance confirms the TDS section for gig pay.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  gig_pay_enabled?: boolean;
 
   @ApiPropertyOptional({ example: 5, minimum: 0.5, maximum: 50 })
   @IsOptional()

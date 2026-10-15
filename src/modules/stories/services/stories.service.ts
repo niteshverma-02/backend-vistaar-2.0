@@ -7,6 +7,14 @@ import { badRequest, notFound } from '@common/errors/api-error';
 import { imageInfo } from '@common/utils/image-size.util';
 import type { Env } from '@config/env.schema';
 import { EventsService } from '@modules/events/services/events.service';
+import {
+  GigReadsService,
+  type GigBrief,
+} from '@modules/gigs/services/gig-reads.service';
+import {
+  MeetingsService,
+  type MeetingView,
+} from '@modules/meetings/services/meetings.service';
 import { TestimonialsService } from '@modules/testimonials/services/testimonials.service';
 import { StorageService } from '@modules/uploads/services/storage.service';
 
@@ -91,13 +99,13 @@ export interface FarmerStoryView {
 }
 
 /**
- * One choice in the Meeting template's picker. Events today; HO-posted gigs
- * join with `kind: 'gig'` once that module exists.
+ * One choice in the Meeting template's picker: HO events, the partner's own
+ * meetings and the HO-posted gigs they hold.
  */
 export interface MeetingOptionView {
-  /** `e:<event id>` — the saved story's `selection.meeting_key`. */
+  /** `e:<event id>`, `m:<meeting id>` or `g:<gig id>` — the saved story's `selection.meeting_key`. */
   key: string;
-  kind: 'event';
+  kind: 'event' | 'meeting' | 'gig';
   title: string;
   starts_at: Date;
   place: string;
@@ -114,7 +122,7 @@ export interface StoryContentView {
   festivals: PartnerFestivalView[];
   /** Real testimonials first, then HO's ready-made ones. */
   farmer_stories: FarmerStoryView[];
-  /** Upcoming events for the caller's cohort, soonest first. */
+  /** Upcoming cohort events, the caller's own meetings and gigs, soonest first. */
   meetings: MeetingOptionView[];
 }
 
@@ -149,6 +157,8 @@ export class StoriesService {
     private readonly templates: StoryTemplatesService,
     private readonly samples: StorySamplesService,
     private readonly events: EventsService,
+    private readonly meetings: MeetingsService,
+    private readonly gigs: GigReadsService,
     private readonly testimonials: TestimonialsService,
     private readonly storage: StorageService,
     config: ConfigService<Env, true>,
@@ -302,16 +312,19 @@ export class StoriesService {
   /**
    * What the templates pre-fill from — every list HO-managed or approved.
    * Everything but `meetings` is the same for every partner, so it is built
-   * once and shared; only the partner's events are read per call.
+   * once and shared; only the partner's events and meetings are read per call.
    */
   async contentFor(agentId: string): Promise<StoryContentView> {
-    const [shared, events] = await Promise.all([
+    const now = new Date();
+    const [shared, events, meetings, gigs] = await Promise.all([
       this.sharedContent(),
       this.events.upcoming(agentId),
+      // The picker still works on events alone if meetings or gigs cannot be read.
+      this.meetings.upcoming(agentId, now).catch((): MeetingView[] => []),
+      this.gigs.upcoming(agentId, now).catch((): GigBrief[] => []),
     ]);
-    return {
-      ...shared,
-      meetings: events.map((e) => ({
+    const options: MeetingOptionView[] = [
+      ...events.map((e) => ({
         key: `e:${e.id}`,
         kind: 'event' as const,
         title: e.title,
@@ -320,7 +333,27 @@ export class StoriesService {
         note: e.note,
         registered: e.registered,
       })),
-    };
+      ...meetings.map((m) => ({
+        key: `m:${m.id}`,
+        kind: 'meeting' as const,
+        title: m.title,
+        starts_at: m.starts_at,
+        place: m.venue ?? m.village,
+        note: m.agenda,
+        registered: true,
+      })),
+      ...gigs.map((g) => ({
+        key: `g:${g.id}`,
+        kind: 'gig' as const,
+        title: g.title,
+        starts_at: g.starts_at,
+        place: g.venue ?? g.village,
+        note: null,
+        registered: true,
+      })),
+    ];
+    options.sort((a, b) => a.starts_at.getTime() - b.starts_at.getTime());
+    return { ...shared, meetings: options };
   }
 
   /** Rebuilt at most every 15 s from the lists' own caches. */

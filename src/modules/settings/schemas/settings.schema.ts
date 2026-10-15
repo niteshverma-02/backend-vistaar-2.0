@@ -77,6 +77,21 @@ export class Settings {
   /** A partner's monthly sales target, ₹, unless HO set one for them. */
   @Prop({ type: Number, default: 100_000 }) monthly_target!: number;
 
+  /** Meeting gigs: defaults for a new gig, HO-changeable per gig. */
+  @Prop({ type: Number, default: 250 }) gig_payout!: number;
+  @Prop({ type: Number, default: 15 }) gig_min_farmers!: number;
+  @Prop({ type: Number, default: 3 }) gig_photos_required!: number;
+  /** Check-in farther than this from a pinned venue is flagged, never refused. */
+  @Prop({ type: Number, default: 500 }) gig_checkin_radius_m!: number;
+  /** Approved gigs reach the wallet only when on — finance must first confirm the TDS section. */
+  @Prop({ type: Boolean, default: false }) gig_pay_enabled!: boolean;
+  /**
+   * When gig pay was first switched on. A gig approved before it counts from
+   * this moment, so payouts made while pay was off keep paying the orders
+   * they paid. Set once, never cleared.
+   */
+  @Prop({ type: Date, default: null }) gig_pay_enabled_at!: Date | null;
+
   /** How far the approval screen looks for existing network, in km. */
   @Prop({ type: Number, default: 5 })
   conflict_radius_km!: number;

@@ -2,6 +2,7 @@ import type {
   AgentRecord,
   AgentsService,
 } from '@modules/agents/services/agents.service';
+import type { GigReadsService } from '@modules/gigs/services/gig-reads.service';
 import type { OnboardingService } from '@modules/onboarding/services/onboarding.service';
 import type { SettingsService } from '@modules/settings/services/settings.service';
 import type { ProductFactsService } from '@modules/spine/services/product-facts.service';
@@ -40,6 +41,8 @@ function fact(id: string, daysAgoDelivered: number | null): OrderFact {
 describe('CommissionService', () => {
   let factsFor: jest.Mock;
   let forAgent: jest.Mock;
+  let settingsGet: jest.Mock;
+  let creditsFor: jest.Mock;
   let service: CommissionService;
 
   beforeEach(() => {
@@ -54,6 +57,16 @@ describe('CommissionService', () => {
       { _id: 'WD-3', status: 'requested', amount: 200, paid_at: null },
       { _id: 'WD-1', status: 'rejected', amount: 900, paid_at: null },
     ] as Partial<WithdrawalRecord>[]);
+    settingsGet = jest.fn().mockResolvedValue({
+      return_window_days: 7,
+      monthly_target: 100_000,
+      gig_pay_enabled: false,
+    });
+    creditsFor = jest
+      .fn()
+      .mockResolvedValue([
+        { id: 'GIG-1', amount: 250, approved_at: new Date(Date.now() - DAY) },
+      ]);
 
     service = new CommissionService(
       { factsFor } as unknown as CommissionOrderRepository,
@@ -67,12 +80,7 @@ describe('CommissionService', () => {
           effective_from: null,
         })),
       } as unknown as CommissionPlansService,
-      {
-        get: jest.fn().mockResolvedValue({
-          return_window_days: 7,
-          monthly_target: 100_000,
-        }),
-      } as unknown as SettingsService,
+      { get: settingsGet } as unknown as SettingsService,
       {
         requireByAgentId: jest.fn().mockResolvedValue({
           _id: 'ref-1',
@@ -89,6 +97,7 @@ describe('CommissionService', () => {
         facts: jest.fn().mockResolvedValue(new Map()),
       } as unknown as ProductFactsService,
       {} as StorageService,
+      { creditsFor } as unknown as GigReadsService,
     );
   });
 
@@ -128,6 +137,30 @@ describe('CommissionService', () => {
     service.forget('VST-000001');
     await service.summary('VST-000001');
     expect(factsFor).toHaveBeenCalledTimes(2);
+  });
+
+  it('reads approved gigs only when gig pay is on, and adds them to the wallet', async () => {
+    const off = await service.summary('VST-000001');
+    await service.bookOf('VST-000001', new Date(), true);
+    expect(creditsFor).not.toHaveBeenCalled();
+    expect(off).toMatchObject({
+      earned: 500,
+      gig_earned: 0,
+      withdrawable: 200,
+    });
+
+    settingsGet.mockResolvedValue({
+      return_window_days: 7,
+      monthly_target: 100_000,
+      gig_pay_enabled: true,
+    });
+    const on = await service.summary('VST-000001');
+    expect(creditsFor).toHaveBeenCalledWith('VST-000001');
+    expect(on).toMatchObject({
+      earned: 750,
+      gig_earned: 250,
+      withdrawable: 450,
+    });
   });
 
   it('filters the ledger by status and keeps the whole-ledger totals', async () => {

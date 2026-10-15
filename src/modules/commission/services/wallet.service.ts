@@ -84,8 +84,10 @@ export type WalletBlock =
 
 export interface WalletView {
   withdrawable: number;
-  /** Confirmed and paid commission, all time. */
+  /** Confirmed and paid commission, all time, with `gig_earned`. */
   earned: number;
+  /** Approved meeting gigs' pay inside `earned` (0 while gig pay is off). */
+  gig_earned: number;
   paid: number;
   /** Asked for, not yet paid. */
   on_hold: number;
@@ -184,6 +186,7 @@ export class WalletService {
     return {
       withdrawable: book.withdrawable,
       earned: book.earned,
+      gig_earned: book.gig_earned,
       paid: book.paid,
       on_hold: book.open,
       min_withdrawal: settings.min_withdrawal,

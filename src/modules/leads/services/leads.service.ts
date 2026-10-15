@@ -55,6 +55,7 @@ import {
   leadUpdateOf,
   releaseAtOf,
   replaceableBy,
+  inviteOrder,
   searchOf,
   stageMoveError,
   titleCase,
@@ -82,6 +83,18 @@ import {
 import type { HolderMove, LeadActivity } from '../schemas/vistaar-lead.schema';
 
 export type { LeadDetail, LeadView };
+
+/** One farmer a partner can invite to a meeting. */
+export interface InviteeCard {
+  pii_id: string;
+  name: string;
+  phone: string;
+  village: string;
+  stage: LeadStage;
+}
+
+/** Far above one partner's book; only a bound on a runaway read. */
+const INVITEE_CAP = 2000;
 
 /** `created` — new to Katyayani; `linked` — an existing Katyayani farmer, now yours; `updated` — yours already. */
 export interface SavedLead extends LeadDetail {
@@ -472,6 +485,45 @@ export class LeadsService {
           district: r.district ?? null,
         },
       ]),
+    );
+  }
+
+  /**
+   * Whom a partner can invite to a meeting: their own customers and open
+   * leads (lost ones left out), the meeting's village first.
+   */
+  async invitees(
+    agentId: string,
+    q: string | undefined,
+    village: string | undefined,
+  ): Promise<InviteeCard[]> {
+    const rows = await this.rows.all(
+      { ...searchOf(q), agent_id: agentId },
+      INVITEE_CAP,
+    );
+    return inviteOrder(
+      rows.filter((r) => r.stage !== 'lost'),
+      village,
+    ).map((r) => ({
+      pii_id: r.pii_id,
+      name: r.name,
+      phone: r.phone,
+      village: r.village,
+      stage: r.stage,
+    }));
+  }
+
+  /** Mobile → the partner's own lead or customer, for a meeting's attendee list. */
+  async mineByPhones(
+    agentId: string,
+    phones: readonly string[],
+  ): Promise<Map<string, { pii_id: string; stage: LeadStage }>> {
+    if (phones.length === 0) return new Map();
+    const rows = await this.rows.findMineByPhones(agentId, [
+      ...new Set(phones),
+    ]);
+    return new Map(
+      rows.map((r) => [r.phone, { pii_id: r.pii_id, stage: r.stage }]),
     );
   }
 

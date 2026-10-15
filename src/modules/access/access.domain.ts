@@ -91,6 +91,12 @@ export const CAPABILITIES = {
    * and Form 16A. Heads until Finance has a role code of its own.
    */
   'payouts.manage': ['head'],
+  /** See meeting gigs, who holds them and their proof (photos, attendance, check-in). */
+  'gigs.read': ['head'],
+  /** Post, edit, assign, reopen, cancel and delete gigs. */
+  'gigs.write': ['head'],
+  /** Approve or reject a submitted gig — approval is what pays the partner. */
+  'gigs.review': ['head'],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Capability = keyof typeof CAPABILITIES;

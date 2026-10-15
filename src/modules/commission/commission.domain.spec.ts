@@ -232,6 +232,71 @@ describe('buildBook', () => {
     expect(book.totals.paid).toEqual({ count: 1, amount: 800 });
   });
 
+  it('adds no gig money with no credits: the same book as without them', () => {
+    const facts = [
+      fact({ order_id: 'A', ...delivered(20) }),
+      fact({ order_id: 'B', ...delivered(10) }),
+      fact({ order_id: 'C' }),
+    ];
+    const payouts = [
+      { id: 'WD-1', amount: 500, paid_at: new Date('2026-10-12') },
+      { id: 'WD-2', amount: 300, paid_at: new Date('2026-10-15') },
+    ];
+    const { month: _before, ...before } = buildBook(
+      facts,
+      ctx({ payouts, open: 200 }),
+    );
+    const { month: _after, ...after } = buildBook(
+      facts,
+      ctx({ payouts, open: 200, gigCredits: [] }),
+    );
+    expect(after).toEqual(before);
+    expect(after.gig_earned).toBe(0);
+  });
+
+  it('adds approved gigs to earned and covers them in time order, never moving an order paid before', () => {
+    // A confirms 13 days ago (delivered 20), B 3 days ago (delivered 10).
+    const facts = [
+      fact({ order_id: 'A', ...delivered(20) }),
+      fact({ order_id: 'B', ...delivered(10) }),
+    ];
+    const gigCredits = [
+      // Approved the instant A confirmed: A goes first.
+      {
+        id: 'GIG-1',
+        amount: 250,
+        approved_at: new Date(NOW.getTime() - 13 * DAY),
+      },
+      {
+        id: 'GIG-2',
+        amount: 250,
+        approved_at: new Date(NOW.getTime() - 1 * DAY),
+      },
+    ];
+    const payouts = [
+      { id: 'WD-1', amount: 500, paid_at: new Date('2026-10-12') },
+      { id: 'WD-2', amount: 250, paid_at: new Date('2026-10-15') },
+    ];
+    const book = buildBook(facts, ctx({ payouts, gigCredits }));
+    const by = new Map(book.rows.map((r) => [r.order_id, r]));
+    expect(by.get('A')).toMatchObject({
+      status: 'paid',
+      withdrawal_id: 'WD-1',
+      paid_amount: 500,
+    });
+    // WD-2 paid GIG-1, approved before B confirmed.
+    expect(by.get('B')).toMatchObject({ status: 'confirmed', paid_amount: 0 });
+    expect(book.rows).toHaveLength(2);
+    expect(book).toMatchObject({
+      gig_earned: 500,
+      earned: 1_500,
+      paid: 750,
+      withdrawable: 750,
+    });
+    expect(book.totals.confirmed).toEqual({ count: 1, amount: 750 });
+    expect(book.totals.paid).toEqual({ count: 1, amount: 750 });
+  });
+
   it('owes a top-up when the month’s rate rises after a payout, and takes nothing back when it falls', () => {
     const paidOne = {
       payouts: [{ id: 'WD-1', amount: 500, paid_at: new Date('2026-10-14') }],

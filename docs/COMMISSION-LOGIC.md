@@ -56,7 +56,7 @@ back: the payout is only not made twice.
 
 | | |
 |---|---|
-| Earned | Σ confirmed + paid amounts, at today's rates |
+| Earned | Σ confirmed + paid amounts, at today's rates, + approved meeting gigs (when gig pay is on) |
 | Paid | Σ withdrawals marked paid |
 | On hold | Σ withdrawals requested or approved |
 | **Withdrawable** | earned − paid − on hold (never below 0) |
@@ -67,6 +67,22 @@ Payouts cover confirmed orders oldest-confirmed first; an order is **paid** once
 approved, bank proof verified by HO. **TDS** at request, fixed at approval: 2% with a
 verified PAN, else 20% (settings). Approved by a head (USR-1037/1000/1001) until Finance has
 a role code; paid by bank file + UTR (no payout API).
+
+## Meeting gigs
+
+**Off by default** — settings `gig_pay_enabled` (`false`) until Finance confirms the TDS
+section (user, 2026-10-15). While off the book is exactly as above.
+
+When on, each approved gig's pay is **earned at approval** (confirmed at once, no
+pending) and final — no reversal. It adds to `earned` and `withdrawable`, and shows as
+`gig_earned`; it has no ledger row (the ledger stays orders). Payouts cover orders and
+gigs together in time order — an order by its confirm date, a gig by its approval — so
+a gig approved later never moves an order already paid. Gigs approved while it was off
+count from the moment it was first switched on (`gig_pay_enabled_at`, set once), so a
+payout made while it was off stays on the orders it paid. A withdrawal carries the
+**same TDS** as the rest (2% / 20%, 194H) until Finance says otherwise.
+Gigs: `vistaar_v2_gigs`, read only when on, cached 60 s like withdrawals, fresh before
+money moves.
 
 ## How it is built
 
@@ -86,5 +102,4 @@ fix-up, and there is nothing to drift.
 
 - Push notifications on confirmed / reversed (`kind: commission`) — no push service yet.
 - Emailed PDF of My Performance (`POST /performance/report`) — no email service yet.
-- Meeting gigs (separate flat ₹) — the Meetings feature.
 - The TDS yearly threshold — the user chose "always 2% / 20%".

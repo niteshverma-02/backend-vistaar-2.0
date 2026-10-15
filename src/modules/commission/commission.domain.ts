@@ -212,8 +212,10 @@ export interface Book {
   month: (key: string) => MonthFacts;
   current: MonthFacts & { next_slab: { rate: number; gap: number } | null };
   totals: StatusTotals;
-  /** Σ confirmed and paid rows at today's rates. */
+  /** Σ confirmed and paid rows at today's rates, plus `gig_earned`. */
   earned: number;
+  /** Σ approved meeting gigs' pay (0 while gig pay is off). */
+  gig_earned: number;
   /** Σ withdrawals paid out. */
   paid: number;
   /** Σ withdrawals asked for and not yet paid or closed. */
@@ -232,6 +234,15 @@ export interface BookContext {
   payouts: readonly { id: string; amount: number; paid_at: Date }[];
   /** Σ withdrawals requested or approved. */
   open: number;
+  /** Approved meeting gigs' pay; none while settings `gig_pay_enabled` is off. */
+  gigCredits?: readonly GigCreditFact[];
+}
+
+/** One approved meeting gig's pay: earned (confirmed) at approval. */
+export interface GigCreditFact {
+  id: string;
+  amount: number;
+  approved_at: Date;
 }
 
 /** The partner's whole commission book from their orders. */
@@ -317,19 +328,42 @@ export function buildBook(facts: readonly OrderFact[], ctx: BookContext): Book {
         a.confirms_at!.getTime() - b.confirms_at!.getTime() ||
         a.order_id.localeCompare(b.order_id),
     );
+  // Approved gigs take their turn among them by approval time: a gig approved
+  // after an order confirmed comes after it, so it never moves that order's
+  // payout. The sort is stable — at the same instant the order goes first —
+  // so with no gigs the order is exactly `confirmed`.
+  const gigs = [...(ctx.gigCredits ?? [])].sort(
+    (a, b) =>
+      a.approved_at.getTime() - b.approved_at.getTime() ||
+      a.id.localeCompare(b.id),
+  );
+  const due: { at: number; amount: number; row: LedgerRow | null }[] = [
+    ...confirmed.map((r) => ({
+      at: r.confirms_at!.getTime(),
+      amount: r.amount,
+      row: r,
+    })),
+    ...gigs.map((g) => ({
+      at: g.approved_at.getTime(),
+      amount: g.amount,
+      row: null,
+    })),
+  ].sort((a, b) => a.at - b.at);
   let p = 0;
   let left = ctx.payouts[0]?.amount ?? 0;
-  for (const r of confirmed) {
-    let need = r.amount;
+  for (const { amount, row: r } of due) {
+    let need = amount;
     while (need > 0 && p < ctx.payouts.length) {
       const take = Math.min(need, left);
       need -= take;
       left -= take;
-      r.paid_amount += take;
-      if (need === 0) {
-        r.status = 'paid';
-        r.paid_at = ctx.payouts[p].paid_at;
-        r.withdrawal_id = ctx.payouts[p].id;
+      if (r) {
+        r.paid_amount += take;
+        if (need === 0) {
+          r.status = 'paid';
+          r.paid_at = ctx.payouts[p].paid_at;
+          r.withdrawal_id = ctx.payouts[p].id;
+        }
       }
       if (left <= 0) left = ctx.payouts[++p]?.amount ?? 0;
     }
@@ -348,6 +382,9 @@ export function buildBook(facts: readonly OrderFact[], ctx: BookContext): Book {
       totals[r.status].amount += r.amount;
     else earned += r.amount;
   }
+  // Earned at approval; no ledger row — the ledger stays orders only.
+  const gigEarned = gigs.reduce((sum, g) => sum + g.amount, 0);
+  earned += gigEarned;
   const paid = ctx.payouts.reduce((sum, w) => sum + w.amount, 0);
   // A payout can run ahead of today's amounts (a rate that fell after it);
   // nothing is taken back, it is only not paid twice.
@@ -366,6 +403,7 @@ export function buildBook(facts: readonly OrderFact[], ctx: BookContext): Book {
     current: { ...current, next_slab: nextSlab(current.slabs, current.sales) },
     totals,
     earned,
+    gig_earned: gigEarned,
     paid,
     open: ctx.open,
     withdrawable: Math.max(0, earned - paid - ctx.open),

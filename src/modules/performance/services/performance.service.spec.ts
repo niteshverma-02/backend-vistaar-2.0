@@ -14,6 +14,7 @@ import type {
   CommissionService,
   PartnerBook,
 } from '@modules/commission/services/commission.service';
+import type { GigReadsService } from '@modules/gigs/services/gig-reads.service';
 import type { LeadsService } from '@modules/leads/services/leads.service';
 import type { ProductFactsService } from '@modules/spine/services/product-facts.service';
 
@@ -23,6 +24,7 @@ import { PerformanceService } from './performance.service';
 // 5 Oct, noon IST: the newest sale (2 Oct) is 3 days old.
 const NOW = new Date('2026-10-05T06:30:00Z');
 const THIS = istMonthKey(NOW);
+const GIGS = { done: 2, earnings: 3000, farmers: 46, upcoming: 1 };
 const DAY = 24 * 3600 * 1000;
 
 /** An order placed and delivered on day 2 of `month`, worth `base` before GST (0% here). */
@@ -150,6 +152,9 @@ describe('PerformanceService', () => {
           monthly_target: 150_000,
         }),
       } as unknown as AgentsService,
+      {
+        monthStats: jest.fn().mockResolvedValue(GIGS),
+      } as unknown as GigReadsService,
     );
   });
 
@@ -165,7 +170,7 @@ describe('PerformanceService', () => {
       lost: 2,
       pct: 60,
     });
-    expect(view.gigs).toBeNull();
+    expect(view.gigs).toEqual(GIGS);
     expect(view.from).toBe(`${addMonths(THIS, -2)}-01`);
   });
 

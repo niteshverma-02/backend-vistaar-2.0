@@ -51,7 +51,8 @@ Refresh on app open, after an order, on pull-to-refresh.
     "paid":      { "count": 9, "amount": 6210 },
     "reversed":  { "count": 1, "amount": 140 }
   },
-  "earned": 7180,                          // confirmed + paid, all time
+  "earned": 7180,                          // confirmed + paid, all time (+ gig_earned)
+  "gig_earned": 0,                         // approved meeting gigs' pay inside earned; 0 while gig pay is off
   "withdrawable": 970,                     // what Withdraw can ask for now
   "plan_draft": true                       // rates not signed off by HO → "Draft" tag
 }
@@ -132,7 +133,7 @@ Slab match: `from ≤ sales < to`.
 
 ```jsonc
 {
-  "withdrawable": 970, "earned": 7180, "paid": 6210, "on_hold": 0,
+  "withdrawable": 970, "earned": 7180, "gig_earned": 0, "paid": 6210, "on_hold": 0,
   "min_withdrawal": 500,
   "tds_rate": 2,                           // what a withdrawal now would carry
   "pan_verified": true,

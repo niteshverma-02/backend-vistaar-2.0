@@ -5,6 +5,7 @@ import { CounterRepository } from '../repositories/counter.repository';
 const AGENT_ID_KEY = 'agent_id';
 const SUGGESTION_KEY = 'product_suggestion';
 const WITHDRAWAL_ID_KEY = 'withdrawal_id';
+const GIG_ID_KEY = 'gig_id';
 
 /** `VST-000001` — the number a partner, a report and the HO desk quote. */
 export const formatAgentId = (n: number): string =>
@@ -27,5 +28,11 @@ export class CountersService {
   async nextWithdrawalId(): Promise<string> {
     const n = await this.counters.next(WITHDRAWAL_ID_KEY);
     return `WD-${String(n).padStart(6, '0')}`;
+  }
+
+  /** `GIG-000001` — a meeting gig, as HO and the partner quote it. */
+  async nextGigId(): Promise<string> {
+    const n = await this.counters.next(GIG_ID_KEY);
+    return `GIG-${String(n).padStart(6, '0')}`;
   }
 }

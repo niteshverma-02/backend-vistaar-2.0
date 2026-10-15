@@ -35,7 +35,7 @@ Cached up to 5 minutes; call on app open.
   "orders_placed":    { "value": 21, "previous": 17 },
   "active_customers": { "value": 14, "previous": 11 },          // farmers ordered for, not cancelled
   "lead_conversion":  { "total": 10, "won": 6, "lost": 2, "pct": 60 },  // leads added in the period
-  "gigs": null,                                                  // until Meetings exists
+  "gigs": { "done": 2, "earnings": 3000, "farmers": 46, "upcoming": 1 },  // this IST month, any period
   "commission":       { "value": 12900, "draft_rate": true },
   "monthly": [                                                   // every month of this FY
     { "month": "2026-08", "sales": 54000, "rate": 7, "commission": 3780, "in_period": true }
@@ -71,6 +71,7 @@ Cached up to 5 minutes; call on app open.
 | `lifecycle_stage` | `onboarded` (no order yet) · `active` · `at_risk` (30+ days since the last order) · `lost` (90+) |
 | `health` | 20 points each: last order ≤ 7 days · ≥ 4 orders this month · ≥ half of open courses done · ≥ 4 field days (attendance punch-ins) this month · no overdue follow-up |
 | `monthly_target` | HO sets it per partner, else the settings default (₹1,00,000) |
+| `gigs` | meeting gigs (GIGS-APP.md) in **this IST month**, whatever the `period`: `done` = gigs HO approved, `earnings` = Σ their payout ₹, `farmers` = farmers present at them; `upcoming` = accepted gigs not started yet; `null` when gigs could not be read (the rest of the page still answers) |
 
 **Training:** no courses exist in the backend yet, so `training_completed` is `0 / 0` and
 counts as good (no open course left undone).
@@ -79,7 +80,6 @@ counts as good (no open course left undone).
 
 - `POST /performance/report` (emailed PDF) — needs an email service; the screen's
   "Export PDF" stays hidden until then.
-- `gigs` — comes with Meetings; `null` until then.
 
 ## Errors
 
