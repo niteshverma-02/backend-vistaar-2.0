@@ -139,7 +139,8 @@ names), `pincode_map_v2`, `orders_v2` + `products_v2` (the partner's orders:
 `source: 'vistaar'`, partner's `VST-` id in `agent`; decided 2026-10-12; the
 commission module reads `orders_v2` too), `bulk_v2` + `categories_v2` (GST and
 category, held in memory), and `franchises` / `prasar_v2_retailers` /
-`vistaaragents` for the nearby-network warning.
+`vistaaragents` for the nearby-network warning (and `franchises` as the KKD stores on
+the radar).
 
 **Exception — `carts`** (owned by B2B Sales): the cart module writes its rows
 there directly, by the user's decision (2026-10-08), always with

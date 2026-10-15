@@ -2,7 +2,8 @@
 
 **Base URL:** `{API_BASE}/api/v2` · bearer = partner `access_token` (AUTH-APP.md).
 The **Nearby** screen (PRD C9; Lovable `NearbyFarmers`): the partner's own **customers**
-and **open leads** within N km — no retailers, nobody else's farmers.
+and **open leads** within N km, and the **KKD stores** (Katyayani Krishi Kendra) there — no
+retailers, nobody else's farmers. The PRD's "new farmers" layer is not built (TL decision).
 
 ## `GET /radar?lat=&lng=&km=10`
 
@@ -15,7 +16,7 @@ and **open leads** within N km — no retailers, nobody else's farmers.
 {
   "centre": { "lat": 23.2599, "lng": 77.4126, "source": "gps" },   // gps · signup · pincode
   "km": 10,
-  "counts": { "customers": 3, "leads": 7, "unplaced": 2 },          // unplaced = no place known yet
+  "counts": { "customers": 3, "leads": 7, "unplaced": 2, "stores": 1 }, // unplaced = no place known yet
   "items": [                                                          // nearest first, up to 500
     {
       "pii_id": "PII-1620690", "kind": "customer",                    // customer · lead
@@ -28,9 +29,22 @@ and **open leads** within N km — no retailers, nobody else's farmers.
       "lat": 23.21, "lng": 77.41,
       "exact": false                                                  // false = approximate (pincode area)
     }
+  ],
+  "stores": [                                                         // KKD stores in the ring, nearest first, up to 50
+    {
+      "id": "FRN-0001", "name": "Katyayani Krishi Kendra · Bhopal",
+      "address": "…", "city": "Bhopal", "state": "MADHYA PRADESH", "pincode": "462011",
+      "phone": "9000000001",                                          // null when the store has none
+      "lat": 23.23, "lng": 77.43, "distance_km": 3.1
+    }
   ]
 }
 ```
+
+**Stores:** **Call** (`phone`), **Map** (`lat`,`lng`), **Send farmer** = share the store's
+name and address on WhatsApp from the phone (nothing is sent by the server). Stores have no
+services or opening hours on record yet — leave those lines out. If the store list cannot be
+read, `stores` is `[]` and the farmers still show.
 
 **On the map:** draw `exact: false` dots as approximate (the screen's "Locations are
 approximate" footer). Dot actions: **Call** (`phone`), **Map** (`lat`,`lng`), **View** →

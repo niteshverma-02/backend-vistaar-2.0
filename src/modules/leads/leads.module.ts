@@ -14,6 +14,7 @@ import { LeadsController } from './controllers/leads.controller';
 import { OrderEventsController } from './controllers/order-events.controller';
 import { RadarController } from './controllers/radar.controller';
 import { OrderEventsGuard } from './guards/order-events.guard';
+import { KkdStoreRepository } from './repositories/kkd-store.repository';
 import { OrgLeadsRepository } from './repositories/org-leads.repository';
 import { VistaarLeadsRepository } from './repositories/vistaar-leads.repository';
 import {
@@ -60,6 +61,7 @@ import { RadarService } from './services/radar.service';
     LeadsService,
     CustomersService,
     RadarService,
+    KkdStoreRepository,
     OrderEventsGuard,
   ],
   exports: [LeadsService],
