@@ -435,3 +435,16 @@ export function farmerCopyOf(
     acreage: farmer.acreage,
   };
 }
+
+/** Same village first (any case), then by name — the meeting invite picker. */
+export function inviteOrder<T extends { village: string; name: string }>(
+  rows: readonly T[],
+  village: string | undefined,
+): T[] {
+  const home = village?.trim().toLowerCase();
+  const rank = (r: T) =>
+    home && r.village.trim().toLowerCase() === home ? 0 : 1;
+  return [...rows].sort(
+    (a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name),
+  );
+}

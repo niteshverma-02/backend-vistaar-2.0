@@ -11,11 +11,12 @@ import { NOT_AN_ORDER } from '@modules/orders/orders.domain';
  * only fetches.
  */
 
-/** In the app's order: follow-ups, saved carts, events, orders. */
+/** In the app's order: follow-ups, saved carts, events, meetings, orders. */
 export const TASK_TYPES = [
   'follow_up',
   'saved_cart',
   'event',
+  'meeting',
   'order_to_confirm',
 ] as const;
 export type TaskType = (typeof TASK_TYPES)[number];
@@ -27,7 +28,7 @@ interface TaskBase {
   /** The record's id — what the app opens. */
   ref_id: string;
   urgent: boolean;
-  /** The time the task is about (follow-up, cart change, event start, order). */
+  /** The time the task is about (follow-up, cart change, event or meeting start, order). */
   at: Date;
 }
 
@@ -70,6 +71,19 @@ export interface EventTask extends TaskBase {
   };
 }
 
+export interface MeetingTask extends TaskBase {
+  type: 'meeting';
+  meeting: {
+    id: string;
+    title: string;
+    type: string;
+    starts_at: Date;
+    village: string;
+    venue: string | null;
+    invited: number;
+  };
+}
+
 export interface OrderTask extends TaskBase {
   type: 'order_to_confirm';
   order: {
@@ -82,7 +96,8 @@ export interface OrderTask extends TaskBase {
   };
 }
 
-export type TodayTask = FollowUpTask | SavedCartTask | EventTask | OrderTask;
+export type TodayTask =
+  FollowUpTask | SavedCartTask | EventTask | MeetingTask | OrderTask;
 
 export interface TodayView {
   count: number;
@@ -122,6 +137,16 @@ export interface TodaySources {
     starts_at: Date;
     location: string;
     registered: boolean;
+  }[];
+  /** The partner's own scheduled meetings, today or tomorrow. */
+  meetings: {
+    id: string;
+    title: string;
+    type: string;
+    starts_at: Date;
+    village: string;
+    venue: string | null;
+    counts: { invited: number };
   }[];
   /** Orders still at the "placed" stage. */
   orders: {
@@ -202,6 +227,32 @@ export function eventTasks(
     .sort(byAt);
 }
 
+/** The partner's scheduled meetings, today or tomorrow (IST). */
+export function meetingTasks(
+  meetings: TodaySources['meetings'],
+  now: Date,
+): MeetingTask[] {
+  const until = istDayStart(now).getTime() + 2 * DAY_MS;
+  return meetings
+    .filter((m) => m.starts_at.getTime() < until)
+    .map((m) => ({
+      type: 'meeting' as const,
+      ref_id: m.id,
+      urgent: istDaysBetween(now, m.starts_at) === 0,
+      at: m.starts_at,
+      meeting: {
+        id: m.id,
+        title: m.title,
+        type: m.type,
+        starts_at: m.starts_at,
+        village: m.village,
+        venue: m.venue,
+        invited: m.counts.invited,
+      },
+    }))
+    .sort(byAt);
+}
+
 /** Orders placed and not yet confirmed at the warehouse — oldest first. */
 export function orderTasks(orders: TodaySources['orders']): OrderTask[] {
   return orders
@@ -224,6 +275,7 @@ export function todayOf(sources: TodaySources, now: Date): TodayView {
     follow_up: followUpTasks(sources.dueLeads, now),
     saved_cart: savedCartTasks(sources.carts, now),
     event: eventTasks(sources.events, now),
+    meeting: meetingTasks(sources.meetings, now),
     order_to_confirm: orderTasks(sources.orders),
   };
   const items = TASK_TYPES.flatMap((t) => groups[t]);
@@ -233,6 +285,7 @@ export function todayOf(sources: TodaySources, now: Date): TodayView {
       follow_up: groups.follow_up.length,
       saved_cart: groups.saved_cart.length,
       event: groups.event.length,
+      meeting: groups.meeting.length,
       order_to_confirm: groups.order_to_confirm.length,
     },
     items,

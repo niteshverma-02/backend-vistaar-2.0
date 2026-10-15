@@ -37,6 +37,8 @@ Contract docs, one per feature, named by who reads them:
 | [CARTS-HO.md](./CARTS-HO.md) | HO portal | Partners' open carts and saved carts (read-only) |
 | [EVENTS-APP.md](./EVENTS-APP.md) | app | Farmer events for my cohort, register / give back a seat (also My Story meetings) |
 | [EVENTS-HO.md](./EVENTS-HO.md) | HO portal | Event calendar: add, schedule, target, seats, who registered |
+| [MEETINGS-APP.md](./MEETINGS-APP.md) | app | My farmer meetings: schedule, invite, attendance and walk-ins, capture leads, cancel / complete |
+| [MEETINGS-HO.md](./MEETINGS-HO.md) | HO portal | Partners' farmer meetings (read-only): list, summary cards, one meeting with attendees |
 | [TERMS-APP.md](./TERMS-APP.md) | app | The Vistaar partner T&C document link for Privacy & Terms and the login screen (public) |
 | [TERMS-HO.md](./TERMS-HO.md) | HO portal | Add, edit, switch and delete versions of the Vistaar partner T&C (shared `terms_and_conditions`) |
 | [FAQS-APP.md](./FAQS-APP.md) | app | Help FAQs and their sections for the /faqs screen (`GET /faqs`) |

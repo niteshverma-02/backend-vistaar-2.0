@@ -4,6 +4,7 @@ import type { ConfigService } from '@nestjs/config';
 import type { Env } from '@config/env.schema';
 
 import type { EventsService } from '@modules/events/services/events.service';
+import type { MeetingsService } from '@modules/meetings/services/meetings.service';
 import type { TestimonialsService } from '@modules/testimonials/services/testimonials.service';
 import type { StorageService } from '@modules/uploads/services/storage.service';
 
@@ -146,6 +147,9 @@ function setup(
     {
       upcoming: jest.fn().mockResolvedValue(opts.events ?? []),
     } as unknown as EventsService,
+    {
+      upcoming: jest.fn().mockResolvedValue([]),
+    } as unknown as MeetingsService,
     {
       forStories: jest.fn().mockResolvedValue(opts.testimonials ?? []),
     } as unknown as TestimonialsService,

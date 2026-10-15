@@ -38,6 +38,16 @@ const event = (id: string, starts: Date, registered = true) => ({
   registered,
 });
 
+const meeting = (id: string, starts: Date) => ({
+  id,
+  title: id,
+  type: 'farmer_meeting',
+  starts_at: starts,
+  village: 'Sehore',
+  venue: null,
+  counts: { invited: 12 },
+});
+
 const order = (id: string, status: string, created: Date) => ({
   id,
   customer_id: 'PII-1',
@@ -48,7 +58,13 @@ const order = (id: string, status: string, created: Date) => ({
   created_at: created,
 });
 
-const none: TodaySources = { dueLeads: [], carts: [], events: [], orders: [] };
+const none: TodaySources = {
+  dueLeads: [],
+  carts: [],
+  events: [],
+  meetings: [],
+  orders: [],
+};
 
 describe('todayOf', () => {
   it('lists follow-ups first, most overdue first; overdue is urgent', () => {
@@ -106,6 +122,29 @@ describe('todayOf', () => {
     ]);
   });
 
+  it('shows meetings today (urgent) or tomorrow, nothing later', () => {
+    const view = todayOf(
+      {
+        ...none,
+        meetings: [
+          meeting('MTG-TOMORROW', ist(15, 10)),
+          meeting('MTG-TODAY', ist(14, 17)),
+          meeting('MTG-LATER', ist(16, 10)),
+        ],
+      },
+      NOW,
+    );
+    expect(view.items.map((t) => [t.ref_id, t.urgent])).toEqual([
+      ['MTG-TODAY', true],
+      ['MTG-TOMORROW', false],
+    ]);
+    expect(view.items[0]).toMatchObject({
+      type: 'meeting',
+      meeting: { village: 'Sehore', invited: 12 },
+    });
+    expect(view.counts.meeting).toBe(2);
+  });
+
   it('lists orders waiting for the warehouse, oldest first, not failed ones', () => {
     const view = todayOf(
       {
@@ -127,6 +166,7 @@ describe('todayOf', () => {
         dueLeads: [lead('PII-T', ist(14, 9))],
         carts: [cart('DFT-1', ist(13, 12))],
         events: [event('E-TODAY', ist(14, 18))],
+        meetings: [],
         orders: [order('KSK-1', 'created', ist(12, 9))],
       },
       NOW,
@@ -139,7 +179,13 @@ describe('todayOf', () => {
     ]);
     expect(view).toMatchObject({
       count: 4,
-      counts: { follow_up: 1, saved_cart: 1, event: 1, order_to_confirm: 1 },
+      counts: {
+        follow_up: 1,
+        saved_cart: 1,
+        event: 1,
+        meeting: 0,
+        order_to_confirm: 1,
+      },
     });
   });
 });

@@ -136,6 +136,18 @@ export class VistaarLeadsRepository {
       .exec();
   }
 
+  /** The partner's own rows among these mobiles (ten digits). */
+  findMineByPhones(
+    agentId: string,
+    phones: readonly string[],
+  ): Promise<Pick<VistaarLeadRecord, 'pii_id' | 'phone' | 'stage'>[]> {
+    return this.model
+      .find({ agent_id: agentId, phone: { $in: phones } })
+      .select({ _id: 0, pii_id: 1, phone: 1, stage: 1 })
+      .lean<Pick<VistaarLeadRecord, 'pii_id' | 'phone' | 'stage'>[]>()
+      .exec();
+  }
+
   /** Rides the unique `{pii_id}` index; reads no more than the `_id`. */
   async isHeldBy(piiId: string, agentId: string): Promise<boolean> {
     const row = await this.model
