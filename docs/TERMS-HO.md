@@ -91,7 +91,7 @@ editor-made version or a blank page.
 | `sections[].points[]` | Up to 30 numbered points, each 1–1000 |
 | `sections[].items[]` | Up to 20 titled rows `{ title 1–80, detail 1–600, purpose ≤ 400 or null }` — printed as title, detail, "Used: purpose" |
 
-Text is trimmed and empty points dropped before the document is made.
+Text is trimmed before the document is made. A point that is only spaces is dropped, but an empty string `""` in `points[]` is refused (400 `VALIDATION_FAILED`), so remove blank point rows before you send.
 
 ## Errors
 
@@ -103,4 +103,4 @@ Text is trimmed and empty points dropped before the document is made.
 | 503 | `TERMS_ID_UNAVAILABLE` | Could not get a free `TOC-n` after several tries; try again |
 | 409 | `VERSION_CONFLICT` | `PUT /:toc_id/text` made on an older version — reload and redo |
 | 409 | `TERMS_NOT_EDITABLE` | `GET /:toc_id/text` on a version whose document was not written in the editor |
-| 503 | `UPLOADS_NOT_CONFIGURED` | `POST /compose` while the server cannot store files |
+| 503 | `UPLOADS_NOT_CONFIGURED` | `POST /compose`, `PUT /:toc_id/text` or `GET /:toc_id/text` while the server cannot store or read files |

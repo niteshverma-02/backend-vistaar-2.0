@@ -90,8 +90,9 @@ partner's owner at that time.
 { "status": "done", "note": "Called; delivery issue sent to logistics." }
 ```
 
-`status: "open"` reopens it (clears `done_by` / `done_at`). A score of 7–10 has no
-call-back → `400 VALIDATION_FAILED`. Returns the answer.
+`status: "open"` reopens it (clears `done_by` / `done_at`). `note` (≤ 500) **replaces** the
+saved note every time; leave it out and the note is cleared, so send the current note back if
+you want to keep it. A score of 7–10 has no call-back → `400 VALIDATION_FAILED`. Returns the answer.
 
 ## Reason chips — `GET` / `PUT /admin/feedback/reasons`
 

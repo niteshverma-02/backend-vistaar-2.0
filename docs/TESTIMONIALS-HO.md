@@ -77,7 +77,7 @@ new version, and the app must show it again before the next submission.
 | 404 | `NOT_FOUND` | No such submission |
 | 409 | `TESTIMONIAL_NOT_ALLOWED` | Its status does not allow that action, or someone changed it meanwhile — reload |
 | 409 | `CONSENT_WITHDRAWN` | Approving after a withdrawal, or withdrawing twice |
-| 400 | `VALIDATION_FAILED` | A missing reason |
+| 400 | `VALIDATION_FAILED` | A missing reason, or an `:id` that is not a UUID |
 
 ## 2. Vistaar testimonials (`/api/v2/admin/testimonials`)
 
@@ -148,7 +148,7 @@ Both go to the head roles today.
 |---|---|
 | `bulk` / `family` | Exactly one is required. It must exist in `bulk_v2.sku` or `combos_v2.family` |
 | `media.media_type` | `image`, `video` or `audio` |
-| `media.media_url` | An `https` link, at most 2000 characters — e.g. the `url` from `POST /admin/testimonials/media` |
+| `media.media_url` | An `https` link, at most 2000 characters — e.g. the `media_url` from `POST /admin/testimonials/media` |
 | `user.contact` | An Indian mobile number in any common form. It is stored as `+91XXXXXXXXXX` |
 | `user.name` | Optional, at most 80 characters |
 | `review` | Optional, at most 2000 characters |
