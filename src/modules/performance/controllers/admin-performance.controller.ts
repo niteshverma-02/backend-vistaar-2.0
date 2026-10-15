@@ -9,12 +9,14 @@ import type { PageResult } from '@common/http/page-result';
 
 import {
   AdminPerformanceQueryDto,
+  BoardQueryDto,
   PerformanceAgentParamDto,
   PerformanceQueryDto,
   SetTargetDto,
 } from '../dto/performance.dto';
 import {
   PerformanceService,
+  type CommissionBoard,
   type PartnerMonthRow,
   type PerformanceView,
 } from '../services/performance.service';
@@ -35,6 +37,16 @@ export class AdminPerformanceController {
     @Query() query: AdminPerformanceQueryDto,
   ): Promise<PageResult<PartnerMonthRow>> {
     return this.performance.adminList(query);
+  }
+
+  @Get('board')
+  @Can('commission.read')
+  @ApiOperation({
+    summary:
+      'Every approved partner’s month (sales, commission, earned, withdrawable, pending, paid, target %, tier, farmers, customers) with totals — exact, up to 10 minutes old',
+  })
+  board(@Query() query: BoardQueryDto): Promise<CommissionBoard> {
+    return this.performance.board(query.month);
   }
 
   @Get(':agentId')

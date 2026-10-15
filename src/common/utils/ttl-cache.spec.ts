@@ -42,4 +42,12 @@ describe('TtlCache', () => {
       'c2',
     );
   });
+
+  it('peeks at a fresh value without loading or storing', async () => {
+    const cache = new TtlCache<number>(60_000, 10);
+    expect(cache.peek('k')).toBeUndefined();
+    expect(cache.size).toBe(0);
+    await cache.get('k', () => Promise.resolve(5));
+    await expect(cache.peek('k')).resolves.toBe(5);
+  });
 });

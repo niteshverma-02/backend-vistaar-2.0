@@ -88,3 +88,16 @@ export class AdminPerformanceQueryDto extends PageQueryDto {
   @MaxLength(60)
   q?: string;
 }
+
+/** `GET /admin/performance/board`. */
+export class BoardQueryDto {
+  @ApiPropertyOptional({
+    example: '2026-10',
+    description: 'IST month; this month when left out',
+  })
+  @IsOptional()
+  @Matches(MONTH_PATTERN, {
+    message: 'Please choose a valid month, for example 2026-10.',
+  })
+  month?: string;
+}

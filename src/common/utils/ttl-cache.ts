@@ -36,6 +36,12 @@ export class TtlCache<V> {
     return value;
   }
 
+  /** The value if it is cached and fresh — never loads, never stores. */
+  peek(key: string): Promise<V> | undefined {
+    const hit = this.entries.get(key);
+    return hit && Date.now() - hit.at < this.ttlMs ? hit.value : undefined;
+  }
+
   /** Forget a key, so the next `get` loads it again. */
   delete(key: string): void {
     this.entries.delete(key);

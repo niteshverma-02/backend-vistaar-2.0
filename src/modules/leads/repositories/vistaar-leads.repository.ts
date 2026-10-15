@@ -44,6 +44,22 @@ export interface LeadListFilter {
 
 const BRIEF = { activities: 0, stage_history: 0, holder_history: 0 } as const;
 
+/** What one HO map dot reads. */
+export type MapDotRow = Pick<
+  VistaarLeadRecord,
+  | 'pii_id'
+  | 'agent_id'
+  | 'name'
+  | 'stage'
+  | 'village'
+  | 'district'
+  | 'state'
+  | 'crops'
+  | 'location'
+  | 'location_source'
+  | 'location_at'
+>;
+
 /** What a radar dot needs — nothing more crosses the wire. */
 const RADAR = {
   _id: 0,
@@ -505,11 +521,33 @@ export class VistaarLeadsRepository {
   }
 
   /** HO's customer cards: won leads, ordered lately, won this month, top states. */
+  /** Farmers and customers each partner holds — HO's board, in one pass. */
+  async countsByPartner(): Promise<
+    { agent_id: string; farmers: number; customers: number }[]
+  > {
+    return this.model
+      .aggregate<{ agent_id: string; farmers: number; customers: number }>([
+        {
+          $group: {
+            _id: '$agent_id',
+            farmers: { $sum: 1 },
+            customers: {
+              $sum: { $cond: [{ $eq: ['$stage', 'won'] }, 1, 0] },
+            },
+          },
+        },
+        { $project: { _id: 0, agent_id: '$_id', farmers: 1, customers: 1 } },
+      ])
+      .exec();
+  }
+
   async customerSummary(since: { active: Date; month: Date }): Promise<{
     total: number;
     active_30_days: number;
     new_this_month: number;
     by_state: { key: string; count: number }[];
+    by_partner: { key: string; count: number }[];
+    by_crop: { key: string; count: number }[];
   }> {
     const [out] = await this.model
       .aggregate<{
@@ -517,6 +555,8 @@ export class VistaarLeadsRepository {
         active: { n: number }[];
         month: { n: number }[];
         by_state: { _id: string | null; count: number }[];
+        by_partner: { _id: string; count: number }[];
+        by_crop: { _id: string; count: number }[];
       }>([
         { $match: { stage: 'won' } },
         {
@@ -535,32 +575,37 @@ export class VistaarLeadsRepository {
               { $sort: { count: -1 } },
               { $limit: 10 },
             ],
+            by_partner: [
+              { $group: { _id: '$agent_id', count: { $sum: 1 } } },
+              { $sort: { count: -1, _id: 1 } },
+              { $limit: 10 },
+            ],
+            // One count per crop whatever its case, as the app's crop chips.
+            by_crop: [
+              { $unwind: '$crops' },
+              { $group: { _id: { $toLower: '$crops' }, count: { $sum: 1 } } },
+              { $sort: { count: -1, _id: 1 } },
+              { $limit: 10 },
+            ],
           },
         },
       ])
       .exec();
     const n = (rows?: { n: number }[]) => rows?.[0]?.n ?? 0;
+    const pairs = (rows?: { _id: string | null; count: number }[]) =>
+      (rows ?? []).map((s) => ({ key: s._id ?? '', count: s.count }));
     return {
       total: n(out?.total),
       active_30_days: n(out?.active),
       new_this_month: n(out?.month),
-      by_state: (out?.by_state ?? []).map((s) => ({
-        key: s._id ?? '',
-        count: s.count,
-      })),
+      by_state: pairs(out?.by_state),
+      by_partner: pairs(out?.by_partner),
+      by_crop: pairs(out?.by_crop),
     };
   }
 
   /** HO's map: farmers with a place, only what a dot needs, at most `cap`. */
-  places(
-    filter: LeadListFilter,
-    cap: number,
-  ): Promise<
-    Pick<
-      VistaarLeadRecord,
-      'pii_id' | 'agent_id' | 'name' | 'stage' | 'location' | 'location_source'
-    >[]
-  > {
+  places(filter: LeadListFilter, cap: number): Promise<MapDotRow[]> {
     return this.model
       .find({ ...this.toQuery(filter), location: { $ne: null } })
       .select({
@@ -569,21 +614,16 @@ export class VistaarLeadsRepository {
         agent_id: 1,
         name: 1,
         stage: 1,
+        village: 1,
+        district: 1,
+        state: 1,
+        crops: 1,
         location: 1,
         location_source: 1,
+        location_at: 1,
       })
       .limit(cap)
-      .lean<
-        Pick<
-          VistaarLeadRecord,
-          | 'pii_id'
-          | 'agent_id'
-          | 'name'
-          | 'stage'
-          | 'location'
-          | 'location_source'
-        >[]
-      >()
+      .lean<MapDotRow[]>()
       .exec();
   }
 

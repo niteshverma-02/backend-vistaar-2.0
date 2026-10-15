@@ -299,10 +299,23 @@ describe('CustomersService — HO', () => {
       total: 2,
     }),
     get: jest.fn(),
+    partnerNames: jest
+      .fn()
+      .mockResolvedValue(new Map([['VST-000001', { name: 'Asha' }]])),
+  };
+  const rows = {
+    customerSummary: jest.fn().mockResolvedValue({
+      customers: 3,
+      by_partner: [
+        { key: 'VST-000001', count: 2 },
+        { key: 'VST-000009', count: 1 },
+      ],
+      by_crop: [{ key: 'wheat', count: 3 }],
+    }),
   };
   const orders = { businessOfBuyers: jest.fn().mockResolvedValue(business) };
   const service = new CustomersService(
-    {} as VistaarLeadsRepository,
+    rows as unknown as VistaarLeadsRepository,
     orders as unknown as OrderService,
     {} as SettingsService,
     leads as unknown as LeadsService,
@@ -336,5 +349,18 @@ describe('CustomersService — HO', () => {
       orders: 2,
       average_order: 1500,
     });
+  });
+
+  it('names the top partners in the summary; an unknown one stays unnamed', async () => {
+    const summary = await service.adminSummary();
+    expect(leads.partnerNames).toHaveBeenCalledWith([
+      'VST-000001',
+      'VST-000009',
+    ]);
+    expect(summary.by_partner).toEqual([
+      { key: 'VST-000001', count: 2, name: 'Asha' },
+      { key: 'VST-000009', count: 1, name: null },
+    ]);
+    expect(summary.by_crop).toEqual([{ key: 'wheat', count: 3 }]);
   });
 });

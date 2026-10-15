@@ -62,6 +62,34 @@ export class AdminOrdersQueryDto extends OrdersQueryDto {
   q?: string;
 }
 
+/** `GET /admin/orders/breakdown`: sales panels, cancelled and returned left out. */
+export interface AdminOrderBreakdown {
+  /** The window it covers: IST days, `to` included. */
+  from: string;
+  to: string;
+  by_day: { day: string; orders: number; value: number }[];
+  by_partner: {
+    agent_id: string;
+    name: string | null;
+    orders: number;
+    value: number;
+  }[];
+  by_state: { state: string; orders: number; value: number }[];
+  by_city: { city: string; orders: number; value: number }[];
+  /** Top 10 packs by value of the lines (what buyers paid for them). */
+  by_product: {
+    sku: string;
+    name: string;
+    image: string | null;
+    qty: number;
+    value: number;
+  }[];
+  /** Every category, largest first; `Other` = packs with no category. */
+  by_category: { name: string; value: number; pct: number }[];
+  /** Buyers with two or more orders in the window. */
+  repeat_buyers: number;
+}
+
 /** `GET /admin/orders/summary`: the same filters as the list. */
 export interface AdminOrderSummary {
   orders: number;

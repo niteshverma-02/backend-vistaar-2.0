@@ -142,12 +142,22 @@ export class CustomersService {
   }
 
   /** HO's customer cards; order value is `/admin/orders/summary`. */
-  adminSummary() {
+  async adminSummary() {
     const now = new Date();
-    return this.rows.customerSummary({
+    const summary = await this.rows.customerSummary({
       active: new Date(now.getTime() - ACTIVE_DAYS * DAY_MS),
       month: istMonthStart(istMonthKey(now)),
     });
+    const names = await this.leads.partnerNames(
+      summary.by_partner.map((p) => p.key),
+    );
+    return {
+      ...summary,
+      by_partner: summary.by_partner.map((p) => ({
+        ...p,
+        name: names.get(p.key)?.name ?? null,
+      })),
+    };
   }
 
   /** One customer as HO sees them; their orders are `/admin/orders?customer=`. */

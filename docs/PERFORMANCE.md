@@ -107,6 +107,7 @@ examined). Cold first call for a partner: ~190 ms (beta, 28 ms away).
 | `GET /admin/draft-orders` without `agent_id` sorts all Vistaar drafts in memory (`draft_orders` has no `entry_path` index; ~100 rows today) | drafts | B2B — `{ entry_path, status, updated_at }` |
 | Testimonials HO lists and My Story's approved reviews scan Stockship's `product_reviews` / `product_testimonials` (only `_id`; 8,600 / 100 rows today) | reviews | Stockship — indexes in PROD-CHECKLIST *Owed by other teams* |
 | HO search boxes (feedback, suggestions, testimonials) are unanchored regex `$or` — always a scan | rows | Backend — prefix match or a text index when lists pass ~100K rows |
+| `GET /admin/performance/board` reads every approved partner's book (5 at a time, one cold sweep ≈ partners × one book read) — fine to a few thousand partners with its 10-minute cache | approved partners | Backend — a nightly snapshot row per partner-month if a cold sweep passes ~30 s |
 | Feedback's daily cap is check-then-insert: two answers sent at the same instant can pass one over the cap (bounded by the 5-per-minute throttle) | — | Leave: a counter row per partner-day costs a write per answer for a soft limit |
 
 ## 5. 🧪 How to re-run

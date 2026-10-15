@@ -211,16 +211,26 @@ export class CommissionService {
     fresh = false,
     /** The partner's record when the caller already read it (HO lists): no second read. */
     known?: AgentRecord,
+    /**
+     * `false` for HO's whole-book reads (the commission board): use what is
+     * cached, but keep nothing — a sweep over every partner must not push
+     * the partners using the app out of the caches.
+     */
+    store = true,
   ): Promise<PartnerBook> {
-    const partner = await this.partner(agentId, known);
+    const partner =
+      !store && known
+        ? termsOf(known, agentId.toUpperCase())
+        : await this.partner(agentId, known);
     if (fresh) this.withdrawalsOf.delete(partner.agent_id);
+    const id = partner.agent_id;
     const [facts, withdrawals, terms, settings, catalogue] = await Promise.all([
-      this.facts.get(partner.agent_id, () =>
-        this.orders.factsFor(partner.agent_id),
-      ),
-      this.withdrawalsOf.get(partner.agent_id, () =>
-        this.withdrawals.forAgent(partner.agent_id),
-      ),
+      store
+        ? this.facts.get(id, () => this.orders.factsFor(id))
+        : (this.facts.peek(id) ?? this.orders.factsFor(id)),
+      store
+        ? this.withdrawalsOf.get(id, () => this.withdrawals.forAgent(id))
+        : (this.withdrawalsOf.peek(id) ?? this.withdrawals.forAgent(id)),
       this.plans.termsFor(partner.cohort),
       this.settings.get(),
       this.products.facts(),
@@ -437,20 +447,24 @@ export class CommissionService {
   /** The partner as commission needs them (cached a minute); 404 when unknown. */
   async partner(agentId: string, known?: AgentRecord): Promise<PartnerTerms> {
     const id = agentId.toUpperCase();
-    return this.partners.get(id, async () => {
-      const a = known ?? (await this.agents.requireByAgentId(id));
-      return {
-        agent_ref: a._id,
-        agent_id: a.agent_id ?? id,
-        pii_id: a.pii_id,
-        name: a.profile?.name ?? a.preview?.name ?? null,
-        cohort: a.cohort ?? '',
-        stage: a.stage,
-        is_active: a.is_active,
-        monthly_target: a.monthly_target ?? 0,
-      };
-    });
+    return this.partners.get(id, async () =>
+      termsOf(known ?? (await this.agents.requireByAgentId(id)), id),
+    );
   }
+}
+
+/** The partner as commission needs them, from their record. */
+function termsOf(a: AgentRecord, id: string): PartnerTerms {
+  return {
+    agent_ref: a._id,
+    agent_id: a.agent_id ?? id,
+    pii_id: a.pii_id,
+    name: a.profile?.name ?? a.preview?.name ?? null,
+    cohort: a.cohort ?? '',
+    stage: a.stage,
+    is_active: a.is_active,
+    monthly_target: a.monthly_target ?? 0,
+  };
 }
 
 function commissionOf(r: LedgerRow): OrderCommission {

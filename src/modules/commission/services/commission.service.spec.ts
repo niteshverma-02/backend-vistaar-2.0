@@ -1,4 +1,7 @@
-import type { AgentsService } from '@modules/agents/services/agents.service';
+import type {
+  AgentRecord,
+  AgentsService,
+} from '@modules/agents/services/agents.service';
 import type { OnboardingService } from '@modules/onboarding/services/onboarding.service';
 import type { SettingsService } from '@modules/settings/services/settings.service';
 import type { ProductFactsService } from '@modules/spine/services/product-facts.service';
@@ -135,5 +138,23 @@ describe('CommissionService', () => {
     expect(page.items.map((i) => i.order_id)).toEqual(['B']);
     expect(page.items[0]).toMatchObject({ id: 'cm-B', status: 'pending' });
     expect(page.totals.confirmed.count).toBe(1);
+  });
+
+  it('sweeps for HO without filling the caches or re-reading the partner', async () => {
+    const known = {
+      _id: 'ref-1',
+      agent_id: 'VST-000001',
+      pii_id: 'PII-9',
+      cohort: 'vistaar_agent',
+      stage: 'approved',
+      is_active: true,
+      monthly_target: null,
+    } as unknown as AgentRecord;
+    await service.bookOf('VST-000001', new Date(), false, known, false);
+    await service.bookOf('VST-000001', new Date(), false, known, false);
+    // Nothing kept: each sweep reads again; the app's next read still loads once.
+    expect(factsFor).toHaveBeenCalledTimes(2);
+    await service.summary('VST-000001');
+    expect(factsFor).toHaveBeenCalledTimes(3);
   });
 });

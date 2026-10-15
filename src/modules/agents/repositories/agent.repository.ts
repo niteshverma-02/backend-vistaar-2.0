@@ -71,6 +71,22 @@ export class AgentRepository {
     return rows.map((r) => r.agent_id);
   }
 
+  /** Every approved partner, only what HO's board rows need — no history, no form. */
+  approvedBrief(): Promise<AgentRecord[]> {
+    return this.model
+      .find({
+        otp_verified: true,
+        stage: 'approved',
+        agent_id: { $type: 'string' },
+      })
+      .select(
+        '_id agent_id pii_id cohort stage is_active monthly_target decided_at profile.name profile.district profile.state preview.name preview.district preview.state',
+      )
+      .sort({ decided_at: -1 })
+      .lean<AgentRecord[]>()
+      .exec();
+  }
+
   /** The record an OTP request lands on — created once per number, then reused. */
   async upsertForOtp(phone: string, countryCode: string): Promise<AgentRecord> {
     const filter = { phone, country_code: countryCode };

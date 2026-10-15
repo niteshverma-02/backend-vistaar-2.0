@@ -43,7 +43,7 @@ Every answer is the envelope `{ success, data }`; lists are
 |---|---|---|
 | GET | `/admin/leads` | `Page<LeadRow>`, newest first — filters below |
 | GET | `/admin/leads/summary` | `LeadSummary` |
-| GET | `/admin/leads/places?agent_id=&stage=&state=&district=` | map dots: `{ items: { pii_id, agent_id, name, stage, lat, lng, exact }[], capped }` — at most 5,000 (`capped: true` = narrow the filter); `exact: false` = the pincode's centre |
+| GET | `/admin/leads/places?agent_id=&stage=&state=&district=` | map dots: `{ items: { pii_id, agent_id, name, stage, village, district, state, crops, lat, lng, exact, at }[], capped }` (`at` = when the place was set; `district` / `state` may be `null`) — at most 5,000 (`capped: true` = narrow the filter); `exact: false` = the pincode's centre |
 | GET | `/admin/leads/:piiId` | `AdminLeadDetail` — the row + `stage_history` + `activities` + `holder_history` |
 | POST | `/admin/leads/:piiId/transfer` | `{ agent_id: "VST-…", reason }` → `AdminLeadDetail` — move the farmer to another approved partner |
 | GET | `/admin/settings` | capability `agents.read` — `farmer_consent`, `lead_owner_agent_id`, `lead_release_days`, `customer_release_days` (see *Settings*) |

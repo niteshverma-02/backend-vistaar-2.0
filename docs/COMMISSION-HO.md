@@ -139,6 +139,34 @@ capped at 50. Totals across partners: `GET /admin/orders/summary?from=&to=` (ord
 partners ordering) and `GET /admin/agents/summary` (partners by stage) — not the sum of
 a page.
 
+### Board — every partner at once
+
+`GET /admin/performance/board?month=2026-10` (`commission.read`) — for the cross-partner
+widgets: wallet bands, target bands, biggest wallets, top sellers, the Activity wallet /
+target columns, Payouts wallet sizes. Every approved partner's row for the month
+(default this month), worked out from their own book — the same numbers as the app and
+as `/admin/performance`:
+
+```ts
+interface CommissionBoard {
+  month: string;              // YYYY-MM
+  computed_at: string;        // when this copy was worked out
+  partners: number;           // rows
+  failed: number;             // partners whose book could not be read (left out)
+  totals: { sales: number; commission: number; earned: number;
+            withdrawable: number; pending: number; paid: number };
+  rows: (PartnerMonthRow & {
+    paid: number;             // all-time commission paid out
+    farmers: number;          // leads they hold now
+    customers: number;        // of those, at won
+  })[];                       // newest approval first; sort and band on the screen
+}
+```
+
+Worked out only when HO opens it and **kept 10 minutes** per month (per server process),
+so a just-approved withdrawal or a new order can take up to 10 minutes to show here; the
+partner's own screens (§5) are always current. Not paged — one row per approved partner.
+
 ## 5. One partner
 
 | Method | Path | |
