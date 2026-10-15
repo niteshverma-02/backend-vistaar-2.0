@@ -126,7 +126,7 @@ interface PartnerMonthRow {
   commission: number;         // sales × rate
   orders_placed: number;      // in the month
   monthly_target: number; achieved_pct: number;   // pct ≤ 100
-  earned: number;             // all-time confirmed + paid commission
+  earned: number;             // all-time confirmed + paid commission (+ approved gigs when gig pay is on)
   withdrawable: number; pending: number;
   last_order_at: string | null;
   lifecycle_stage: "onboarded" | "active" | "at_risk" | "lost";
@@ -171,7 +171,7 @@ partner's own screens (§5) are always current. Not paged — one row per approv
 
 | Method | Path | |
 |---|---|---|
-| GET | `/admin/commission/partners/:agentId?status=&page=&limit=` | `{ partner, summary, wallet, ledger }` — the app's summary, wallet and ledger for that partner |
+| GET | `/admin/commission/partners/:agentId?status=&page=&limit=` | `{ partner, summary, wallet, ledger }` — the app's summary, wallet and ledger for that partner; `summary` and `wallet` carry `gig_earned` (approved meeting gigs' pay inside `earned`, 0 while gig pay is off) |
 | GET | `/admin/performance/:agentId?period=month\|3m\|fy` | their My Performance (MY-PERFORMANCE-APP.md) |
 | PUT | `/admin/performance/:agentId/target` | `{ "monthly_target": 150000 }` sets their own target; `null` puts them back on the default. Answers `{ agent_id, own_target }` |
 
@@ -188,6 +188,7 @@ An order's commission is also on `GET /admin/orders/:id` (ORDERS-HO.md).
 | `tds_rate_with_pan` | 2 | 0–30, ≤ 2 decimals | TDS % with a verified PAN |
 | `tds_rate_without_pan` | 20 | 0–40, ≤ 2 decimals | TDS % without |
 | `monthly_target` | 1,00,000 | 1–10,00,00,000 | default monthly target (₹ delivered sales) |
+| `gig_pay_enabled` | false | true / false | approved meeting gigs' pay reaches the wallet (COMMISSION-LOGIC.md, *Meeting gigs*) |
 
 Changing `return_window_days` moves the confirm date of orders not yet confirmed.
 

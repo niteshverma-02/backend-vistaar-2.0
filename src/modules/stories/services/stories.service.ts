@@ -8,6 +8,10 @@ import { imageInfo } from '@common/utils/image-size.util';
 import type { Env } from '@config/env.schema';
 import { EventsService } from '@modules/events/services/events.service';
 import {
+  GigReadsService,
+  type GigBrief,
+} from '@modules/gigs/services/gig-reads.service';
+import {
   MeetingsService,
   type MeetingView,
 } from '@modules/meetings/services/meetings.service';
@@ -95,13 +99,13 @@ export interface FarmerStoryView {
 }
 
 /**
- * One choice in the Meeting template's picker: HO events and the partner's own
- * meetings. HO-posted gigs join later with `kind: 'gig'`, key `g:<id>`.
+ * One choice in the Meeting template's picker: HO events, the partner's own
+ * meetings and the HO-posted gigs they hold.
  */
 export interface MeetingOptionView {
-  /** `e:<event id>` or `m:<meeting id>` — the saved story's `selection.meeting_key`. */
+  /** `e:<event id>`, `m:<meeting id>` or `g:<gig id>` — the saved story's `selection.meeting_key`. */
   key: string;
-  kind: 'event' | 'meeting';
+  kind: 'event' | 'meeting' | 'gig';
   title: string;
   starts_at: Date;
   place: string;
@@ -118,7 +122,7 @@ export interface StoryContentView {
   festivals: PartnerFestivalView[];
   /** Real testimonials first, then HO's ready-made ones. */
   farmer_stories: FarmerStoryView[];
-  /** Upcoming cohort events and the caller's own meetings, soonest first. */
+  /** Upcoming cohort events, the caller's own meetings and gigs, soonest first. */
   meetings: MeetingOptionView[];
 }
 
@@ -154,6 +158,7 @@ export class StoriesService {
     private readonly samples: StorySamplesService,
     private readonly events: EventsService,
     private readonly meetings: MeetingsService,
+    private readonly gigs: GigReadsService,
     private readonly testimonials: TestimonialsService,
     private readonly storage: StorageService,
     config: ConfigService<Env, true>,
@@ -310,13 +315,13 @@ export class StoriesService {
    * once and shared; only the partner's events and meetings are read per call.
    */
   async contentFor(agentId: string): Promise<StoryContentView> {
-    const [shared, events, meetings] = await Promise.all([
+    const now = new Date();
+    const [shared, events, meetings, gigs] = await Promise.all([
       this.sharedContent(),
       this.events.upcoming(agentId),
-      // The picker still works on events alone if meetings cannot be read.
-      this.meetings
-        .upcoming(agentId, new Date())
-        .catch((): MeetingView[] => []),
+      // The picker still works on events alone if meetings or gigs cannot be read.
+      this.meetings.upcoming(agentId, now).catch((): MeetingView[] => []),
+      this.gigs.upcoming(agentId, now).catch((): GigBrief[] => []),
     ]);
     const options: MeetingOptionView[] = [
       ...events.map((e) => ({
@@ -335,6 +340,15 @@ export class StoriesService {
         starts_at: m.starts_at,
         place: m.venue ?? m.village,
         note: m.agenda,
+        registered: true,
+      })),
+      ...gigs.map((g) => ({
+        key: `g:${g.id}`,
+        kind: 'gig' as const,
+        title: g.title,
+        starts_at: g.starts_at,
+        place: g.venue ?? g.village,
+        note: null,
         registered: true,
       })),
     ];

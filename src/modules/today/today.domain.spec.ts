@@ -48,6 +48,16 @@ const meeting = (id: string, starts: Date) => ({
   counts: { invited: 12 },
 });
 
+const gig = (id: string, starts: Date) => ({
+  id,
+  title: id,
+  village: 'Sehore',
+  venue: 'Panchayat bhawan',
+  starts_at: starts,
+  payout: 1500,
+  status: 'accepted',
+});
+
 const order = (id: string, status: string, created: Date) => ({
   id,
   customer_id: 'PII-1',
@@ -63,6 +73,7 @@ const none: TodaySources = {
   carts: [],
   events: [],
   meetings: [],
+  gigs: [],
   orders: [],
 };
 
@@ -145,6 +156,29 @@ describe('todayOf', () => {
     expect(view.counts.meeting).toBe(2);
   });
 
+  it('shows gigs held today (urgent) or tomorrow, nothing later', () => {
+    const view = todayOf(
+      {
+        ...none,
+        gigs: [
+          gig('GIG-TOMORROW', ist(15, 10)),
+          gig('GIG-TODAY', ist(14, 17)),
+          gig('GIG-LATER', ist(16, 10)),
+        ],
+      },
+      NOW,
+    );
+    expect(view.items.map((t) => [t.ref_id, t.urgent])).toEqual([
+      ['GIG-TODAY', true],
+      ['GIG-TOMORROW', false],
+    ]);
+    expect(view.items[0]).toMatchObject({
+      type: 'gig',
+      gig: { village: 'Sehore', payout: 1500 },
+    });
+    expect(view.counts.gig).toBe(2);
+  });
+
   it('lists orders waiting for the warehouse, oldest first, not failed ones', () => {
     const view = todayOf(
       {
@@ -167,6 +201,7 @@ describe('todayOf', () => {
         carts: [cart('DFT-1', ist(13, 12))],
         events: [event('E-TODAY', ist(14, 18))],
         meetings: [],
+        gigs: [],
         orders: [order('KSK-1', 'created', ist(12, 9))],
       },
       NOW,
@@ -184,6 +219,7 @@ describe('todayOf', () => {
         saved_cart: 1,
         event: 1,
         meeting: 0,
+        gig: 0,
         order_to_confirm: 1,
       },
     });

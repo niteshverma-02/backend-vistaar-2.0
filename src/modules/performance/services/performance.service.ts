@@ -19,6 +19,10 @@ import {
   type LedgerRow,
 } from '@modules/commission/commission.domain';
 import { CommissionService } from '@modules/commission/services/commission.service';
+import {
+  GigReadsService,
+  type GigMonthStats,
+} from '@modules/gigs/services/gig-reads.service';
 import { LeadsService } from '@modules/leads/services/leads.service';
 import { firstUrl } from '@modules/orders/orders.domain';
 import { ProductFactsService } from '@modules/spine/services/product-facts.service';
@@ -139,8 +143,8 @@ export interface PerformanceView {
     lost: number;
     pct: number | null;
   };
-  /** Meeting gigs — `null` until the meetings feature exists. */
-  gigs: null;
+  /** Meeting gigs in the IST month of today, whatever the period; `null` if they could not be read. */
+  gigs: GigMonthStats | null;
   commission: { value: number; draft_rate: boolean };
   monthly: {
     month: string;
@@ -182,6 +186,7 @@ export class PerformanceService {
     private readonly attendance: AttendanceService,
     private readonly products: ProductFactsService,
     private readonly agents: AgentsService,
+    private readonly gigs: GigReadsService,
   ) {}
 
   async performance(
@@ -195,12 +200,15 @@ export class PerformanceService {
     const from = istMonthStart(months[0]);
     const to = istMonthStart(addMonths(months[months.length - 1], 1));
 
-    const [{ partner, book }, leads, fieldDays, catalogue] = await Promise.all([
-      this.commission.bookOf(agentId, now),
-      this.leads.performance(agentId.toUpperCase(), from, to),
-      this.attendance.fieldDays(agentId.toUpperCase(), thisMonth),
-      this.products.facts(),
-    ]);
+    const [{ partner, book }, leads, fieldDays, catalogue, gigs] =
+      await Promise.all([
+        this.commission.bookOf(agentId, now),
+        this.leads.performance(agentId.toUpperCase(), from, to),
+        this.attendance.fieldDays(agentId.toUpperCase(), thisMonth),
+        this.products.facts(),
+        // A side block: the rest of the page must not fail with it.
+        this.gigs.monthStats(agentId.toUpperCase(), now).catch(() => null),
+      ]);
 
     const sales = (list: readonly string[]) =>
       list.reduce((sum, m) => sum + book.month(m).sales, 0);
@@ -287,7 +295,7 @@ export class PerformanceService {
         lost: leads.lost,
         pct: leads.conversion_pct,
       },
-      gigs: null,
+      gigs,
       commission: {
         value: months.reduce((sum, m) => {
           const f = book.month(m);

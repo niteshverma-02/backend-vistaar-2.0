@@ -24,6 +24,12 @@ export interface SettingsRecord {
   tds_rate_with_pan: number;
   tds_rate_without_pan: number;
   monthly_target: number;
+  gig_payout: number;
+  gig_min_farmers: number;
+  gig_photos_required: number;
+  gig_checkin_radius_m: number;
+  gig_pay_enabled: boolean;
+  gig_pay_enabled_at: Date | null;
   conflict_radius_km: number;
   feedback_reasons: FeedbackReasons | null;
   updated_by?: string;

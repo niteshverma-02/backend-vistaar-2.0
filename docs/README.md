@@ -39,6 +39,8 @@ Contract docs, one per feature, named by who reads them:
 | [EVENTS-HO.md](./EVENTS-HO.md) | HO portal | Event calendar: add, schedule, target, seats, who registered |
 | [MEETINGS-APP.md](./MEETINGS-APP.md) | app | My farmer meetings: schedule, invite, attendance and walk-ins, capture leads, cancel / complete |
 | [MEETINGS-HO.md](./MEETINGS-HO.md) | HO portal | Partners' farmer meetings (read-only): list, summary cards, one meeting with attendees |
+| [GIGS-APP.md](./GIGS-APP.md) | app | Paid meeting gigs: available / mine / history, accept, give back, GPS check-in, farmers, photos, submit, pay |
+| [GIGS-HO.md](./GIGS-HO.md) | HO portal | Post, edit, assign, reopen, cancel gigs; review check-in, farmers and photos; approve / reject; gig settings |
 | [TERMS-APP.md](./TERMS-APP.md) | app | The Vistaar partner T&C document link for Privacy & Terms and the login screen (public) |
 | [TERMS-HO.md](./TERMS-HO.md) | HO portal | Add, edit, switch and delete versions of the Vistaar partner T&C (shared `terms_and_conditions`) |
 | [FAQS-APP.md](./FAQS-APP.md) | app | Help FAQs and their sections for the /faqs screen (`GET /faqs`) |

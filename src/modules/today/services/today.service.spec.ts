@@ -1,5 +1,6 @@
 import type { DraftOrderService } from '@modules/draft-order/services/draft-order.service';
 import type { EventsService } from '@modules/events/services/events.service';
+import type { GigReadsService } from '@modules/gigs/services/gig-reads.service';
 import type { LeadsService } from '@modules/leads/services/leads.service';
 import type { MeetingsService } from '@modules/meetings/services/meetings.service';
 import type { OrderService } from '@modules/orders/services/order.service';
@@ -14,12 +15,14 @@ describe('TodayService', () => {
     const drafts = { list: jest.fn().mockResolvedValue({ items: [] }) };
     const events = { upcoming: jest.fn().mockResolvedValue([]) };
     const meetings = { soon: jest.fn().mockResolvedValue([]) };
+    const gigs = { soon: jest.fn().mockResolvedValue([]) };
     const orders = { list: jest.fn().mockResolvedValue({ items: [] }) };
     const service = new TodayService(
       leads as unknown as LeadsService,
       drafts as unknown as DraftOrderService,
       events as unknown as EventsService,
       meetings as unknown as MeetingsService,
+      gigs as unknown as GigReadsService,
       orders as unknown as OrderService,
     );
 
@@ -34,6 +37,7 @@ describe('TodayService', () => {
     );
     expect(events.upcoming).toHaveBeenCalledWith('VST-000006');
     expect(meetings.soon).toHaveBeenCalledWith('VST-000006', expect.any(Date));
+    expect(gigs.soon).toHaveBeenCalledWith('VST-000006', expect.any(Date));
     expect(orders.list).toHaveBeenCalledWith(
       PARTNER,
       expect.objectContaining({ status: 'placed' }),
@@ -63,6 +67,7 @@ describe('TodayService', () => {
       } as unknown as DraftOrderService,
       { upcoming: jest.fn().mockResolvedValue([]) } as unknown as EventsService,
       { soon: jest.fn().mockResolvedValue([]) } as unknown as MeetingsService,
+      { soon: jest.fn().mockResolvedValue([]) } as unknown as GigReadsService,
       {
         list: jest.fn().mockResolvedValue({ items: [] }),
       } as unknown as OrderService,

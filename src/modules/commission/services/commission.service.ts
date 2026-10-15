@@ -12,6 +12,10 @@ import {
   AgentsService,
   type AgentRecord,
 } from '@modules/agents/services/agents.service';
+import {
+  GigReadsService,
+  type GigCredit,
+} from '@modules/gigs/services/gig-reads.service';
 import { OnboardingService } from '@modules/onboarding/services/onboarding.service';
 import {
   SettingsService,
@@ -107,6 +111,8 @@ export interface CommissionSummary {
   month_commission_estimate: number;
   totals: StatusTotals;
   earned: number;
+  /** Approved meeting gigs' pay inside `earned` (0 while gig pay is off). */
+  gig_earned: number;
   withdrawable: number;
   plan_draft: boolean;
 }
@@ -188,6 +194,11 @@ export class CommissionService {
     PARTNER_TTL_MS,
     FACTS_MAX,
   );
+  /** Approved gigs' pay, kept like the withdrawals: a minute for display, fresh before money moves. */
+  private readonly gigCreditsOf = new TtlCache<GigCredit[]>(
+    FACTS_TTL_MS,
+    FACTS_MAX,
+  );
 
   constructor(
     private readonly orders: CommissionOrderRepository,
@@ -199,6 +210,7 @@ export class CommissionService {
     private readonly onboarding: OnboardingService,
     private readonly products: ProductFactsService,
     private readonly storage: StorageService,
+    private readonly gigs: GigReadsService,
   ) {}
 
   /**
@@ -222,19 +234,39 @@ export class CommissionService {
       !store && known
         ? termsOf(known, agentId.toUpperCase())
         : await this.partner(agentId, known);
-    if (fresh) this.withdrawalsOf.delete(partner.agent_id);
+    if (fresh) {
+      this.withdrawalsOf.delete(partner.agent_id);
+      this.gigCreditsOf.delete(partner.agent_id);
+    }
     const id = partner.agent_id;
-    const [facts, withdrawals, terms, settings, catalogue] = await Promise.all([
-      store
-        ? this.facts.get(id, () => this.orders.factsFor(id))
-        : (this.facts.peek(id) ?? this.orders.factsFor(id)),
-      store
-        ? this.withdrawalsOf.get(id, () => this.withdrawals.forAgent(id))
-        : (this.withdrawalsOf.peek(id) ?? this.withdrawals.forAgent(id)),
-      this.plans.termsFor(partner.cohort),
-      this.settings.get(),
-      this.products.facts(),
-    ]);
+    const settingsRead = this.settings.get();
+    const [facts, withdrawals, terms, settings, catalogue, gigCredits] =
+      await Promise.all([
+        store
+          ? this.facts.get(id, () => this.orders.factsFor(id))
+          : (this.facts.peek(id) ?? this.orders.factsFor(id)),
+        store
+          ? this.withdrawalsOf.get(id, () => this.withdrawals.forAgent(id))
+          : (this.withdrawalsOf.peek(id) ?? this.withdrawals.forAgent(id)),
+        this.plans.termsFor(partner.cohort),
+        settingsRead,
+        this.products.facts(),
+        // Off until finance confirms the TDS section (user, 2026-10-15).
+        settingsRead.then(async (s): Promise<GigCredit[]> => {
+          if (!s.gig_pay_enabled) return [];
+          const credits = await (store
+            ? this.gigCreditsOf.get(id, () => this.gigs.creditsFor(id))
+            : (this.gigCreditsOf.peek(id) ?? this.gigs.creditsFor(id)));
+          // Counted from when pay was switched on at the earliest, so a
+          // payout made while it was off never moves off the orders it paid.
+          const since = s.gig_pay_enabled_at?.getTime() ?? 0;
+          return credits.map((c) =>
+            c.approved_at.getTime() >= since
+              ? c
+              : { ...c, approved_at: new Date(since) },
+          );
+        }),
+      ]);
     const payouts = withdrawals
       .filter((w) => w.status === 'paid' && w.paid_at)
       .map((w) => ({ id: w._id, amount: w.amount, paid_at: w.paid_at! }))
@@ -251,6 +283,7 @@ export class CommissionService {
       gstOf: (sku) => catalogue.get(sku)?.gst_rate ?? UNKNOWN_GST_RATE,
       payouts,
       open,
+      gigCredits,
     });
     return {
       partner: {
@@ -275,6 +308,7 @@ export class CommissionService {
     this.facts.delete(id);
     this.partners.delete(id);
     this.withdrawalsOf.delete(id);
+    this.gigCreditsOf.delete(id);
   }
 
   /** A withdrawal of theirs moved: their screens show it at once on this server. */
@@ -294,6 +328,7 @@ export class CommissionService {
       month_commission_estimate: Math.round((c.sales * c.rate) / 100),
       totals: book.totals,
       earned: book.earned,
+      gig_earned: book.gig_earned,
       withdrawable: book.withdrawable,
       plan_draft: c.draft,
     };

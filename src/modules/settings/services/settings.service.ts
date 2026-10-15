@@ -41,6 +41,12 @@ const DEFAULTS: SettingsRecord = {
   tds_rate_with_pan: 2,
   tds_rate_without_pan: 20,
   monthly_target: 100_000,
+  gig_payout: 250,
+  gig_min_farmers: 15,
+  gig_photos_required: 3,
+  gig_checkin_radius_m: 500,
+  gig_pay_enabled: false,
+  gig_pay_enabled_at: null,
   conflict_radius_km: 5,
   feedback_reasons: null,
 };
@@ -91,6 +97,9 @@ export class SettingsService {
     const { farmer_consent_text, testimonial_consent_text, ...rest } = dto;
     const set: Partial<SettingsRecord> = { ...rest, updated_by: by };
     const current = await this.get();
+    if (dto.gig_pay_enabled && !current.gig_pay_enabled_at) {
+      set.gig_pay_enabled_at = new Date();
+    }
     const farmer = nextConsent(current.farmer_consent, farmer_consent_text);
     if (farmer) set.farmer_consent = farmer;
     const testimonial = nextConsent(

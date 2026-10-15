@@ -11,12 +11,13 @@ import { NOT_AN_ORDER } from '@modules/orders/orders.domain';
  * only fetches.
  */
 
-/** In the app's order: follow-ups, saved carts, events, meetings, orders. */
+/** In the app's order: follow-ups, saved carts, events, meetings, gigs, orders. */
 export const TASK_TYPES = [
   'follow_up',
   'saved_cart',
   'event',
   'meeting',
+  'gig',
   'order_to_confirm',
 ] as const;
 export type TaskType = (typeof TASK_TYPES)[number];
@@ -28,7 +29,7 @@ interface TaskBase {
   /** The record's id — what the app opens. */
   ref_id: string;
   urgent: boolean;
-  /** The time the task is about (follow-up, cart change, event or meeting start, order). */
+  /** The time the task is about (follow-up, cart change, event, meeting or gig start, order). */
   at: Date;
 }
 
@@ -84,6 +85,19 @@ export interface MeetingTask extends TaskBase {
   };
 }
 
+export interface GigTask extends TaskBase {
+  type: 'gig';
+  gig: {
+    id: string;
+    title: string;
+    village: string;
+    venue: string | null;
+    starts_at: Date;
+    payout: number;
+    status: string;
+  };
+}
+
 export interface OrderTask extends TaskBase {
   type: 'order_to_confirm';
   order: {
@@ -97,7 +111,7 @@ export interface OrderTask extends TaskBase {
 }
 
 export type TodayTask =
-  FollowUpTask | SavedCartTask | EventTask | MeetingTask | OrderTask;
+  FollowUpTask | SavedCartTask | EventTask | MeetingTask | GigTask | OrderTask;
 
 export interface TodayView {
   count: number;
@@ -147,6 +161,16 @@ export interface TodaySources {
     village: string;
     venue: string | null;
     counts: { invited: number };
+  }[];
+  /** Gigs the partner holds, today or tomorrow. */
+  gigs: {
+    id: string;
+    title: string;
+    village: string;
+    venue: string | null;
+    starts_at: Date;
+    payout: number;
+    status: string;
   }[];
   /** Orders still at the "placed" stage. */
   orders: {
@@ -253,6 +277,29 @@ export function meetingTasks(
     .sort(byAt);
 }
 
+/** The gigs the partner holds, today or tomorrow (IST). */
+export function gigTasks(gigs: TodaySources['gigs'], now: Date): GigTask[] {
+  const until = istDayStart(now).getTime() + 2 * DAY_MS;
+  return gigs
+    .filter((g) => g.starts_at.getTime() < until)
+    .map((g) => ({
+      type: 'gig' as const,
+      ref_id: g.id,
+      urgent: istDaysBetween(now, g.starts_at) === 0,
+      at: g.starts_at,
+      gig: {
+        id: g.id,
+        title: g.title,
+        village: g.village,
+        venue: g.venue,
+        starts_at: g.starts_at,
+        payout: g.payout,
+        status: g.status,
+      },
+    }))
+    .sort(byAt);
+}
+
 /** Orders placed and not yet confirmed at the warehouse — oldest first. */
 export function orderTasks(orders: TodaySources['orders']): OrderTask[] {
   return orders
@@ -276,6 +323,7 @@ export function todayOf(sources: TodaySources, now: Date): TodayView {
     saved_cart: savedCartTasks(sources.carts, now),
     event: eventTasks(sources.events, now),
     meeting: meetingTasks(sources.meetings, now),
+    gig: gigTasks(sources.gigs, now),
     order_to_confirm: orderTasks(sources.orders),
   };
   const items = TASK_TYPES.flatMap((t) => groups[t]);
@@ -286,6 +334,7 @@ export function todayOf(sources: TodaySources, now: Date): TodayView {
       saved_cart: groups.saved_cart.length,
       event: groups.event.length,
       meeting: groups.meeting.length,
+      gig: groups.gig.length,
       order_to_confirm: groups.order_to_confirm.length,
     },
     items,

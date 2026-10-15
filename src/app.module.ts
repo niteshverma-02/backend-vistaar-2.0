@@ -22,6 +22,7 @@ import { CartModule } from '@modules/cart/cart.module';
 import { CommissionModule } from '@modules/commission/commission.module';
 import { DraftOrderModule } from '@modules/draft-order/draft-order.module';
 import { EventsModule } from '@modules/events/events.module';
+import { GigsModule } from '@modules/gigs/gigs.module';
 import { MeetingsModule } from '@modules/meetings/meetings.module';
 import { FaqsModule } from '@modules/faqs/faqs.module';
 import { FeedbackModule } from '@modules/feedback/feedback.module';
@@ -102,6 +103,7 @@ import { UploadsModule } from '@modules/uploads/uploads.module';
     AttendanceModule,
     EventsModule,
     MeetingsModule,
+    GigsModule,
     StoriesModule,
     TermsModule,
     FaqsModule,

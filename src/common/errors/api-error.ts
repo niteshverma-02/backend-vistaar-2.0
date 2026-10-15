@@ -103,6 +103,9 @@ export const API_ERROR_CODES = [
   // meetings (409): no longer scheduled / cancelled; a meeting id another partner holds.
   'MEETING_CLOSED',
   'MEETING_EXISTS',
+  // gigs (409): someone else took it first / its state no longer allows that.
+  'GIG_TAKEN',
+  'GIG_CLOSED',
   // terms and conditions: the active T&C cannot be deleted (409); no free TOC-n (503).
   'TERMS_IN_USE',
   'TERMS_ID_UNAVAILABLE',

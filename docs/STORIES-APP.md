@@ -167,7 +167,9 @@ is the stories whose `created_at` is today.
     { "key": "e:2b1f3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d", "kind": "event", "title": "Humic Acid Field Day",
       "starts_at": "2026-10-18T03:30:00.000Z", "place": "Ramesh Yadav farm, Rampur", "note": null, "registered": false },
     { "key": "m:7c9e1a2b-3d4f-4e5a-8b6c-1d2e3f4a5b6c", "kind": "meeting", "title": "Rampur kisan meeting",
-      "starts_at": "2026-10-20T05:00:00.000Z", "place": "Panchayat bhawan", "note": "Wheat seed treatment", "registered": true }
+      "starts_at": "2026-10-20T05:00:00.000Z", "place": "Panchayat bhawan", "note": "Wheat seed treatment", "registered": true },
+    { "key": "g:GIG-12", "kind": "gig", "title": "Sehore soil health meeting",
+      "starts_at": "2026-10-22T05:30:00.000Z", "place": "Sehore", "note": null, "registered": true }
   ]
 }
 ```
@@ -184,17 +186,19 @@ is the stories whose `created_at` is today.
   `selection.testimonial_id`.
 - **No crop calendar** (removed 2026-10-14): the "Crop tip" template keeps the app's built-in
   `cropCalendar`; crop data lives in ko-sales `/crops` (the Crop Guide).
-- **Meetings** replace `meetingOptions()`: one list, soonest first, of two
+- **Meetings** replace `meetingOptions()`: one list, soonest first, of three
   kinds — `kind: "event"` (key `e:<id>`): upcoming events for the partner's
   cohort (`EVENTS-APP.md`); `kind: "meeting"` (key `m:<id>`): the partner's
   own scheduled meetings from now on (`place` = venue, else village; `note` =
-  agenda; `registered` always `true`). **Do not map every item as an event** —
-  read `kind`; an `m:` key is a meeting id, not an event id. Fill: `title` →
+  agenda; `registered` always `true`); `kind: "gig"` (key `g:<id>`): the HO
+  gigs the partner has accepted, from now on (`GIGS-APP.md`; `place` = venue,
+  else village; `note` always `null`; `registered` always `true`). **Do not
+  map every item as an event** — read `kind`; an `m:` key is a meeting id and
+  a `g:` key a gig id, not an event id. Fill: `title` →
   headline, `starts_at` → date (`storyDate`) and time, `place` → detail3,
   `note` → body (else the template's own line). `key` →
-  `selection.meeting_key`. Meeting **gigs** are not on the server yet; they
-  will join this list as `kind: "gig"` (key `g:<id>`). Until then keep showing
-  the phone's accepted gigs after these.
+  `selection.meeting_key`. Drop the phone's own list of accepted gigs — they
+  come in this list now.
 - All of it changes within a minute of an HO edit. `If-None-Match` gives `304`.
 
 ## Template cards ("Choose a design")
