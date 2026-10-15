@@ -92,7 +92,8 @@ export function slabsProblem(slabs: readonly Slab[]): string | null {
     const last = i === slabs.length - 1;
     if (!Number.isFinite(s.rate) || s.rate < 0 || s.rate > 100)
       return `Slab ${i + 1}: the rate must be between 0 and 100%.`;
-    if (Math.round(s.rate * 100) !== s.rate * 100)
+    // 1.1 × 100 is 110.00000000000001 in floating point: compare with a tolerance.
+    if (Math.abs(s.rate * 100 - Math.round(s.rate * 100)) > 1e-6)
       return `Slab ${i + 1}: use at most two decimals in the rate.`;
     if (last && s.to !== null)
       return 'The last slab must have no upper limit (to: null).';
