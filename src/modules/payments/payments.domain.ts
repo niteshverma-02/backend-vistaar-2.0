@@ -72,3 +72,9 @@ export function orderError(ids: readonly string[]): string | null {
   }
   return null;
 }
+
+/**
+ * Who did it, as every payment audit row records it: one spelling per
+ * person, so the two-person rule and the trail compare like with like.
+ */
+export const actorOf = (email: string): string => email.trim().toLowerCase();

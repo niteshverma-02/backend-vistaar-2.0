@@ -16,10 +16,10 @@ const REFRESH_MS = 60 * 60 * 1000;
 const RETRY_MS = 60 * 1000;
 
 /**
- * The catalogue's facts per sku — GST rate, category, name, picture — held
- * in memory (~1.5 MB): commission needs the GST of every line of every
- * order, and a lookup per order would be thousands of reads a minute at
- * scale. Warmed at boot; a stale copy answers while the next one loads.
+ * The catalogue's facts per sku — GST rate, category, name, picture, pack
+ * size — held in memory (~2 MB): commission needs the GST of every line of
+ * every order and the order screens a name for every line, and a lookup per
+ * request would be thousands of reads a minute at scale. Warmed at boot; a stale copy answers while the next one loads.
  * When it cannot load at all, `facts()` is empty and callers fall back.
  */
 @Injectable()

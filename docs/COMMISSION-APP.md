@@ -161,6 +161,8 @@ Whole ₹, ≥ `min_withdrawal`, ≤ `withdrawable`; one open request at a time.
 ```
 
 The amount leaves `withdrawable` at once (`on_hold`). Rejected or cancelled → it comes back.
+`GET /wallet` is always current; the commission summary, ledger and an order's
+`paid` status may take up to a minute to show a payout HO just marked.
 
 `GET /wallet/withdrawals?status=` — newest first. `DELETE /wallet/withdrawals/:id` —
 only while `requested`; answers it as `cancelled`.

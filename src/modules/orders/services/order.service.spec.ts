@@ -5,6 +5,7 @@ import type {
   CommissionService,
   OrderCommission,
 } from '@modules/commission/services/commission.service';
+import type { ProductFactsService } from '@modules/spine/services/product-facts.service';
 
 import { OrdersQueryDto } from '../dto/order-request.dto';
 import type { OrderRepository } from '../repositories/order.repository';
@@ -39,6 +40,7 @@ describe('OrderService', () => {
   let findOne: jest.Mock;
   let bySku: jest.Mock;
   let forOrders: jest.Mock;
+  let facts: Map<string, unknown>;
   let service: OrderService;
 
   beforeEach(() => {
@@ -57,10 +59,13 @@ describe('OrderService', () => {
       ]),
     );
     forOrders = jest.fn().mockResolvedValue(new Map());
+    // Not in the catalogue in memory: read from Mongo, as a pack added within the hour.
+    facts = new Map();
     service = new OrderService(
       { list, findOne } as unknown as OrderRepository,
       { bySku } as unknown as ProductLookupRepository,
       { forOrders } as unknown as CommissionService,
+      { facts: () => Promise.resolve(facts) } as unknown as ProductFactsService,
     );
   });
 
@@ -210,5 +215,31 @@ describe('OrderService', () => {
     const view = await service.get(PARTNER, 'KSK-1');
     expect(view.commission).toBeNull();
     expect(view.delivered_at).toBeNull();
+  });
+
+  it('names order lines from the catalogue in memory, reading Mongo only for a pack it lacks', async () => {
+    facts.set('K-1', {
+      name: 'Humic (memory)',
+      image: 'https://x/m.png',
+      variant: { value: '1', uom: 'KG' },
+      item_qty: null,
+      gst_rate: 5,
+      category: null,
+    });
+    findOne.mockResolvedValue(
+      order({
+        items: [
+          { sku: 'K-1', qty: 1, unit_price: 100, total_price: 100 },
+          { sku: 'K-NEW', qty: 1, unit_price: 50, total_price: 50 },
+        ],
+      }),
+    );
+    const view = await service.get(PARTNER, 'KSK-1');
+    expect(view.items[0]).toMatchObject({
+      product_name: 'Humic (memory)',
+      product_image: 'https://x/m.png',
+      size_label: '1 KG',
+    });
+    expect(bySku).toHaveBeenCalledWith(['K-NEW']);
   });
 });

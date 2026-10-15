@@ -20,7 +20,11 @@ import {
   ReorderPaymentOptionsDto,
   UpdatePaymentOptionDto,
 } from '../dto/payment-option.dto';
-import { PAYMENT_PROVIDERS, type PaymentProvider } from '../payments.domain';
+import {
+  actorOf,
+  PAYMENT_PROVIDERS,
+  type PaymentProvider,
+} from '../payments.domain';
 import type { PaymentOptionAudit } from '../schemas/payment-option-audit.schema';
 import {
   PaymentOptionsService,
@@ -63,7 +67,7 @@ export class AdminPaymentOptionsController {
     @Body() dto: ReorderPaymentOptionsDto,
     @CurrentAdmin() admin: AdminPrincipal,
   ): Promise<{ ids: PaymentProvider[] }> {
-    return this.options.reorder(dto, admin.email);
+    return this.options.reorder(dto, actorOf(admin.email));
   }
 
   @Patch(':id')
@@ -78,6 +82,6 @@ export class AdminPaymentOptionsController {
     @Body() dto: UpdatePaymentOptionDto,
     @CurrentAdmin() admin: AdminPrincipal,
   ): Promise<AdminPaymentOptionView> {
-    return this.options.update(id, dto, admin.email);
+    return this.options.update(id, dto, actorOf(admin.email));
   }
 }

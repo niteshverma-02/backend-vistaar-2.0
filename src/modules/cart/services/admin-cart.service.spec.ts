@@ -63,6 +63,7 @@ const query = (q: Record<string, unknown> = {}) =>
 describe('AdminCartService', () => {
   let adminList: jest.Mock;
   let agentsList: jest.Mock;
+  let verifiedAgentIds: jest.Mock;
   let service: AdminCartService;
 
   beforeEach(() => {
@@ -71,9 +72,10 @@ describe('AdminCartService', () => {
       items: [partner('VST-1', 'PII-1'), partner('VST-2', 'PII-2')],
       total: 2,
     });
+    verifiedAgentIds = jest.fn().mockResolvedValue(['VST-1', 'VST-2']);
     service = new AdminCartService(
       { adminList } as unknown as CartRepository,
-      { list: agentsList } as unknown as AgentsService,
+      { list: agentsList, verifiedAgentIds } as unknown as AgentsService,
       {
         farmersByPii: jest.fn().mockResolvedValue(
           new Map([
@@ -114,6 +116,11 @@ describe('AdminCartService', () => {
       subtotal: 300,
       items: [{ sku: 'K-1', size_label: '1 kg', line_total: 300 }],
     });
+    // Only the page's partners are read in full.
+    expect(agentsList).toHaveBeenCalledWith(
+      { agent_ids: ['VST-1'] },
+      expect.anything(),
+    );
   });
 
   it("shows the partner's own pii as shop stock", async () => {
@@ -124,14 +131,18 @@ describe('AdminCartService', () => {
     expect(page.items[0]).toMatchObject({ pii_id: null, customer: null });
   });
 
-  it('narrows to one partner', async () => {
+  it('narrows to one partner without listing every partner', async () => {
     adminList.mockResolvedValue([[], 0]);
 
     await service.list(query({ agent_id: 'vst-1' }));
 
-    expect(agentsList).toHaveBeenCalledWith(
-      { agent_ids: ['VST-1'] },
-      expect.anything(),
-    );
+    const ids = (adminList.mock.calls[0] as unknown[])[0] as {
+      toHexString(): string;
+    }[];
+    expect(ids.map((i) => i.toHexString())).toEqual([
+      activeCartId('VST-1').toHexString(),
+    ]);
+    expect(verifiedAgentIds).not.toHaveBeenCalled();
+    expect(agentsList).not.toHaveBeenCalled();
   });
 });

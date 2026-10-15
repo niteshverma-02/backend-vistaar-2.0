@@ -15,7 +15,6 @@ import type {
 } from '../dto/admin-order.dto';
 import { statusesFor } from '../orders.domain';
 import { OrderRepository } from '../repositories/order.repository';
-import { ProductLookupRepository } from '../repositories/product-lookup.repository';
 import type { OrderRecord } from '../schemas/order.schema';
 import { checkedRange, orderView, OrderService } from './order.service';
 
@@ -27,7 +26,6 @@ import { checkedRange, orderView, OrderService } from './order.service';
 export class AdminOrderService {
   constructor(
     private readonly orders: OrderRepository,
-    private readonly products: ProductLookupRepository,
     private readonly agents: AgentsService,
     private readonly partnerOrders: OrderService,
   ) {}
@@ -70,7 +68,7 @@ export class AdminOrderService {
       ...new Set(rows.map((o) => o.agent).filter((a): a is string => !!a)),
     ];
     const [products, partners] = await Promise.all([
-      this.products.bySku(
+      this.partnerOrders.productsFor(
         rows.flatMap((o) => (o.items ?? []).map((i) => i.sku)),
       ),
       ids.length

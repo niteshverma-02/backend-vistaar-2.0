@@ -168,7 +168,7 @@ export class WalletService {
 
   async wallet(agentId: string): Promise<WalletView> {
     const { partner, book, settings, withdrawals } =
-      await this.commission.bookOf(agentId);
+      await this.commission.bookOf(agentId, new Date(), true);
     const facts = await this.payoutFactsOf(partner);
     const open = withdrawals.find((w) => OPEN_STATUSES.includes(w.status));
     const blocked: WalletBlock | null =
@@ -209,7 +209,11 @@ export class WalletService {
   request(agentId: string, dto: CreateWithdrawalDto): Promise<WithdrawalView> {
     const id = agentId.toUpperCase();
     return this.queue.run(id, async () => {
-      const { partner, book, settings } = await this.commission.bookOf(id);
+      const { partner, book, settings } = await this.commission.bookOf(
+        id,
+        new Date(),
+        true,
+      );
       if (partner.stage !== 'approved' || !partner.is_active) {
         throw forbidden(
           'PARTNER_NOT_APPROVED',
@@ -259,6 +263,7 @@ export class WalletService {
         cancelled_at: null,
       };
       if (!(await this.withdrawals.insert(row))) throw stillOpen();
+      this.commission.forgetWithdrawals(id);
       return viewOf({ ...row, created_at: now, updated_at: now });
     });
   }
@@ -293,7 +298,7 @@ export class WalletService {
       { cancelled_at: new Date() },
       agentId.toUpperCase(),
     );
-    if (done) return viewOf(done);
+    if (done) return viewOf(this.moved(done));
     await this.mineOne(agentId, id);
     throw conflict(
       'WITHDRAWAL_CHANGED',
@@ -334,6 +339,8 @@ export class WalletService {
     if (w.status !== 'requested') throw notInStatus('approved', w.status);
     const { partner, book, settings } = await this.commission.bookOf(
       w.agent_id,
+      new Date(),
+      true,
     );
     const facts = await this.payoutFactsOf(partner);
     if (!facts?.bank_verified) throw bankNotVerified();
@@ -363,6 +370,7 @@ export class WalletService {
       },
     );
     if (!done) throw changed();
+    this.moved(done);
     return this.get(id);
   }
 
@@ -381,6 +389,7 @@ export class WalletService {
       const w = await this.require(id);
       throw notInStatus('rejected', w.status);
     }
+    this.moved(done);
     return this.get(id);
   }
 
@@ -399,6 +408,7 @@ export class WalletService {
       const w = await this.require(id);
       throw notInStatus('paid', w.status);
     }
+    this.moved(done);
     return this.get(id);
   }
 
@@ -411,25 +421,26 @@ export class WalletService {
     results: { id: string; ok: boolean; error: string | null }[];
   }> {
     const paidAt = paidAtOf(dto.paid_at);
-    const results: { id: string; ok: boolean; error: string | null }[] = [];
-    for (const item of dto.items) {
-      const done = await this.withdrawals.transition(
-        item.id,
-        ['approved'],
-        'paid',
-        { paid_at: paidAt, paid_by: by, utr: item.utr },
-      );
-      results.push(
-        done
+    // Each line is its own conditional update; they go out together.
+    const results = await Promise.all(
+      dto.items.map(async (item) => {
+        const done = await this.withdrawals.transition(
+          item.id,
+          ['approved'],
+          'paid',
+          { paid_at: paidAt, paid_by: by, utr: item.utr },
+        );
+        if (done) this.moved(done);
+        return done
           ? { id: item.id, ok: true, error: null }
           : {
               id: item.id,
               ok: false,
               error:
                 'Not an approved withdrawal (already paid, rejected, or unknown).',
-            },
-      );
-    }
+            };
+      }),
+    );
     return { paid: results.filter((r) => r.ok).length, results };
   }
 
@@ -676,6 +687,12 @@ export class WalletService {
   }
 
   // ── internals ────────────────────────────────────────────────────────
+
+  /** A withdrawal moved: the partner's screens on this server show it at once. */
+  private moved(w: WithdrawalRecord): WithdrawalRecord {
+    this.commission.forgetWithdrawals(w.agent_id);
+    return w;
+  }
 
   private async require(id: string): Promise<WithdrawalRecord> {
     const w = await this.withdrawals.findById(id);

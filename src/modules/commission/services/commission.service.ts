@@ -169,12 +169,21 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
  * The partner's commission, worked out from their orders on every read (see
  * `commission.domain.ts`). The orders are read once a minute per partner and
  * shared by every screen that asks in that minute; plans, settings and the
- * catalogue's GST rates are in memory; only the partner's withdrawals (tens
- * of rows, indexed) are read fresh, so a payout shows at once.
+ * catalogue's GST rates are in memory; the partner's withdrawals (tens of
+ * rows) are read once a minute for display, and fresh before money moves.
  */
 @Injectable()
 export class CommissionService {
   private readonly facts = new TtlCache<OrderFact[]>(FACTS_TTL_MS, FACTS_MAX);
+  /**
+   * A partner's withdrawals for the screens that only show money (orders,
+   * summary, ledger, performance): a payout made on another server shows
+   * within a minute. Anything that moves money reads them fresh.
+   */
+  private readonly withdrawalsOf = new TtlCache<WithdrawalRecord[]>(
+    FACTS_TTL_MS,
+    FACTS_MAX,
+  );
   private readonly partners = new TtlCache<PartnerTerms>(
     PARTNER_TTL_MS,
     FACTS_MAX,
@@ -192,14 +201,24 @@ export class CommissionService {
     private readonly storage: StorageService,
   ) {}
 
-  /** The partner's whole book, as of `now`. */
-  async bookOf(agentId: string, now = new Date()): Promise<PartnerBook> {
+  /**
+   * The partner's whole book, as of `now`. `fresh` reads their withdrawals
+   * now — for the wallet and for every check before money moves.
+   */
+  async bookOf(
+    agentId: string,
+    now = new Date(),
+    fresh = false,
+  ): Promise<PartnerBook> {
     const partner = await this.partner(agentId);
+    if (fresh) this.withdrawalsOf.delete(partner.agent_id);
     const [facts, withdrawals, terms, settings, catalogue] = await Promise.all([
       this.facts.get(partner.agent_id, () =>
         this.orders.factsFor(partner.agent_id),
       ),
-      this.withdrawals.forAgent(partner.agent_id),
+      this.withdrawalsOf.get(partner.agent_id, () =>
+        this.withdrawals.forAgent(partner.agent_id),
+      ),
       this.plans.termsFor(partner.cohort),
       this.settings.get(),
       this.products.facts(),
@@ -238,10 +257,17 @@ export class CommissionService {
     return new Map(book.rows.map((r) => [r.order_id, commissionOf(r)]));
   }
 
-  /** Drop the partner's cached orders — after something changed them here. */
+  /** Drop what is cached of the partner — after something changed it here. */
   forget(agentId: string): void {
-    this.facts.delete(agentId);
-    this.partners.delete(agentId);
+    const id = agentId.toUpperCase();
+    this.facts.delete(id);
+    this.partners.delete(id);
+    this.withdrawalsOf.delete(id);
+  }
+
+  /** A withdrawal of theirs moved: their screens show it at once on this server. */
+  forgetWithdrawals(agentId: string): void {
+    this.withdrawalsOf.delete(agentId.toUpperCase());
   }
 
   async summary(agentId: string): Promise<CommissionSummary> {

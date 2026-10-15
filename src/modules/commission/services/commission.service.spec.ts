@@ -108,15 +108,19 @@ describe('CommissionService', () => {
     });
   });
 
-  it('reads a partner’s orders once a minute however many screens ask', async () => {
+  it('reads a partner’s orders and withdrawals once a minute however many screens ask', async () => {
     await Promise.all([
       service.summary('VST-000001'),
       service.ledger('VST-000001', new LedgerQueryDto()),
       service.forOrders('VST-000001'),
     ]);
     expect(factsFor).toHaveBeenCalledTimes(1);
-    // Withdrawals are read fresh, so a payout shows at once.
-    expect(forAgent).toHaveBeenCalledTimes(3);
+    expect(forAgent).toHaveBeenCalledTimes(1);
+
+    // Before money moves, withdrawals are read fresh.
+    await service.bookOf('VST-000001', new Date(), true);
+    expect(forAgent).toHaveBeenCalledTimes(2);
+    expect(factsFor).toHaveBeenCalledTimes(1);
 
     service.forget('VST-000001');
     await service.summary('VST-000001');

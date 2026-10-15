@@ -145,6 +145,11 @@ export class AgentsService {
     return !agent || agent.stage === 'blocked' || !agent.is_active;
   }
 
+  /** Every verified partner's `VST-` id (ids only — ~15 bytes a partner). */
+  verifiedAgentIds(): Promise<string[]> {
+    return this.agents.verifiedAgentIds();
+  }
+
   /** `VST-` id → the partner's id and name, for the farmer-lead lists. */
   async partnersByAgentIds(
     agentIds: readonly string[],

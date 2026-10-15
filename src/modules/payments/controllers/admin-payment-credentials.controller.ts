@@ -23,7 +23,11 @@ import {
   CredentialReasonDto,
   SubmitCredentialsDto,
 } from '../dto/payment-credential.dto';
-import { PAYMENT_PROVIDERS, type PaymentProvider } from '../payments.domain';
+import {
+  actorOf,
+  PAYMENT_PROVIDERS,
+  type PaymentProvider,
+} from '../payments.domain';
 import {
   PaymentCredentialsService,
   type CredentialView,
@@ -33,7 +37,7 @@ import {
 const PROVIDER_ENUM = Object.fromEntries(PAYMENT_PROVIDERS.map((p) => [p, p]));
 
 /** Emails are compared for the two-person rule; one spelling only. */
-const who = (admin: AdminPrincipal): string => admin.email.trim().toLowerCase();
+const who = (admin: AdminPrincipal): string => actorOf(admin.email);
 
 /**
  * Merchant keys. Every route needs `payments.credentials` (company admins

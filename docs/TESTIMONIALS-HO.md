@@ -38,11 +38,14 @@ kills the link; **approve** again brings it back.
 | approve | `submitted`, `rejected`, `removed` (never after a consent withdrawal) |
 | reject | `submitted` |
 | remove | `approved` |
-| withdraw-consent | any, once |
+| withdraw-consent | any, once (a retry after a failure finishes it) |
 
 **Consent withdrawal** (the farmer asked to take it down): the consent is marked
 `withdrawn` with your reason and **kept**; the Stockship rows are deleted, the file is
-deleted, the submission becomes `removed`, and it can never be approved again.
+deleted, the submission becomes `removed`, and it can never be approved again. If
+another desk user approves at the same moment, the approval sees the withdrawal and
+deletes what it showed (`409 CONSENT_WITHDRAWN`). If a step fails (network), send
+the withdrawal again: it finishes the erase instead of answering 409.
 
 ### `Submission`
 

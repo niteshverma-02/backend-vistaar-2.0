@@ -15,6 +15,11 @@ export interface SealedValue {
 }
 
 const ALGORITHM = 'aes-256-gcm';
+/**
+ * Pinned on both sides: left open, Node accepts a shortened tag on decrypt,
+ * and a 4-byte tag can be forged by anyone who can write the row.
+ */
+const TAG_BYTES = 16;
 
 /**
  * AES-256-GCM with the key from `PAYMENTS_CREDENTIALS_KEY`, which never
@@ -40,7 +45,9 @@ export class CredentialCipher {
   seal(plain: string, context: string): SealedValue {
     const key = this.requireKey();
     const iv = randomBytes(12);
-    const cipher = createCipheriv(ALGORITHM, key, iv);
+    const cipher = createCipheriv(ALGORITHM, key, iv, {
+      authTagLength: TAG_BYTES,
+    });
     cipher.setAAD(Buffer.from(context, 'utf8'));
     const ct = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
     return {
@@ -59,13 +66,18 @@ export class CredentialCipher {
         `payment credential sealed with key "${sealed.kid}", server has "${this.kid}"`,
       );
     }
+    const tag = Buffer.from(sealed.tag, 'base64');
+    if (tag.length !== TAG_BYTES) {
+      throw new Error('payment credential has a malformed authentication tag');
+    }
     const decipher = createDecipheriv(
       ALGORITHM,
       key,
       Buffer.from(sealed.iv, 'base64'),
+      { authTagLength: TAG_BYTES },
     );
     decipher.setAAD(Buffer.from(context, 'utf8'));
-    decipher.setAuthTag(Buffer.from(sealed.tag, 'base64'));
+    decipher.setAuthTag(tag);
     return Buffer.concat([
       decipher.update(Buffer.from(sealed.ct, 'base64')),
       decipher.final(),

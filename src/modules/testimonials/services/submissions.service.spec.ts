@@ -82,6 +82,7 @@ function setup() {
           Promise.resolve(row(set)),
       ),
     library: jest.fn().mockResolvedValue({ rows: [], total: 0 }),
+    mediaTaken: jest.fn().mockResolvedValue(false),
   };
   const consents = {
     insert: jest.fn().mockResolvedValue(undefined),
@@ -284,6 +285,15 @@ describe('SubmissionsService · submit', () => {
     expect(s.submissions.insert).not.toHaveBeenCalled();
   });
 
+  it('refuses a file already on another of the partner’s testimonials', async () => {
+    const s = setup();
+    s.submissions.mediaTaken.mockResolvedValue(true);
+    expect(await code(s.service.submit(PARTNER, dto()))).toBe(
+      'VALIDATION_FAILED',
+    );
+    expect(s.submissions.insert).not.toHaveBeenCalled();
+  });
+
   it('needs words for a quote, and no file; a quote gets no testimonial row', async () => {
     const s = setup();
     expect(
@@ -342,6 +352,18 @@ describe('SubmissionsService · HO', () => {
     expect(s.reviews.show).not.toHaveBeenCalled();
   });
 
+  it('erases what it just showed when consent was withdrawn meanwhile', async () => {
+    const s = setup();
+    s.consents.find
+      .mockResolvedValueOnce({ status: 'given' })
+      .mockResolvedValue({ status: 'withdrawn' });
+    expect(await code(s.service.approve(ID, BY))).toBe('CONSENT_WITHDRAWN');
+    expect(s.reviews.show).toHaveBeenCalled();
+    expect(s.reviews.erase).toHaveBeenCalled();
+    expect(s.testimonials.erase).toHaveBeenCalled();
+    expect(s.submissions.transition).not.toHaveBeenCalled();
+  });
+
   it('hides the shared rows again when a removal won the race', async () => {
     const s = setup();
     s.submissions.transition.mockResolvedValue(null);
@@ -386,9 +408,28 @@ describe('SubmissionsService · HO', () => {
     expect(s.storage.remove).toHaveBeenCalledWith(VIDEO);
     expect(view.status).toBe('removed');
     s.consents.withdraw.mockResolvedValue(null);
+    s.consents.find.mockResolvedValue({ status: 'withdrawn' });
+    s.submissions.find.mockResolvedValue(
+      row({ status: 'removed', media_path: null }),
+    );
     expect(await code(s.service.withdrawConsent(ID, 'again', BY))).toBe(
       'CONSENT_WITHDRAWN',
     );
+  });
+
+  it('a retry finishes a withdrawal that failed part-way', async () => {
+    const s = setup();
+    s.submissions.find.mockResolvedValue(row({ status: 'approved' }));
+    s.reviews.erase.mockRejectedValueOnce(new Error('network'));
+    await expect(
+      s.service.withdrawConsent(ID, 'Farmer called', BY),
+    ).rejects.toThrow('network');
+
+    s.consents.withdraw.mockResolvedValue(null);
+    s.consents.find.mockResolvedValue({ status: 'withdrawn' });
+    const view = await s.service.withdrawConsent(ID, 'Farmer called', BY);
+    expect(view.status).toBe('removed');
+    expect(s.storage.remove).toHaveBeenCalledWith(VIDEO);
   });
 });
 

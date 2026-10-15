@@ -183,8 +183,11 @@ export class PaymentCredentialsService {
       retired_at: null,
       retired_by: null,
     };
-    let saved = await this.credentials.insertPending(row);
-    if (!saved) {
+    // While another set is half-way to live, a new one could be retired by it.
+    let saved = (await this.credentials.approving(provider))
+      ? null
+      : await this.credentials.insertPending(row);
+    if (!saved && !(await this.credentials.approving(provider))) {
       // A waiting set past its day is dropped and this one takes its place.
       await this.expireStale(provider, now);
       saved = await this.credentials.insertPending(row);
@@ -229,8 +232,9 @@ export class PaymentCredentialsService {
 
   async approve(id: string, by: string): Promise<CredentialView> {
     const row = await this.require(id);
-    // A retry after a crash between the steps below finishes the same approval.
-    const resuming = row.status === 'approved' && row.decided_by === by;
+    // A crash between the steps below leaves the set approved: any admin but
+    // the submitter finishes it (or rejects it), so it is never stuck.
+    const resuming = row.status === 'approved' && row.submitted_by !== by;
     if (!resuming) {
       this.refuseApproval(row, by);
       this.checkMode(row.mode);

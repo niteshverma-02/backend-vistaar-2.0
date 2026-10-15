@@ -71,6 +71,15 @@ export class SubmissionRepository {
     return this.model.findById(id).lean<SubmissionRow | null>().exec();
   }
 
+  /** Is this file already on one of the partner's testimonials? Rides `{agent_id, created_at}`. */
+  async mediaTaken(agentId: string, path: string): Promise<boolean> {
+    return (
+      (await this.model
+        .exists({ agent_id: agentId, media_path: path })
+        .exec()) !== null
+    );
+  }
+
   findMine(agentId: string, id: string): Promise<SubmissionRow | null> {
     return this.model
       .findOne({ _id: id, agent_id: agentId })

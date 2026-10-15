@@ -19,13 +19,11 @@ import type {
 import { activeCartId, CartRepository } from '../repositories/cart.repository';
 import type { CartLine, CartRecord } from '../schemas/cart.schema';
 
-/** Every partner fits: Vistaar has hundreds, not thousands. */
-const MAX_PARTNERS = 5_000;
-
 /**
  * Head office's read of the carts partners are filling and have not ordered
  * — the "who is about to buy" list. The cart row names no partner (its `_id`
- * is derived from theirs), so the list starts from the partners.
+ * is derived from theirs), so the cart ids come from the partners' ids (ids
+ * only, however many partners), and only the page's partners are read in full.
  */
 @Injectable()
 export class AdminCartService {
@@ -36,26 +34,34 @@ export class AdminCartService {
   ) {}
 
   async list(query: AdminCartsQueryDto): Promise<PageResult<AdminCartView>> {
-    const { items: partners } = await this.agents.list(
-      query.agent_id ? { agent_ids: [query.agent_id] } : {},
-      { skip: 0, limit: MAX_PARTNERS, sort: { agent_id: 1 } },
+    const agentIds = query.agent_id
+      ? [query.agent_id]
+      : await this.agents.verifiedAgentIds();
+    if (agentIds.length === 0) return new PageResult([], 0, query);
+    const byCart = new Map(
+      agentIds.map((id) => [activeCartId(id).toHexString(), id]),
     );
-    const byCart = new Map<string, AgentRecord>();
-    for (const a of partners) {
-      if (a.agent_id) byCart.set(activeCartId(a.agent_id).toHexString(), a);
-    }
-    if (byCart.size === 0) return new PageResult([], 0, query);
 
     const [rows, total] = await this.carts.adminList(
-      [...byCart.values()].map((a) => activeCartId(a.agent_id ?? '')),
+      agentIds.map((id) => activeCartId(id)),
       query.skip,
       query.limit,
     );
-    const farmers = await this.leads.farmersByPii(
-      rows.map((r) => r.pii_id).filter(Boolean),
-    );
+    const onPage = [
+      ...new Set(rows.flatMap((r) => byCart.get(r._id.toHexString()) ?? [])),
+    ];
+    const [partners, farmers] = await Promise.all([
+      onPage.length
+        ? this.agents.list(
+            { agent_ids: onPage },
+            { skip: 0, limit: onPage.length, sort: { agent_id: 1 } },
+          )
+        : Promise.resolve({ items: [] as AgentRecord[], total: 0 }),
+      this.leads.farmersByPii(rows.map((r) => r.pii_id).filter(Boolean)),
+    ]);
+    const agentOf = new Map(partners.items.map((a) => [a.agent_id ?? '', a]));
     const views = rows.flatMap((cart) => {
-      const agent = byCart.get(cart._id.toHexString());
+      const agent = agentOf.get(byCart.get(cart._id.toHexString()) ?? '');
       return agent?.agent_id ? [viewOf(cart, agent, farmers)] : [];
     });
     return new PageResult(views, total, query);
