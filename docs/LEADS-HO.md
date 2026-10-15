@@ -43,6 +43,7 @@ Every answer is the envelope `{ success, data }`; lists are
 |---|---|---|
 | GET | `/admin/leads` | `Page<LeadRow>`, newest first — filters below |
 | GET | `/admin/leads/summary` | `LeadSummary` |
+| GET | `/admin/leads/places?agent_id=&stage=&state=&district=` | map dots: `{ items: { pii_id, agent_id, name, stage, lat, lng, exact }[], capped }` — at most 5,000 (`capped: true` = narrow the filter); `exact: false` = the pincode's centre |
 | GET | `/admin/leads/:piiId` | `AdminLeadDetail` — the row + `stage_history` + `activities` + `holder_history` |
 | POST | `/admin/leads/:piiId/transfer` | `{ agent_id: "VST-…", reason }` → `AdminLeadDetail` — move the farmer to another approved partner |
 | GET / PUT | `/admin/settings` | `farmer_consent`, `lead_owner_agent_id`, `lead_release_days`, `customer_release_days` (see *Settings*) |
@@ -57,7 +58,10 @@ Every answer is the envelope `{ success, data }`; lists are
 | `stage` | `prospect` · `contacted` · `interested` · `negotiation` · `won` · `lost` |
 | `origin` | `created` (new to Katyayani) · `linked` (an existing Katyayani farmer a partner took) |
 | `state` | full state name, any case — `madhya pradesh` |
+| `district` | any case — `bhopal` |
+| `due` | `true` = open leads whose follow-up is due by the end of today (IST), overdue included |
 | `from` / `to` | added on or after / on or before. Send **IST** date-times: `2026-10-13T00:00:00+05:30`, `2026-10-13T23:59:59.999+05:30` (a bare `YYYY-MM-DD` is read as a UTC day) |
+| `sort` | `-created_at` (default) · `created_at` · `±last_order_at` · `±next_follow_up` (anything else = 400). Sorting by `next_follow_up` lists only leads that have one |
 | `page`, `limit` | `limit` ≤ 200 |
 
 ## Types
@@ -117,6 +121,8 @@ interface LeadSummary {
   today: number;                  // added today, IST
   last_7_days: number;            // today + the 6 days before, IST
   partners: number;               // partners holding at least one farmer
+  due_today: number;              // open, follow-up later today (IST)
+  overdue: number;                // open, follow-up before today
   by_stage: { key: LeadStage; count: number }[];   // stages with 0 are absent
   by_partner: { key: string; name: string | null; count: number }[]; // top 10
 }

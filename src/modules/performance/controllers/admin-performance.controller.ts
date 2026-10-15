@@ -5,13 +5,17 @@ import { CurrentAdmin } from '@common/decorators/current-principal.decorator';
 import type { AdminPrincipal } from '@common/interfaces/principal.interface';
 import { Can } from '@modules/access/guards/capability.guard';
 
+import type { PageResult } from '@common/http/page-result';
+
 import {
+  AdminPerformanceQueryDto,
   PerformanceAgentParamDto,
   PerformanceQueryDto,
   SetTargetDto,
 } from '../dto/performance.dto';
 import {
   PerformanceService,
+  type PartnerMonthRow,
   type PerformanceView,
 } from '../services/performance.service';
 
@@ -20,6 +24,18 @@ import {
 @Controller('admin/performance')
 export class AdminPerformanceController {
   constructor(private readonly performance: PerformanceService) {}
+
+  @Get()
+  @Can('commission.read')
+  @ApiOperation({
+    summary:
+      'Approved partners with a month’s sales, rate, commission, target %, earned, withdrawable, tier and stage — paged (Commission and Sales tables)',
+  })
+  list(
+    @Query() query: AdminPerformanceQueryDto,
+  ): Promise<PageResult<PartnerMonthRow>> {
+    return this.performance.adminList(query);
+  }
 
   @Get(':agentId')
   @Can('commission.read')

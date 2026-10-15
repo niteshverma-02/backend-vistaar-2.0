@@ -118,3 +118,5 @@ AgentSchema.index({ owner_agent_id: 1, stage: 1 });
 // The HO agent directory: approved partners, newest approval first.
 AgentSchema.index({ otp_verified: 1, stage: 1, decided_at: -1 });
 AgentSchema.index({ location: '2dsphere' });
+// The HO partner list by last app login (who has gone quiet).
+AgentSchema.index({ otp_verified: 1, stage: 1, last_login_at: -1 });

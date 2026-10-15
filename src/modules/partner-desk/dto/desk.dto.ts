@@ -17,7 +17,12 @@ const toBool = ({ value }: { value: unknown }) =>
   value === true || value === 'true';
 
 /** Sorts the list may use — every one is covered by an index. */
-export const DESK_SORTS = ['created_at', 'updated_at', 'decided_at'] as const;
+export const DESK_SORTS = [
+  'created_at',
+  'updated_at',
+  'decided_at',
+  'last_login_at',
+] as const;
 
 export class AgentListQueryDto extends PageQueryDto {
   @ApiPropertyOptional({ enum: STAGES })

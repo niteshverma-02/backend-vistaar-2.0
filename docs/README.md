@@ -15,6 +15,7 @@ Contract docs, one per feature, named by who reads them:
 | [DRAFT-ORDER-APP.md](./DRAFT-ORDER-APP.md) | app | Saved Carts, "Save for later" |
 | [LEADS-APP.md](./LEADS-APP.md) | app | Add lead (consent, phone check), Leads list / board, Lead detail, Home "follow-ups due" |
 | [LEADS-HO.md](./LEADS-HO.md) | HO portal | Leads screen (cards, list, drawer), farmer-consent wording, lead owner |
+| [CUSTOMERS-HO.md](./CUSTOMERS-HO.md) | HO portal | Every partner's customers with their business; cards; one customer |
 | [CUSTOMERS-APP.md](./CUSTOMERS-APP.md) | app | Customers list, tiles, detail; a lead becomes a customer on its first confirmed order |
 | [ORDER-EVENTS.md](./ORDER-EVENTS.md) | order service (TL) | The confirmed-order call that turns a lead into a customer |
 | [RADAR-APP.md](./RADAR-APP.md) | app | Nearby radar: my customers and open leads within N km; how farmers get a place |

@@ -6,9 +6,14 @@ import type {
 } from '@modules/orders/services/order.service';
 import type { SettingsService } from '@modules/settings/services/settings.service';
 
-import { CustomerQueryDto, type OrderEventDto } from '../dto/customer.dto';
+import {
+  AdminCustomerQueryDto,
+  CustomerQueryDto,
+  type OrderEventDto,
+} from '../dto/customer.dto';
 import type { VistaarLeadsRepository } from '../repositories/vistaar-leads.repository';
 import { CustomersService } from './customers.service';
+import type { LeadsService } from './leads.service';
 
 type Row = Record<string, unknown> & {
   pii_id: string;
@@ -110,6 +115,7 @@ function setup(opts: {
     repo as unknown as VistaarLeadsRepository,
     orders as unknown as OrderService,
     settings as unknown as SettingsService,
+    {} as LeadsService,
   );
   return { service, repo, orders };
 }
@@ -269,5 +275,66 @@ describe('CustomersService — the Customers screen', () => {
       average_order: 1667,
     });
     expect(await codeOf(service.get(ME, 'PII-L'))).toBe('NOT_FOUND');
+  });
+});
+
+describe('CustomersService — HO', () => {
+  const business = new Map<string, CustomerBusiness>([
+    [
+      'PII-B',
+      {
+        orders: 2,
+        spend: 3000,
+        last_order_at: new Date('2026-10-10T00:00:00Z'),
+        last_order_stage: 'delivered',
+      },
+    ],
+  ]);
+  const leads = {
+    list: jest.fn().mockResolvedValue({
+      items: [
+        { pii_id: 'PII-A', stage: 'won', last_order_at: null, partner: null },
+        { pii_id: 'PII-B', stage: 'won', last_order_at: null, partner: null },
+      ],
+      total: 2,
+    }),
+    get: jest.fn(),
+  };
+  const orders = { businessOfBuyers: jest.fn().mockResolvedValue(business) };
+  const service = new CustomersService(
+    {} as VistaarLeadsRepository,
+    orders as unknown as OrderService,
+    {} as SettingsService,
+    leads as unknown as LeadsService,
+  );
+
+  it('lists won leads only, latest order first, with one business read for the page', async () => {
+    const query = new AdminCustomerQueryDto();
+    expect(query.sort).toBe('-last_order_at');
+    const page = await service.adminList(query);
+    expect((leads.list.mock.calls[0] as [AdminCustomerQueryDto])[0].stage).toBe(
+      'won',
+    );
+    expect(orders.businessOfBuyers).toHaveBeenCalledWith(['PII-A', 'PII-B']);
+    expect(page.items.map((c) => [c.pii_id, c.orders, c.spend])).toEqual([
+      ['PII-A', 0, 0],
+      ['PII-B', 2, 3000],
+    ]);
+  });
+
+  it('answers 404 for a farmer who is not a customer', async () => {
+    leads.get.mockResolvedValueOnce({ pii_id: 'PII-A', stage: 'interested' });
+    await expect(service.adminGet('PII-A')).rejects.toMatchObject({
+      status: 404,
+    });
+    leads.get.mockResolvedValueOnce({
+      pii_id: 'PII-B',
+      stage: 'won',
+      last_order_at: null,
+    });
+    await expect(service.adminGet('PII-B')).resolves.toMatchObject({
+      orders: 2,
+      average_order: 1500,
+    });
   });
 });

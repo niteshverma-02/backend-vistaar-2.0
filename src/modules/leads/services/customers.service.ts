@@ -5,6 +5,7 @@ import { Injectable } from '@nestjs/common';
 import type { PartnerRef } from '@common/auth/current-partner.decorator';
 import { notFound, serviceUnavailable } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
+import { istMonthKey, istMonthStart } from '@common/utils/ist-day.util';
 import {
   OrderService,
   type CustomerBusiness,
@@ -12,7 +13,11 @@ import {
 import type { OrderStage } from '@modules/orders/orders.domain';
 import { SettingsService } from '@modules/settings/services/settings.service';
 
-import type { CustomerQueryDto, OrderEventDto } from '../dto/customer.dto';
+import type {
+  AdminCustomerQueryDto,
+  CustomerQueryDto,
+  OrderEventDto,
+} from '../dto/customer.dto';
 import {
   detailOf,
   viewOf,
@@ -31,6 +36,25 @@ import {
   type VistaarLeadBrief,
 } from '../repositories/vistaar-leads.repository';
 import type { LeadActivity } from '../schemas/vistaar-lead.schema';
+import {
+  LeadsService,
+  type AdminLeadDetail,
+  type PartnerLeadView,
+} from './leads.service';
+
+/** A customer on HO's list: the lead row, its partner, and the business. */
+export type AdminCustomerView = PartnerLeadView & {
+  orders: number;
+  spend: number;
+  last_order_stage: OrderStage | null;
+};
+
+export type AdminCustomerDetail = AdminLeadDetail & {
+  orders: number;
+  spend: number;
+  last_order_stage: OrderStage | null;
+  average_order: number;
+};
 
 /** A customer: the partner's won lead with their business together. */
 export type CustomerView = LeadView & {
@@ -88,7 +112,59 @@ export class CustomersService {
     private readonly rows: VistaarLeadsRepository,
     private readonly orders: OrderService,
     private readonly settings: SettingsService,
+    private readonly leads: LeadsService,
   ) {}
+
+  // ── HO ───────────────────────────────────────────────────────────────
+
+  /**
+   * Every partner's customers (won leads), filtered and paged as
+   * `/admin/leads`, each with their confirmed Vistaar business — one orders
+   * read for the page.
+   */
+  async adminList(
+    query: AdminCustomerQueryDto,
+  ): Promise<PageResult<AdminCustomerView>> {
+    query.stage = 'won';
+    const page = await this.leads.list(query);
+    const business = await this.orders.businessOfBuyers(
+      page.items.map((r) => r.pii_id),
+    );
+    return new PageResult(
+      page.items.map((r) => ({
+        ...r,
+        ...businessOf(business.get(r.pii_id)),
+        last_order_at: business.get(r.pii_id)?.last_order_at ?? r.last_order_at,
+      })),
+      page.total,
+      query,
+    );
+  }
+
+  /** HO's customer cards; order value is `/admin/orders/summary`. */
+  adminSummary() {
+    const now = new Date();
+    return this.rows.customerSummary({
+      active: new Date(now.getTime() - ACTIVE_DAYS * DAY_MS),
+      month: istMonthStart(istMonthKey(now)),
+    });
+  }
+
+  /** One customer as HO sees them; their orders are `/admin/orders?customer=`. */
+  async adminGet(piiId: string): Promise<AdminCustomerDetail> {
+    const lead = await this.leads.get(piiId);
+    if (lead.stage !== 'won') throw notFound('Customer not found.');
+    const mine = (await this.orders.businessOfBuyers([lead.pii_id])).get(
+      lead.pii_id,
+    );
+    const done = businessOf(mine);
+    return {
+      ...lead,
+      ...done,
+      last_order_at: mine?.last_order_at ?? lead.last_order_at,
+      average_order: done.orders ? Math.round(done.spend / done.orders) : 0,
+    };
+  }
 
   /**
    * The order service says an order is confirmed (TL's order API) — trusted

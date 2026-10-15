@@ -46,11 +46,11 @@ writes its retailers.
 
 ### Indexes (declared on the schemas; listed in PROD-CHECKLIST)
 
-- agents: `{phone, country_code}` unique · `{agent_id}` unique partial (string) · `{pii_id}` unique partial (string) · `{otp_verified, stage, updated_at:-1}` · `{owner_agent_id, stage}` · `{otp_verified, stage, decided_at:-1}` · `{location: 2dsphere}`
+- agents: `{phone, country_code}` unique · `{agent_id}` unique partial (string) · `{pii_id}` unique partial (string) · `{otp_verified, stage, updated_at:-1}` · `{owner_agent_id, stage}` · `{otp_verified, stage, decided_at:-1}` · `{otp_verified, stage, last_login_at:-1}` · `{location: 2dsphere}`
 - onboarding_data: `{agent_ref}` unique · `{location: 2dsphere}`
 - onboarding_configs: `{cohort, version:-1}` unique · `{cohort, status}` unique partial `status: draft` (one draft per cohort)
 - sessions: `{agent_ref}` · `{expires_at}` TTL 0
-- leads: `{pii_id}` unique · `{agent_id, created_at:-1}` · `{agent_id, stage}` · `{agent_id, next_follow_up}` · `{created_at:-1}` · `{phone}`
+- leads: `{pii_id}` unique · `{agent_id, created_at:-1}` · `{agent_id, stage}` · `{agent_id, next_follow_up}` · `{created_at:-1}` · `{phone}` · `{last_order_at:-1, _id}` (HO customers) · `{next_follow_up, _id}` (HO follow-ups)
 - banners: `{is_active, order}`
 - attendance: none beyond `_id` — today and every punch are `_id` lookups, a month is an `_id` range
 - stories: `{agent_id, signature}` unique · `{agent_id, last_used_at:-1}`

@@ -28,7 +28,11 @@ export interface LeadListFilter {
   stage?: LeadStage;
   /** Open leads with a follow-up at or before this moment (due today, overdue). */
   due_before?: Date;
+  /** Only leads with a follow-up set (any stage). */
+  has_follow_up?: boolean;
   state?: string;
+  /** Any case. */
+  district?: string;
   origin?: 'created' | 'linked';
   from?: Date;
   to?: Date;
@@ -348,13 +352,14 @@ export class VistaarLeadsRepository {
   async listRecent(
     filter: LeadListFilter,
     page: { skip: number; limit: number },
+    sort: Record<string, 1 | -1> = { created_at: -1 },
   ): Promise<{ items: VistaarLeadBrief[]; total: number }> {
     const query = this.toQuery(filter);
     const [items, total] = await Promise.all([
       this.model
         .find(query)
         .select(BRIEF)
-        .sort({ created_at: -1, _id: 1 })
+        .sort({ ...sort, _id: 1 })
         .skip(page.skip)
         .limit(page.limit)
         .lean<VistaarLeadBrief[]>()
@@ -499,12 +504,103 @@ export class VistaarLeadsRepository {
     };
   }
 
+  /** HO's customer cards: won leads, ordered lately, won this month, top states. */
+  async customerSummary(since: { active: Date; month: Date }): Promise<{
+    total: number;
+    active_30_days: number;
+    new_this_month: number;
+    by_state: { key: string; count: number }[];
+  }> {
+    const [out] = await this.model
+      .aggregate<{
+        total: { n: number }[];
+        active: { n: number }[];
+        month: { n: number }[];
+        by_state: { _id: string | null; count: number }[];
+      }>([
+        { $match: { stage: 'won' } },
+        {
+          $facet: {
+            total: [{ $count: 'n' }],
+            active: [
+              { $match: { last_order_at: { $gte: since.active } } },
+              { $count: 'n' },
+            ],
+            month: [
+              { $match: { customer_at: { $gte: since.month } } },
+              { $count: 'n' },
+            ],
+            by_state: [
+              { $group: { _id: '$state', count: { $sum: 1 } } },
+              { $sort: { count: -1 } },
+              { $limit: 10 },
+            ],
+          },
+        },
+      ])
+      .exec();
+    const n = (rows?: { n: number }[]) => rows?.[0]?.n ?? 0;
+    return {
+      total: n(out?.total),
+      active_30_days: n(out?.active),
+      new_this_month: n(out?.month),
+      by_state: (out?.by_state ?? []).map((s) => ({
+        key: s._id ?? '',
+        count: s.count,
+      })),
+    };
+  }
+
+  /** HO's map: farmers with a place, only what a dot needs, at most `cap`. */
+  places(
+    filter: LeadListFilter,
+    cap: number,
+  ): Promise<
+    Pick<
+      VistaarLeadRecord,
+      'pii_id' | 'agent_id' | 'name' | 'stage' | 'location' | 'location_source'
+    >[]
+  > {
+    return this.model
+      .find({ ...this.toQuery(filter), location: { $ne: null } })
+      .select({
+        _id: 0,
+        pii_id: 1,
+        agent_id: 1,
+        name: 1,
+        stage: 1,
+        location: 1,
+        location_source: 1,
+      })
+      .limit(cap)
+      .lean<
+        Pick<
+          VistaarLeadRecord,
+          | 'pii_id'
+          | 'agent_id'
+          | 'name'
+          | 'stage'
+          | 'location'
+          | 'location_source'
+        >[]
+      >()
+      .exec();
+  }
+
   /** The HO cards in one round trip. */
-  async adminSummary(since: { today: Date; week: Date }): Promise<{
+  async adminSummary(since: {
+    today: Date;
+    week: Date;
+    tomorrow: Date;
+  }): Promise<{
     total: number;
     today: number;
     last_7_days: number;
     partners: number;
+    /** Open leads with a follow-up later today (IST). */
+    due_today: number;
+    /** Open leads with a follow-up before today. */
+    overdue: number;
     by_stage: { key: LeadStage; count: number }[];
     by_partner: { key: string; count: number }[];
   }> {
@@ -514,6 +610,8 @@ export class VistaarLeadsRepository {
         today: { n: number }[];
         week: { n: number }[];
         partners: { n: number }[];
+        due_today: { n: number }[];
+        overdue: { n: number }[];
         by_stage: { _id: LeadStage; count: number }[];
         by_partner: { _id: string; count: number }[];
       }>([
@@ -529,6 +627,24 @@ export class VistaarLeadsRepository {
               { $count: 'n' },
             ],
             partners: [{ $group: { _id: '$agent_id' } }, { $count: 'n' }],
+            due_today: [
+              {
+                $match: {
+                  stage: { $nin: CLOSED_STAGES },
+                  next_follow_up: { $gte: since.today, $lt: since.tomorrow },
+                },
+              },
+              { $count: 'n' },
+            ],
+            overdue: [
+              {
+                $match: {
+                  stage: { $nin: CLOSED_STAGES },
+                  next_follow_up: { $ne: null, $lt: since.today },
+                },
+              },
+              { $count: 'n' },
+            ],
             by_stage: [{ $group: { _id: '$stage', count: { $sum: 1 } } }],
             by_partner: [
               { $group: { _id: '$agent_id', count: { $sum: 1 } } },
@@ -545,6 +661,8 @@ export class VistaarLeadsRepository {
       today: n(out?.today),
       last_7_days: n(out?.week),
       partners: n(out?.partners),
+      due_today: n(out?.due_today),
+      overdue: n(out?.overdue),
       by_stage: (out?.by_stage ?? []).map((s) => ({
         key: s._id,
         count: s.count,
@@ -561,7 +679,13 @@ export class VistaarLeadsRepository {
     if (filter.agent_id) query.agent_id = filter.agent_id;
     if (filter.stage) query.stage = filter.stage;
     if (filter.state) query.state = filter.state;
+    if (filter.district)
+      query.district = {
+        $regex: `^${escapeRegex(filter.district)}$`,
+        $options: 'i',
+      };
     if (filter.origin) query.origin = filter.origin;
+    if (filter.has_follow_up) query.next_follow_up = { $ne: null };
     if (filter.due_before) {
       query.stage = filter.stage ?? { $nin: CLOSED_STAGES };
       query.next_follow_up = { $ne: null, $lte: filter.due_before };

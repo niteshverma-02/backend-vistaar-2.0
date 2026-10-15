@@ -107,7 +107,36 @@ fails on its own (e.g. already paid).
 TDS counts by the month a withdrawal was **paid**. The partner sees their Form 16A in
 `GET /reports/tds` once uploaded. Files are private under `KO-documents/<pii_id>/form16a/`.
 
-## 4. One partner
+## 4. Partners table (Commission, Sales Summary)
+
+`GET /admin/performance?month=2026-10&cohort=&state=&district=&q=&page=&limit=`
+(`commission.read`) — approved partners, newest approval first, one row each for the
+month (default this month):
+
+```ts
+interface PartnerMonthRow {
+  agent_id: string; name: string | null; cohort: string;
+  district: string | null; state: string | null;
+  month: string;              // YYYY-MM
+  sales: number;              // delivered sales before GST in the month
+  rate: number;               // slab % reached
+  commission: number;         // sales × rate
+  orders_placed: number;      // in the month
+  monthly_target: number; achieved_pct: number;   // pct ≤ 100
+  earned: number;             // all-time confirmed + paid commission
+  withdrawable: number; pending: number;
+  last_order_at: string | null;
+  lifecycle_stage: "onboarded" | "active" | "at_risk" | "lost";
+  tier: "bronze" | "silver" | "gold" | "platinum";
+}
+```
+
+Each row is the partner's own commission book (the app's numbers), so `limit` is
+capped at 50. Totals across partners: `GET /admin/orders/summary?from=&to=` (orders, value,
+partners ordering) and `GET /admin/agents/summary` (partners by stage) — not the sum of
+a page.
+
+## 5. One partner
 
 | Method | Path | |
 |---|---|---|
@@ -117,7 +146,7 @@ TDS counts by the month a withdrawal was **paid**. The partner sees their Form 1
 
 An order's commission is also on `GET /admin/orders/:id` (ORDERS-HO.md).
 
-## 5. Settings
+## 6. Settings
 
 `PUT /admin/settings` (`settings.write`) — the commission fields:
 

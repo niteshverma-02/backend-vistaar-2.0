@@ -17,6 +17,7 @@ import type {
 import type { LeadsService } from '@modules/leads/services/leads.service';
 import type { ProductFactsService } from '@modules/spine/services/product-facts.service';
 
+import { AdminPerformanceQueryDto } from '../dto/performance.dto';
 import { PerformanceService } from './performance.service';
 
 // 5 Oct, noon IST: the newest sale (2 Oct) is 3 days old.
@@ -112,6 +113,16 @@ describe('PerformanceService', () => {
         ),
       } as unknown as ProductFactsService,
       {
+        list: jest.fn().mockResolvedValue({
+          items: [
+            {
+              agent_id: 'VST-000001',
+              cohort: 'vistaar_agent',
+              profile: { name: 'Asha', district: 'BHOPAL', state: 'MP' },
+            },
+          ],
+          total: 1,
+        }),
         setMonthlyTarget: jest.fn().mockResolvedValue({
           agent_id: 'VST-000001',
           monthly_target: 150_000,
@@ -177,5 +188,27 @@ describe('PerformanceService', () => {
     ).resolves.toEqual({ agent_id: 'VST-000001', own_target: 150_000 });
     await service.standing('VST-000001');
     expect(bookOf).toHaveBeenCalledTimes(2);
+  });
+
+  it('gives HO one row per approved partner for a month from their book', async () => {
+    const page = await service.adminList(
+      Object.assign(new AdminPerformanceQueryDto(), {
+        month: addMonths(THIS, -1),
+      }),
+    );
+    expect(page.total).toBe(1);
+    expect(page.items[0]).toMatchObject({
+      agent_id: 'VST-000001',
+      name: 'Asha',
+      district: 'BHOPAL',
+      sales: 60_000,
+      rate: 7,
+      commission: 4_200,
+      orders_placed: 1,
+      monthly_target: 100_000,
+      achieved_pct: 60,
+      tier: 'gold',
+      lifecycle_stage: 'active',
+    });
   });
 });

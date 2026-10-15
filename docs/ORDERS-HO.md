@@ -12,15 +12,35 @@ Capability: `orders.read` (head roles: USR-1037, USR-1000, USR-1001). Others get
 
 | Method | Path | Returns |
 |---|---|---|
-| `GET` | `/admin/orders?page=1&limit=200&status=&agent_id=&from=&to=` | `PageResult<AdminOrderView>`, newest first |
+| `GET` | `/admin/orders?page=1&limit=200&status=&agent_id=&customer=&from=&to=&payment_mode=&state=&q=` | `PageResult<AdminOrderView>`, newest first |
+| `GET` | `/admin/orders/summary?…same filters…` | `AdminOrderSummary` — the screen's cards |
 | `GET` | `/admin/orders/:id` | `AdminOrderView` (404 if it is not a Vistaar order) |
 
 | Query | Meaning |
 |---|---|
 | `status` | an app stage: `placed`, `punched`, `shipped`, `delivered`, `cancelled`, `returned` |
 | `agent_id` | one partner (`VST-…`, case-insensitive) |
+| `customer` | one buyer's `pii_id` (`PII-…`) — a customer's Orders tab |
 | `from`, `to` | IST days `YYYY-MM-DD`, both included (`from` ≤ `to`, else 400) |
+| `payment_mode` | `cod` · `prepaid` · `partial` · `credit` |
+| `state` | shipping state, any case |
+| `q` | an order id (exact, any case), or 4+ digits of the buyer's phone (matched at its end); anything else = 400 |
 | `limit` | ≤ 200 (clamped) |
+
+```ts
+// /summary: same filters as the list; with no from/to it covers this IST month,
+// and a range longer than 366 days = 400 (the sums read every matching order).
+interface AdminOrderSummary {
+  orders: number;
+  value: number;                       // Σ total, cancelled + returned left out
+  partners: number;                    // distinct partners
+  customers: number;                   // distinct buyers
+  by_stage: { stage: "placed" | "punched" | "shipped" | "delivered" | "cancelled" | "returned"; count: number; value: number }[];
+}
+```
+
+Cards and tables: read the list one page at a time and the cards from
+`/summary` — never add up a page. For a CSV export, page through `has_more`.
 
 Rides Stockship's `{ source, order_status, date }` index (`{ agent, … }` with a
 partner), so other channels' orders are never scanned.

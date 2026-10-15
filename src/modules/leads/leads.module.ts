@@ -8,6 +8,7 @@ import { SettingsModule } from '@modules/settings/settings.module';
 import { SpineModule } from '@modules/spine/spine.module';
 
 import { AdminLeadsController } from './controllers/admin-leads.controller';
+import { AdminCustomersController } from './controllers/admin-customers.controller';
 import { CustomersController } from './controllers/customers.controller';
 import { LeadsController } from './controllers/leads.controller';
 import { OrderEventsController } from './controllers/order-events.controller';
@@ -49,6 +50,7 @@ import { RadarService } from './services/radar.service';
     LeadsController,
     AdminLeadsController,
     CustomersController,
+    AdminCustomersController,
     OrderEventsController,
     RadarController,
   ],
