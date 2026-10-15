@@ -14,7 +14,9 @@ MY-PERFORMANCE-APP.md — HO sees the same numbers the partner does.
 | `agents.edit` | heads | a partner's monthly target |
 | `settings.write` | heads | the commission settings |
 
-Others get `403 ROLE_NOT_ALLOWED`.
+Others get `403 NO_ADMIN_ACCESS` (no active Vistaar HO role — head / admin — or no
+`agents_v2` account) or `403 ROLE_NOT_ALLOWED` (lacks this route's capability — by role, or
+withheld by email in `access.domain.ts`).
 
 ## 1. Commission plans
 
@@ -50,7 +52,8 @@ have been paid on): a change is made from this month or a later one.
 
 Slabs: 1–10, the first from ₹0, each starting where the last ends, the last `to: null`,
 rates 0–100 with ≤ 2 decimals. A plan answers with `id`, the fields above, `created_by`,
-`updated_by`, `history` (every earlier state: `at`, `by`, `slabs`, `notes`, `draft`) and
+`updated_by`, `history` (every earlier state, oldest first: `at`, `by`, `action: "created" | "updated"`,
+`slabs`, `notes`, `draft`) and
 the timestamps. **Editor:** a slab table per cohort + month picker + notes + "Signed off"
 toggle; show `in-effect` as "Current rates".
 
@@ -100,7 +103,7 @@ fails on its own (e.g. already paid).
 | Method | Path | |
 |---|---|---|
 | GET | `/admin/tds?quarter=FY2026-Q2&agent_id=&page=&limit=` | per partner: `name`, `pan_number`, `payouts`, `gross`, `tds`, `net`, `form16a { uploaded_at, url } \| null` — plus `quarter`, `deductor`, `section` — for the TDS return |
-| GET | `/admin/tds/certificates?quarter=&agent_id=` | the quarter's uploaded Form 16As (`url` signed, 1 h) |
+| GET | `/admin/tds/certificates?quarter=FY2026-Q2&agent_id=&page=&limit=` | `quarter` required; `PageResult` of `{ agent_id, quarter, url: string \| null, uploaded_by, uploaded_at }` (`url` signed, 1 h) |
 | PUT | `/admin/tds/certificates/:agentId/:quarter` | upload or replace — multipart `file`, **PDF ≤ 5 MB** |
 | DELETE | `/admin/tds/certificates/:agentId/:quarter` | remove |
 
@@ -168,7 +171,7 @@ Changing `return_window_days` moves the confirm date of orders not yet confirmed
 | `COHORT_NOT_FOUND` | 400 | plan for a cohort that does not exist |
 | `PLAN_EXISTS` | 409 | that cohort already has a plan from that month |
 | `PLAN_LOCKED` | 409 | slabs / notes / delete on a past month's plan; or a past `effective_from` |
-| `VERSION_CONFLICT` | 409 | someone changed the plan since it was opened — reload |
+| `VERSION_CONFLICT` | 409 | PATCH / DELETE raced another change to the same plan at that moment — reload and retry. No version is sent: a change made after the editor opened is not detected |
 | `WITHDRAWAL_CHANGED` | 409 | not in a state for that action (e.g. pay a requested one, approve a paid one) |
 | `NOT_ENOUGH_BALANCE` | 409 | approve: the partner's balance fell below the request (a rate fell) — reject it |
 | `BANK_NOT_VERIFIED` | 409 | approve: the bank proof is not verified |

@@ -46,14 +46,15 @@ Every answer is the envelope `{ success, data }`; lists are
 | GET | `/admin/leads/places?agent_id=&stage=&state=&district=` | map dots: `{ items: { pii_id, agent_id, name, stage, lat, lng, exact }[], capped }` — at most 5,000 (`capped: true` = narrow the filter); `exact: false` = the pincode's centre |
 | GET | `/admin/leads/:piiId` | `AdminLeadDetail` — the row + `stage_history` + `activities` + `holder_history` |
 | POST | `/admin/leads/:piiId/transfer` | `{ agent_id: "VST-…", reason }` → `AdminLeadDetail` — move the farmer to another approved partner |
-| GET / PUT | `/admin/settings` | `farmer_consent`, `lead_owner_agent_id`, `lead_release_days`, `customer_release_days` (see *Settings*) |
+| GET | `/admin/settings` | capability `agents.read` — `farmer_consent`, `lead_owner_agent_id`, `lead_release_days`, `customer_release_days` (see *Settings*) |
+| PUT | `/admin/settings` | capability `settings.write` — same fields (see *Settings*) |
 | GET | `/admin/agents?stage=approved` | partners, for the partner filter (ONBOARDING-HO.md) |
 
 ### `GET /admin/leads` filters
 
 | Query | |
 |---|---|
-| `q` | name, village, crop, or digits of the mobile (10 digits = exact number) |
+| `q` | name, village, district, crop (contains, any case), or digits of the mobile (10 digits = exact number) |
 | `agent_id` | one partner, `VST-000001` |
 | `stage` | `prospect` · `contacted` · `interested` · `negotiation` · `won` · `lost` |
 | `origin` | `created` (new to Katyayani) · `linked` (an existing Katyayani farmer a partner took) |
@@ -97,6 +98,7 @@ interface LeadRow {
   held_since: string | null;      // since when this partner holds the farmer (null = created_at)
   last_worked_at: string | null;  // the partner's last work on the lead
   releases_at: string;            // from then another partner may take the farmer
+  location: { lat: number; lng: number; exact: boolean; source: "visit" | "add" | "order" | "pincode"; at: string | null } | null; // exact: false = pincode centre
   created_at: string;
   updated_at: string;
 }
@@ -226,9 +228,10 @@ partner never sets it).
 | Code | HTTP | Show |
 |---|---|---|
 | `UNAUTHORIZED` | 401 | SSO token missing / expired — sign in again |
-| `NO_ADMIN_ACCESS` | 403 | the account has no Vistaar role |
-| `ROLE_NOT_ALLOWED` | 403 | the role is not a head (no `leads.read` / `leads.transfer` / `settings.write`) |
-| `NOT_FOUND` | 404 | no partner holds this farmer |
+| `NO_ADMIN_ACCESS` | 403 | no active Vistaar HO role (head USR-1037, admin USR-1000 / USR-1001), or no `agents_v2` account |
+| `ROLE_NOT_ALLOWED` | 403 | the person lacks this route's capability (by role, or withheld by email in `access.domain.ts`) |
+| `NOT_FOUND` | 404 | detail / transfer: no partner holds this farmer |
+| `NOT_FOUND` | 404 | transfer: the partner picked does not exist ("This partner could not be found.") |
 | `VALIDATION_FAILED` | 400 | a bad filter or setting — `details[0]` |
 | `OWNER_NOT_FOUND` | 400 | settings: the owner is not an active account |
 | `PARTNER_NOT_APPROVED` | 400 | transfer: the partner picked is not approved, or is blocked |

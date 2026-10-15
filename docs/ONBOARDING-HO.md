@@ -42,8 +42,9 @@ List query: `stage`, `cohort`, `state`, `district`, `owner_agent_id`, `q` (name,
 
 Row: `{ agent_id, pii_id, phone, name, cohort, sub_cohort, district, state, village, pincode,
 email, stage, otp_verified, is_approved, completion_pct, submitted_at, decided_at, last_login_at,
-owner: { agent_id, name }, created_at, updated_at }` — `email`, `village`, `sub_cohort` come from the
-profile mapped at approval.
+owner: { agent_id, name } | null, created_at, updated_at }` — `email`, `village`, `sub_cohort` come from the
+profile mapped at approval. `agent_id`, `pii_id` (null for unverified numbers), `name`, `cohort`,
+`district`, `state` are nullable; `owner` is `null` when unassigned.
 
 **Agent directory** (the HO "Partners" page) is the same list:
 `GET /admin/agents?stage=approved&sort=-decided_at` — every working agent, newest approval first
@@ -56,8 +57,8 @@ Detail:
   "agent": { "agent_id": "VST-000001", "pii_id": "PII-…", "phone": "…", "stage": "kyc_review",
              "stage_history": [{ "from": "onboarding", "to": "kyc_review", "by": "self", "at": "…" }],
              "owner_agent_id": "A0-2691", "is_approved": false, "profile": null, … },
-  "owner": { "agent_id": "A0-2691", "name": "Manav Barodiya", "email": "…" },
-  "onboarding": {
+  "owner": { "agent_id": "A0-2691", "name": "Manav Barodiya", "email": "…" },   // | null
+  "onboarding": {                                                              // | null (form not started)
     "steps": [ … the form version this partner filled … ],   // render the values with it
     "raw_data": { … with signed file urls (1 h) … },
     "documents_review": { "pan": { "status": "pending|verified|rejected", "reason", "by", "at" } },
@@ -66,7 +67,7 @@ Detail:
     "location": { "type": "Point", "coordinates": [lng, lat] }, …
   },
   "nearby": {
-    "radius_km": 5, "center": { "lat": 23.25, "lng": 77.41 },
+    "radius_km": 5, "center": { "lat": 23.25, "lng": 77.41 },             // | null (no location)
     "vistaar": [ { "agent_id", "name", "stage", "distance_km" } ],          // other partners / applicants
     "network": [ { "source": "franchise|prasar_retailer|old_vistaar_agent", "id", "name", "distance_km" } ],
     "has_conflicts": true          // show a warning beside Approve
@@ -74,23 +75,27 @@ Detail:
 }
 ```
 
-`?radius_km=` overrides the configured radius for one look.
+`?radius_km=` overrides the configured radius for one look. `center` is `null` when the partner
+has no location — then `vistaar` and `network` are `[]` and `has_conflicts` is `false`.
+`vistaar[].stage` is a pipeline stage, or `"applicant"` for someone whose form is not yet
+approved (then `name` is `null`).
 
 ## 3. Decisions
 
-| Method | Path | Body | Rule |
-|---|---|---|---|
-| POST | `/admin/agents/:agentId/documents/:fieldKey/review` | `{ decision: verified\|rejected, reason? }` | only in `kyc_review`; reason required to reject. A field with `org_document` (`adhar`, `pan`, `bank_details`, `selfie`) is copied to the person's org record `piis.documents` on verify, `is_verified: false` on reject; another portal's entry there is never replaced |
-| POST | `/admin/agents/:agentId/request-changes` | `{ remarks: { field_key: "note" } }` | rejected documents are added automatically; only these fields become editable for the partner |
-| POST | `/admin/agents/:agentId/approve` | — | **every required document verified** (else `409 DOCUMENTS_NOT_VERIFIED`, `details` = keys). Maps the form onto the partner (`maps_to`) |
-| POST | `/admin/agents/:agentId/reject` | `{ reason }` | from `kyc_review` or `changes_requested`; partner sees the reason |
-| POST | `/admin/agents/:agentId/reopen` | `{ reason? }` | rejected → onboarding |
-| POST | `/admin/agents/:agentId/block` | `{ reason }` | login refused, refresh refused |
-| POST | `/admin/agents/:agentId/unblock` | `{ reason? }` | back to the previous stage |
-| PATCH | `/admin/agents/:agentId/onboarding` | `{ data: { key: value } }` | correct values (same validation as the app); a changed document goes back to pending |
-| PUT | `/admin/agents/:agentId/owner` | `{ owner_agent_id: "A0-…" }` | must be an active `agents_v2` account |
+| Method | Path | Body | Rule | Returns |
+|---|---|---|---|---|
+| POST | `/admin/agents/:agentId/documents/:fieldKey/review` | `{ decision: verified\|rejected, reason? }` | only in `kyc_review`; reason required to reject. A field with `org_document` (`adhar`, `pan`, `bank_details`, `selfie`) is copied to the person's org record `piis.documents` on verify, `is_verified: false` on reject; another portal's entry there is never replaced | the updated `onboarding` (shape of `detail.onboarding`) |
+| POST | `/admin/agents/:agentId/request-changes` | `{ remarks: { field_key: "note" } }` | only in `kyc_review`. Every note non-empty and every key a field on the form (`400 UNKNOWN_FIELD`); needs at least one note or one rejected document (`400 VALIDATION_FAILED`). Rejected documents are added automatically; only these fields become editable for the partner | the updated partner (shape of `detail.agent`) |
+| POST | `/admin/agents/:agentId/approve` | — | **every required document verified** (else `409 DOCUMENTS_NOT_VERIFIED`, `details` = keys). Maps the form onto the partner (`maps_to`) | the updated partner (shape of `detail.agent`) |
+| POST | `/admin/agents/:agentId/reject` | `{ reason }` | from `kyc_review` or `changes_requested`; partner sees the reason | the updated partner (shape of `detail.agent`) |
+| POST | `/admin/agents/:agentId/reopen` | `{ reason? }` | rejected → onboarding | the updated partner (shape of `detail.agent`) |
+| POST | `/admin/agents/:agentId/block` | `{ reason }` | login refused, refresh refused | the updated partner (shape of `detail.agent`) |
+| POST | `/admin/agents/:agentId/unblock` | `{ reason? }` | back to the previous stage | the updated partner (shape of `detail.agent`) |
+| PATCH | `/admin/agents/:agentId/onboarding` | `{ data: { key: value } }` | only in `onboarding`, `kyc_review` or `changes_requested` (`409 STAGE_NOT_ALLOWED` otherwise). Corrects values (same validation as the app); `null` clears a value; a changed document goes back to pending. Unknown key → `400 UNKNOWN_FIELD`, `details` = the keys; bad value → `400 VALIDATION_FAILED`, `details` = sentences | the updated `onboarding` (shape of `detail.onboarding`) |
+| PUT | `/admin/agents/:agentId/owner` | `{ owner_agent_id: "A0-…" }` | must be an active `agents_v2` account | the updated partner (shape of `detail.agent`) |
 
 A decision on a partner whose stage moved meanwhile answers `409 STAGE_NOT_ALLOWED` — refresh the drawer.
+Every POST here answers `200`, not `201`.
 
 ## 4. Forms (Onboarding Flow Configuration)
 
@@ -143,4 +148,14 @@ Both owners must be active `agents_v2` accounts (`400 OWNER_NOT_FOUND`).
 
 `NO_ADMIN_ACCESS`, `ROLE_NOT_ALLOWED` (403) · `STAGE_NOT_ALLOWED` (409) · `DOCUMENTS_NOT_VERIFIED` (409) ·
 `NOT_A_DOCUMENT`, `DOCUMENT_MISSING`, `UNKNOWN_FIELD`, `VALIDATION_FAILED` (400) · `OWNER_NOT_FOUND` (400) ·
-`CONFIG_INVALID`, `NO_DRAFT` (400) · `COHORT_EXISTS`, `COHORT_IN_USE` (409) · `NOT_FOUND` (404).
+`CONFIG_INVALID`, `NO_DRAFT` (400) · `COHORT_EXISTS`, `COHORT_IN_USE` (409) · `NOT_FOUND` (404), and:
+
+| Code | When |
+|---|---|
+| `NO_ADMIN_ACCESS` 403 | no active Vistaar HO role (head / admin), or no `agents_v2` account |
+| `ROLE_NOT_ALLOWED` 403 | the person lacks this route's capability (by role, or withheld by email in `access.domain.ts`) |
+| `COHORT_REQUIRED` 400 | the partner has not started the form, so review, edit, request-changes and approve cannot run |
+| `COHORT_NOT_FOUND` 400 | unknown cohort key on DELETE cohort, PUT draft or clone-from |
+| `VERSION_CONFLICT` 409 | a concurrent save won — retry |
+| `UNAUTHORIZED` 401 | missing, expired or partner token |
+| `SERVICE_UNAVAILABLE` 503 | SSO unreachable |

@@ -105,6 +105,12 @@ optionally with HO's own 9:16 art behind the text. Two ways to make one:
 2. **Upload a design** — upload the art (`POST …/image`), then save the
    design with the returned `path` as `image` and colours for the text.
 
+`:id` is the row's `_id` (a UUID from the list or create response), **not** its `key`. A non-UUID gets `400 VALIDATION_FAILED`. Template cards are the exception: their path takes the card `key`.
+
+`sort` — `order`, `created_at`, `starts_at`; prefix `-` for descending; default
+`-created_at`; any other value is `400`. `status` is one of `live`, `scheduled`,
+`expired`, `inactive`.
+
 | Method | Path | Capability | Body | Returns |
 |---|---|---|---|---|
 | `GET` | `/admin/story-designs?status=&page=&limit=&sort=` | `content.read` | — | `PageResult<Design>` |
@@ -140,8 +146,13 @@ optionally with HO's own 9:16 art behind the text. Two ways to make one:
 | `starts_at` / `ends_at` | Optional window (a Diwali look for Diwali week) |
 | `order` | Lower first. **The first live design is the app's default** for a new story |
 
-`Design` adds `status` (`live` / `scheduled` / `expired` / `inactive`),
-`image_url`, `image_width`, `image_height` and **`warnings`**: readability
+`Design` is the stored row: `_id` (UUID), `key`, `label`, `colors` (the full
+palette, derived colours filled in), `image_path` (what you sent as `image`;
+`null` = colours only), `image_url`, `image_width`, `image_height`, `overlay`,
+`templates`, `starts_at`, `ends_at`, `order`, `is_active`, `created_by`,
+`updated_by`, `created_at`, `updated_at`, plus computed `status` (`live` /
+`scheduled` / `expired` / `inactive`) and **`warnings`**. To edit, send
+`image_path` back as `image`. `warnings` are readability
 advice, e.g. "Text on bg_to has contrast 2.4:1; 3:1 or more reads better".
 Show them on the form; they never block a save.
 
@@ -151,6 +162,12 @@ the default design. The four built-in keys `green`, `harvest`, `earth`, `sky`
 are seeded so HO can recolour them; the app also bundles them for offline use.
 
 ## Festivals (`/api/v2/admin/story-festivals`)
+
+`:id` is the row's `_id` (a UUID from the list or create response), **not** its `key`. A non-UUID gets `400 VALIDATION_FAILED`. Template cards are the exception: their path takes the card `key`.
+
+`sort` — `order`, `created_at`, `starts_at`; prefix `-` for descending; default
+`-created_at`; any other value is `400`. `status` is one of `live`, `scheduled`,
+`expired`, `inactive`.
 
 | Method | Path | Capability | Body | Returns |
 |---|---|---|---|---|
@@ -191,6 +208,11 @@ are seeded so HO can recolour them; the app also bundles them for offline use.
 changes a story already made from it.
 
 ## Ready-made farmer stories (`/api/v2/admin/story-samples`)
+
+`:id` is the row's `_id` (a UUID from the list or create response), **not** its `key`. A non-UUID gets `400 VALIDATION_FAILED`. Template cards are the exception: their path takes the card `key`.
+
+`sort` — `order`, `created_at`, `updated_at`; prefix `-` for descending; default
+`-created_at`; any other value is `400`.
 
 Same routes as festivals (`GET` list `?is_active=&page=&limit=&sort=`, `GET /:id`,
 `POST`, `PATCH /:id`, `DELETE /:id`), capability `content.*`. Vistaar's own
@@ -257,3 +279,19 @@ most **92 days**.
 `image.url` is a signed link valid for one hour. `sort`: `last_used_at`,
 `created_at`, `share_count`, with `-` for descending (default `-created_at`).
 Delete takes it off the partner's list and removes its files.
+
+## Errors (`error.code`)
+
+| Status | Code | When |
+|---|---|---|
+| 400 | `VALIDATION_FAILED` | Any of: a bad field, a missing `*.en`, a bad window (`ends_at` not after `starts_at`), an unknown `default_design`, hiding or deleting the last shown card, deleting a built-in card, an `:id` that isn't a UUID, an activity range over 92 days or `from` after `to`, a `sort` not in the list |
+| 400 | `FILE_REQUIRED` | The design upload is not multipart, or has no `file` |
+| 400 | `FILE_TYPE_NOT_ALLOWED` | The upload is not a JPG, PNG or WEBP |
+| 400 | `IMAGE_SIZE_NOT_ALLOWED` | The art is not 9:16 or not 720–2160 px wide. `details[0]` says what to use |
+| 400 | `IMAGE_NOT_FOUND` | A design's `image` is not a stored upload (re-upload) |
+| 413 | `FILE_TOO_LARGE` | The art is over 3 MB |
+| 503 | `UPLOADS_NOT_CONFIGURED` | Storage isn't set up on this server |
+| 404 | `NOT_FOUND` | No card, design, festival, farmer story or saved story with that key / id |
+| 409 | `TEMPLATE_EXISTS` / `DESIGN_EXISTS` / `FESTIVAL_EXISTS` / `SAMPLE_EXISTS` | The `key` is taken |
+| 403 | `NO_ADMIN_ACCESS` | The caller has no active Vistaar HO role (head / admin) or no `agents_v2` account |
+| 403 | `ROLE_NOT_ALLOWED` | The caller lacks this route's capability (by role, or withheld by email in `access.domain.ts`) |

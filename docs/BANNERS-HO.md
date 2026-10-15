@@ -162,7 +162,7 @@ The stored banner plus a computed `status`:
 | 400 | `FILE_REQUIRED` | The upload is not multipart, or has no `file` |
 | 400 | `FILE_TYPE_NOT_ALLOWED` | The upload is not a JPG, PNG or WEBP |
 | 400 | `IMAGE_SIZE_NOT_ALLOWED` | The image is under 600 px wide, or not 2.4:1. `details[0]` gives the size to use |
-| 400 | `IMAGE_NOT_FOUND` | `image` is not a path an upload returned |
+| 400 | `IMAGE_NOT_FOUND` | `image` looks like an upload path but no such file is stored (re-upload). A value not shaped like `vistaar/banners/<uuid>.jpg\|png\|webp` gets `VALIDATION_FAILED` instead |
 | 413 | `FILE_TOO_LARGE` | The image is over 2 MB |
 | 503 | `UPLOADS_NOT_CONFIGURED` | Storage isn't set up on this server |
 | 404 | `NOT_FOUND` | No banner with that id |
