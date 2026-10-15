@@ -4,6 +4,7 @@ import type { AgentsService } from '@modules/agents/services/agents.service';
 import type { OrderService } from '@modules/orders/services/order.service';
 import type { PincodeService } from '@modules/spine/services/pincode.service';
 
+import type { KkdStoreRepository } from '../repositories/kkd-store.repository';
 import type { VistaarLeadsRepository } from '../repositories/vistaar-leads.repository';
 import { RadarService } from './radar.service';
 
@@ -69,13 +70,39 @@ function setup(opts: { signup?: [number, number]; pincode?: string } = {}) {
   const pincodes = {
     centre: jest.fn().mockResolvedValue(opts.pincode ? HERE : null),
   };
+  // A store 1 km away and one about 60 km away.
+  const stores = {
+    all: jest.fn().mockResolvedValue([
+      {
+        id: 'FR-FAR',
+        city: 'Sehore',
+        state: 'MP',
+        address: null,
+        pincode: null,
+        phone: null,
+        lat: 23.2,
+        lng: 78.0,
+      },
+      {
+        id: 'FR-1',
+        city: 'Bhopal',
+        state: 'MP',
+        address: 'MP Nagar',
+        pincode: '462011',
+        phone: '9000000001',
+        lat: 23.209,
+        lng: 77.4,
+      },
+    ]),
+  };
   const service = new RadarService(
     rows as unknown as VistaarLeadsRepository,
     agents as unknown as AgentsService,
     orders as unknown as OrderService,
     pincodes as unknown as PincodeService,
+    stores as unknown as KkdStoreRepository,
   );
-  return { service, rows, orders };
+  return { service, rows, orders, stores };
 }
 
 async function codeOf(promise: Promise<unknown>): Promise<string> {
@@ -113,12 +140,30 @@ describe('RadarService', () => {
       orders: null,
       exact: false,
     });
-    expect(view.counts).toEqual({ customers: 1, leads: 2, unplaced: 2 });
+    expect(view.counts).toEqual({
+      customers: 1,
+      leads: 2,
+      unplaced: 2,
+      stores: 1,
+    });
     expect(view.centre.source).toBe('gps');
     // Business is read for the customers in the ring only.
     expect(orders.businessByCustomer).toHaveBeenCalledWith('VST-000006', [
       'PII-CUST',
     ]);
+  });
+
+  it('shows KKD stores in the ring only, nearest first, read once a minute', async () => {
+    const { service, stores } = setup({});
+    const view = await service.around(ME, { ...HERE, km: 10 });
+    expect(view.stores.map((s) => s.id)).toEqual(['FR-1']);
+    expect(view.stores[0]).toMatchObject({
+      name: 'Katyayani Krishi Kendra · Bhopal',
+      distance_km: 1,
+    });
+    expect(view.counts.stores).toBe(1);
+    await service.around(ME, { ...HERE, km: 100 });
+    expect(stores.all).toHaveBeenCalledTimes(1);
   });
 
   it('centres on the signup place, then the pincode, when the phone sends none', async () => {

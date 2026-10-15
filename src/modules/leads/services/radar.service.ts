@@ -9,12 +9,19 @@ import { PincodeService } from '@modules/spine/services/pincode.service';
 
 import type { RadarQueryDto } from '../dto/radar.dto';
 import { placeOf } from '../lead-views';
+import {
+  KkdStoreRepository,
+  type KkdStoreRow,
+} from '../repositories/kkd-store.repository';
 import { VistaarLeadsRepository } from '../repositories/vistaar-leads.repository';
 
 const DEFAULT_KM = 10;
 /** Read at most this many rows in the ring, show the nearest ones. */
 const READ_CAP = 2_000;
 const SHOW_CAP = 500;
+const STORE_CAP = 50;
+/** Stores change rarely; each process re-reads them at most once a minute. */
+const STORES_TTL_MS = 60_000;
 
 export interface RadarDot {
   pii_id: string;
@@ -38,17 +45,39 @@ export interface RadarDot {
   exact: boolean;
 }
 
+/** A Katyayani Krishi Kendra in the ring — where to send a farmer. */
+export interface RadarStore {
+  id: string;
+  name: string;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  pincode: string | null;
+  phone: string | null;
+  lat: number;
+  lng: number;
+  distance_km: number;
+}
+
 export interface RadarView {
   centre: { lat: number; lng: number; source: 'gps' | 'signup' | 'pincode' };
   km: number;
-  counts: { customers: number; leads: number; unplaced: number };
+  counts: {
+    customers: number;
+    leads: number;
+    unplaced: number;
+    stores: number;
+  };
   /** Nearest first. */
   items: RadarDot[];
+  /** KKD stores in the ring, nearest first. */
+  stores: RadarStore[];
 }
 
 /**
  * The nearby radar (PRD C9): the partner's own customers and open leads
- * within N km — no retailers, nobody else's farmers. One query on the
+ * within N km, and the KKD stores there — no retailers, nobody else's
+ * farmers, and not the PRD's "new farmers" layer (needs TL and consent). One query on the
  * partner's rows (`agent_id` first), distances in memory; business only for
  * the customers in the ring. Nothing is written.
  */
@@ -59,14 +88,18 @@ export class RadarService {
     private readonly agents: AgentsService,
     private readonly orders: OrderService,
     private readonly pincodes: PincodeService,
+    private readonly stores: KkdStoreRepository,
   ) {}
+
+  private storeBook: { at: number; rows: KkdStoreRow[] } | null = null;
 
   async around(partner: PartnerRef, query: RadarQueryDto): Promise<RadarView> {
     const km = query.km ?? DEFAULT_KM;
     const centre = await this.centreOf(partner, query);
-    const [rows, unplaced] = await Promise.all([
+    const [rows, unplaced, stores] = await Promise.all([
       this.rows.nearby(partner.agent_id, centre, km, READ_CAP),
       this.rows.countUnplaced(partner.agent_id),
+      this.storesAround(centre, km),
     ]);
 
     const dots = rows
@@ -130,9 +163,47 @@ export class RadarService {
         customers: customers.length,
         leads: items.length - customers.length,
         unplaced,
+        stores: stores.length,
       },
       items,
+      stores,
     };
+  }
+
+  /** A store read failing leaves the farmers on the radar, with no stores. */
+  private async storesAround(
+    centre: { lat: number; lng: number },
+    km: number,
+  ): Promise<RadarStore[]> {
+    let book = this.storeBook;
+    if (!book || Date.now() - book.at > STORES_TTL_MS) {
+      try {
+        book = { at: Date.now(), rows: await this.stores.all() };
+        this.storeBook = book;
+      } catch {
+        return [];
+      }
+    }
+    return book.rows
+      .map((s) => ({
+        s,
+        d: haversineKm(centre.lat, centre.lng, s.lat, s.lng),
+      }))
+      .filter(({ d }) => d <= km)
+      .sort((a, b) => a.d - b.d)
+      .slice(0, STORE_CAP)
+      .map(({ s, d }) => ({
+        id: s.id,
+        name: `Katyayani Krishi Kendra${s.city ? ` · ${s.city}` : ''}`,
+        address: s.address,
+        city: s.city,
+        state: s.state,
+        pincode: s.pincode,
+        phone: s.phone,
+        lat: s.lat,
+        lng: s.lng,
+        distance_km: Math.round(d * 10) / 10,
+      }));
   }
 
   /** The phone's GPS; else where the partner signed up; else their pincode. */
