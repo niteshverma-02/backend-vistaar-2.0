@@ -88,6 +88,7 @@ are settled by the orders API.
 |---|---|---|---|
 | 400 | `VALIDATION_FAILED` | Bad sku, quantity outside 0–9999, bad `pii_id` | `details[0]` |
 | 401 | `UNAUTHORIZED` | Vistaar token missing/expired, or B2B token missing/expired | Refresh the session or renew the B2B token, then retry |
+| 403 | `PARTNER_NOT_APPROVED` / `ACCOUNT_BLOCKED` | Add, change or restore lines, or set the customer, before approval or when blocked. Reading and emptying the cart are never refused | `message` |
 | 404 | `NOT_FOUND` | Pack not sold, line not in cart | `message` |
 | 409 | `OUT_OF_STOCK` | Nothing left to add | `message` |
 | 409 | `CART_LIMIT_REACHED` | 100 different packs already in the cart | `message` |

@@ -1,7 +1,8 @@
 import { HttpException } from '@nestjs/common';
 import { Types } from 'mongoose';
 
-import { notFound } from '@common/errors/api-error';
+import { forbidden, notFound } from '@common/errors/api-error';
+import type { AgentsService } from '@modules/agents/services/agents.service';
 
 import type { CartView } from '@modules/cart/dto/cart-view.dto';
 import type { CartService } from '@modules/cart/services/cart.service';
@@ -87,6 +88,7 @@ describe('DraftOrderService', () => {
   let customers: jest.Mocked<CustomerLookupRepository>;
   let cartService: jest.Mocked<CartService>;
   let service: DraftOrderService;
+  let agents: { requireWorkingPartner: jest.Mock };
 
   beforeEach(() => {
     cart = cartView();
@@ -130,10 +132,27 @@ describe('DraftOrderService', () => {
       ),
     } as unknown as CatalogService;
 
-    service = new DraftOrderService(drafts, customers, cartService, catalog);
+    agents = { requireWorkingPartner: jest.fn().mockResolvedValue({}) };
+    service = new DraftOrderService(
+      drafts,
+      customers,
+      cartService,
+      catalog,
+      agents as unknown as AgentsService,
+    );
   });
 
   describe('save', () => {
+    it('refuses a blocked partner before reading the cart', async () => {
+      agents.requireWorkingPartner.mockRejectedValueOnce(
+        forbidden('ACCOUNT_BLOCKED', 'blocked'),
+      );
+      await expect(service.save(OWNER, TOKEN)).rejects.toMatchObject({
+        status: 403,
+      });
+      expect(cartService.get).not.toHaveBeenCalled();
+    });
+
     it("never reads or writes a customer the partner's cart may not name", async () => {
       cartService.requireCustomer.mockRejectedValueOnce(
         notFound('This customer could not be found.'),
