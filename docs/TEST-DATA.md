@@ -93,6 +93,29 @@ app — the seed does not fake them in shared collections:
 around Bhopal, nearest first — all approximate (pincode centres) until the app sends GPS
 with an add, visit or order. Placed on beta by `backfill-lead-location` (2026-10-14).
 
+## Meetings and gigs — `seed-test-meetings-gigs`
+
+Applied on beta 2026-10-15. Writes only `vistaar_v2_meetings` and `vistaar_v2_gigs`, by
+fixed ids; dates are set from the day it runs (re-run to move them to today). No index
+is built and the gig counter is not used.
+
+| Id | For | Test |
+|---|---|---|
+| meeting `…000000000001` | VST-000006 | scheduled tomorrow, 3 of his farmers invited — Today `meeting` task |
+| meeting `…000000000002` | VST-000006 | later today — Today task (urgent); mark attendance, complete |
+| meeting `…000000000003` | VST-000006 | completed yesterday: 1 of 2 invited came + 2 walk-ins (`600000020x`) — capture a walk-in as a lead |
+| meeting `…000000000004` | VST-000006 | cancelled — attendance refused (`MEETING_CLOSED`) |
+| meeting `…000000000005` | VST-000006 | next week, nobody invited — edit, reschedule, cancel |
+| `GIG-900001` | anyone (MP) | open in 3 days — accept from Available |
+| `GIG-900002` | anyone (MP) | open in 5 days — HO edit / assign / delete |
+| `GIG-900003` | VST-000006 | accepted, tomorrow — Today `gig` task; give it back |
+| `GIG-900004` | VST-000006 | checked in today, 6 farmers — add farmers and photos (3 needed), submit |
+| `GIG-900005` | VST-000006 | submitted, 16 farmers, check-in 2 km off (`far`) — HO approve / reject |
+
+`node dist/scripts/seed-test-meetings-gigs.js` = dry run, `--apply` writes, `--remove`
+deletes exactly these ten rows. Gig pay is off, so approving `GIG-900005` does not touch the
+wallet.
+
 ## Removing it
 
 Nothing deletes test data automatically: the farmers are also org records (`piis`,
