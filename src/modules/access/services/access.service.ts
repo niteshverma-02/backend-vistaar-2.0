@@ -4,7 +4,7 @@ import type { AdminPrincipal } from '@common/interfaces/principal.interface';
 
 import {
   OFFLINE_HEAD_ROLE,
-  capabilitiesOf,
+  capabilitiesFor,
   roleOf,
   type Capability,
   type Role,
@@ -81,7 +81,7 @@ export class AccessService {
       name: account?.name ?? '',
       role,
       role_code: account?.user_role ?? null,
-      capabilities: role ? capabilitiesOf(role) : [],
+      capabilities: role ? capabilitiesFor(role, email) : [],
     };
   }
 

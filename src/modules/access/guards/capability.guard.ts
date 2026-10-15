@@ -14,7 +14,7 @@ import { AdminApi } from '@common/decorators/admin-api.decorator';
 import { apiError } from '@common/errors/api-error';
 import type { AuthedRequest } from '@common/interfaces/principal.interface';
 
-import { can, type Capability } from '../access.domain';
+import type { Capability } from '../access.domain';
 import { AccessService } from '../services/access.service';
 
 export const REQUIRES = 'vistaar:requires';
@@ -49,7 +49,8 @@ export class CapabilityGuard implements CanActivate {
       REQUIRES,
       context.getHandler(),
     );
-    if (needed && !can(access.role, needed)) {
+    // The person's own list, so a capability withheld from them by name holds too.
+    if (needed && !access.capabilities.includes(needed)) {
       throw apiError(
         HttpStatus.FORBIDDEN,
         'ROLE_NOT_ALLOWED',

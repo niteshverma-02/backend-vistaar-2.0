@@ -1,6 +1,7 @@
 import {
   CAPABILITIES,
   can,
+  capabilitiesFor,
   capabilitiesOf,
   roleOf,
   type Capability,
@@ -33,5 +34,19 @@ describe('capabilities', () => {
 
   it('admin can do everything a head can, plus the payment keys', () => {
     expect(capabilitiesOf('admin')).toEqual(all);
+  });
+});
+
+describe('capabilitiesFor', () => {
+  it('withholds the payment keys from Robin, whatever the case of the email', () => {
+    const caps = capabilitiesFor('admin', ' RobinSingh@katyayaniorganics.com ');
+    expect(caps).not.toContain('payments.credentials');
+    expect(caps).toContain('payments.write');
+  });
+
+  it('leaves every other admin their full list', () => {
+    expect(capabilitiesFor('admin', 'umarkhan@katyayaniorganics.com')).toEqual(
+      capabilitiesOf('admin'),
+    );
   });
 });

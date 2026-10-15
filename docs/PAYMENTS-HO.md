@@ -79,7 +79,9 @@ first. `action`: `update`, `reorder`, `credentials_submitted`, `credentials_test
 ## Merchant keys
 
 Capability `payments.credentials` — company admins only (`USR-1000` Super Admin,
-`USR-1001` Admin). The Offline Head does not get it. Every response is
+`USR-1001` Admin). The Offline Head does not get it, and it is withheld by name
+from `robinsingh@` (user's decision, 2026-10-14 — `WITHHELD` in
+`access.domain.ts`; `/admin/me` leaves it out of his `capabilities`). Every response is
 `Cache-Control: no-store`, and **no response ever holds a secret** — only
 `masked` (`••••abcd`).
 
