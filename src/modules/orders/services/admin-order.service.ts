@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
-import { notFound } from '@common/errors/api-error';
+import { badRequest, notFound } from '@common/errors/api-error';
+import { DAY_MS, istMonthKey, istMonthStart } from '@common/utils/ist-day.util';
 import { PageResult } from '@common/http/page-result';
 import {
   AgentsService,
@@ -9,11 +10,18 @@ import {
 import type { OrderCommission } from '@modules/commission/services/commission.service';
 
 import type {
+  AdminOrderSummary,
   AdminOrderView,
   AdminOrdersQueryDto,
   OrderPartner,
 } from '../dto/admin-order.dto';
-import { statusesFor } from '../orders.domain';
+import {
+  ORDER_STAGES,
+  stageOf,
+  statusesFor,
+  type OrderStage,
+} from '../orders.domain';
+import type { AdminOrderFilter } from '../repositories/order.repository';
 import { OrderRepository } from '../repositories/order.repository';
 import type { OrderRecord } from '../schemas/order.schema';
 import { checkedRange, orderView, OrderService } from './order.service';
@@ -31,20 +39,57 @@ export class AdminOrderService {
   ) {}
 
   async list(query: AdminOrdersQueryDto): Promise<PageResult<AdminOrderView>> {
-    const { from, to } = checkedRange(query.from, query.to);
-
     const [rows, total] = await this.orders.adminList(
-      {
-        statuses: query.status ? statusesFor(query.status) : null,
-        agentId: query.agent_id ?? null,
-        from,
-        to,
-      },
+      filterOf(query),
       query.skip,
       query.limit,
     );
     const views = await this.views(rows);
     return new PageResult(views, total, query);
+  }
+
+  /** The Orders screen's cards for the same filters as the list. */
+  /**
+   * The cards for a date range — this IST month when none is given, at most
+   * a year: the sums read every matching order, so the range bounds the work.
+   */
+  async summary(query: AdminOrdersQueryDto): Promise<AdminOrderSummary> {
+    const filter = filterOf(query);
+    if (!filter.from && !filter.to) {
+      filter.from = istMonthStart(istMonthKey(new Date()));
+    }
+    const span =
+      (filter.to ?? new Date()).getTime() -
+      (filter.from ?? new Date(0)).getTime();
+    if (!filter.from || span > MAX_SUMMARY_DAYS * DAY_MS) {
+      throw badRequest(
+        'VALIDATION_FAILED',
+        `Please choose a range of ${MAX_SUMMARY_DAYS} days or less.`,
+      );
+    }
+    const raw = await this.orders.adminSummary(filter);
+    const stages = new Map<OrderStage, { count: number; value: number }>();
+    for (const s of raw.by_status) {
+      const stage = stageOf(s.status);
+      const acc = stages.get(stage) ?? { count: 0, value: 0 };
+      acc.count += s.count;
+      acc.value += s.value;
+      stages.set(stage, acc);
+    }
+    const by_stage = ORDER_STAGES.map((stage) => ({
+      stage,
+      count: stages.get(stage)?.count ?? 0,
+      value: Math.round(stages.get(stage)?.value ?? 0),
+    }));
+    return {
+      orders: by_stage.reduce((n, s) => n + s.count, 0),
+      value: by_stage
+        .filter((s) => s.stage !== 'cancelled' && s.stage !== 'returned')
+        .reduce((n, s) => n + s.value, 0),
+      partners: raw.partners,
+      customers: raw.customers,
+      by_stage,
+    };
   }
 
   /** One order, with its commission (a list leaves it `null`: one book per partner on the page is too many reads). */
@@ -114,5 +159,36 @@ export function partnerOf(
     cohort: a?.cohort ?? null,
     district: a?.profile?.district ?? a?.preview?.district ?? null,
     state: a?.profile?.state ?? a?.preview?.state ?? null,
+  };
+}
+
+/** An order id, or the end of a phone number. */
+const ORDER_ID = /^[A-Z0-9][A-Z0-9_/-]{1,39}$/;
+
+/** The longest range the order cards sum over. */
+const MAX_SUMMARY_DAYS = 366;
+
+function filterOf(query: AdminOrdersQueryDto): AdminOrderFilter {
+  const { from, to } = checkedRange(query.from, query.to);
+  const q = query.q?.toUpperCase() ?? '';
+  const digits = q.replace(/\D/g, '');
+  const isPhone = /^[\d\s+-]+$/.test(q) && digits.length >= 4;
+  // A search that is neither must not quietly become "every order".
+  if (q && !isPhone && !ORDER_ID.test(q)) {
+    throw badRequest(
+      'VALIDATION_FAILED',
+      'Search by an order number (e.g. KSK-341382) or at least 4 digits of the phone.',
+    );
+  }
+  return {
+    statuses: query.status ? statusesFor(query.status) : null,
+    agentId: query.agent_id ?? null,
+    from,
+    to,
+    piiId: query.customer ?? null,
+    paymentMode: query.payment_mode ?? null,
+    state: query.state || null,
+    orderId: !isPhone && ORDER_ID.test(q) ? q : null,
+    phoneEnd: isPhone ? digits.slice(-10) : null,
   };
 }

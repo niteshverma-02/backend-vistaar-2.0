@@ -9,6 +9,8 @@ import {
 } from 'class-validator';
 
 import { PageQueryDto } from '@common/dto/page-query.dto';
+
+import { AdminLeadQueryDto } from './lead.dto';
 import { MONTH_PATTERN } from '@modules/attendance/attendance.domain';
 
 const trim = ({ value }: { value: unknown }) =>
@@ -46,6 +48,23 @@ export class CustomerQueryDto extends PageQueryDto {
     message: 'Please choose a valid month, for example 2026-09.',
   })
   ordered_in?: string;
+}
+
+/** `GET /admin/customers`: won leads, filtered as `/admin/leads`, latest order first by default. */
+export class AdminCustomerQueryDto extends AdminLeadQueryDto {
+  @ApiPropertyOptional({
+    type: String,
+    default: '-last_order_at',
+    description:
+      '`created_at`, `last_order_at` or `next_follow_up`; `-` = newest first',
+  })
+  @IsString()
+  declare sort: string;
+
+  constructor() {
+    super();
+    this.sort = '-last_order_at';
+  }
 }
 
 const upper = ({ value }: { value: unknown }) =>

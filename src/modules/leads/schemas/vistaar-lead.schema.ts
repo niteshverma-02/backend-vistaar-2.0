@@ -130,6 +130,10 @@ VistaarLeadSchema.index({ agent_id: 1, stage: 1 });
 VistaarLeadSchema.index({ agent_id: 1, next_follow_up: 1 });
 VistaarLeadSchema.index({ created_at: -1 });
 VistaarLeadSchema.index({ phone: 1 });
+// HO: customers by latest order (only won leads have one, so it walks them
+// first); follow-ups across partners. `_id` closes the sort (stable pages).
+VistaarLeadSchema.index({ last_order_at: -1, _id: 1 });
+VistaarLeadSchema.index({ next_follow_up: 1, _id: 1 });
 // The radar: one partner's farmers within N km. Rows with no location are
 // not in it (2dsphere skips them).
 VistaarLeadSchema.index({ agent_id: 1, location: '2dsphere' });

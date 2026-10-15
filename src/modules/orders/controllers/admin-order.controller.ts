@@ -4,7 +4,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PageResult } from '@common/http/page-result';
 import { Can } from '@modules/access/guards/capability.guard';
 
-import type { AdminOrderView } from '../dto/admin-order.dto';
+import type { AdminOrderSummary, AdminOrderView } from '../dto/admin-order.dto';
 import { AdminOrdersQueryDto } from '../dto/admin-order.dto';
 import { OrderParamDto } from '../dto/order-request.dto';
 import { AdminOrderService } from '../services/admin-order.service';
@@ -19,12 +19,22 @@ export class AdminOrderController {
   @Can('orders.read')
   @ApiOperation({
     summary:
-      "Every partner's orders, newest first; filter by stage, partner and IST dates",
+      "Every partner's orders, newest first; filter by stage, partner, buyer, IST dates, payment mode, state, order id or phone",
   })
   list(
     @Query() query: AdminOrdersQueryDto,
   ): Promise<PageResult<AdminOrderView>> {
     return this.orders.list(query);
+  }
+
+  @Get('summary')
+  @Can('orders.read')
+  @ApiOperation({
+    summary:
+      'Cards for the same filters as the list: orders, value, partners, buyers, per stage',
+  })
+  summary(@Query() query: AdminOrdersQueryDto): Promise<AdminOrderSummary> {
+    return this.orders.summary(query);
   }
 
   @Get(':id')

@@ -40,6 +40,7 @@ describe('AdminOrderService', () => {
   let adminList: jest.Mock;
   let adminFindOne: jest.Mock;
   let agentsList: jest.Mock;
+  let adminSummary: jest.Mock;
   let service: AdminOrderService;
 
   beforeEach(() => {
@@ -61,8 +62,17 @@ describe('AdminOrderService', () => {
       ],
       total: 1,
     });
+    adminSummary = jest.fn().mockResolvedValue({
+      by_status: [
+        { status: 'delivered', count: 2, value: 1000 },
+        { status: 'in_transit', count: 1, value: 300 },
+        { status: 'rto_delivered', count: 1, value: 500 },
+      ],
+      partners: 2,
+      customers: 3,
+    });
     service = new AdminOrderService(
-      { adminList, adminFindOne } as unknown as OrderRepository,
+      { adminList, adminFindOne, adminSummary } as unknown as OrderRepository,
       { list: agentsList } as unknown as AgentsService,
       {
         commissionOf: jest.fn().mockResolvedValue(new Map()),
@@ -117,5 +127,71 @@ describe('AdminOrderService', () => {
   it('answers 404 for an order that is not Vistaar’s', async () => {
     adminFindOne.mockResolvedValue(null);
     await expect(service.get('KSK-9')).rejects.toBeInstanceOf(HttpException);
+  });
+
+  it('narrows to one buyer, a payment mode, a state, an order id or a phone end', async () => {
+    await service.list(
+      query({
+        customer: 'pii-7',
+        payment_mode: 'cod',
+        state: 'Madhya Pradesh',
+      }),
+    );
+    expect((adminList.mock.calls[0] as [unknown])[0]).toMatchObject({
+      piiId: 'PII-7',
+      paymentMode: 'cod',
+      state: 'Madhya Pradesh',
+      orderId: null,
+      phoneEnd: null,
+    });
+
+    await service.list(query({ q: 'ksk-341382' }));
+    expect((adminList.mock.calls[1] as [unknown])[0]).toMatchObject({
+      orderId: 'KSK-341382',
+      phoneEnd: null,
+    });
+
+    await service.list(query({ q: '+91 98260 00000' }));
+    expect((adminList.mock.calls[2] as [unknown])[0]).toMatchObject({
+      orderId: null,
+      phoneEnd: '9826000000',
+    });
+  });
+
+  it('sums the cards per app stage; returns are not order value', async () => {
+    const summary = await service.summary(query({ agent_id: 'VST-1' }));
+    expect(summary).toMatchObject({
+      orders: 4,
+      value: 1300,
+      partners: 2,
+      customers: 3,
+    });
+    expect(summary.by_stage.find((s) => s.stage === 'returned')).toEqual({
+      stage: 'returned',
+      count: 1,
+      value: 500,
+    });
+    expect((adminSummary.mock.calls[0] as [unknown])[0]).toMatchObject({
+      agentId: 'VST-1',
+    });
+  });
+
+  it('refuses a search that is neither an order id nor a phone, instead of listing everything', async () => {
+    await expect(service.list(query({ q: 'Ram Kumar' }))).rejects.toMatchObject(
+      {
+        status: 400,
+      },
+    );
+    expect(adminList).not.toHaveBeenCalled();
+  });
+
+  it('sums this month by default and at most a year', async () => {
+    await service.summary(query({}));
+    const filter = (adminSummary.mock.calls[0] as [{ from: Date | null }])[0];
+    expect(filter.from).toBeInstanceOf(Date);
+    expect(filter.from!.getTime()).toBeLessThanOrEqual(Date.now());
+    await expect(
+      service.summary(query({ from: '2024-01-01', to: '2026-01-01' })),
+    ).rejects.toMatchObject({ status: 400 });
   });
 });

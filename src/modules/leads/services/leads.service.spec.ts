@@ -6,7 +6,7 @@ import type { SettingsService } from '@modules/settings/services/settings.servic
 import type { PiiService } from '@modules/spine/services/pii.service';
 import type { PincodeService } from '@modules/spine/services/pincode.service';
 
-import type { AddFarmerDto } from '../dto/lead.dto';
+import { AdminLeadQueryDto, type AddFarmerDto } from '../dto/lead.dto';
 import type {
   InsertResult,
   OrgLeadsRepository,
@@ -819,5 +819,66 @@ describe('LeadsService — where the farmer is', () => {
       type: 'Point',
       coordinates: [77.8, 23.5],
     });
+  });
+});
+
+describe('LeadsService — HO list and map', () => {
+  it('sorts only by a known field, and narrows to follow-ups due by tonight', async () => {
+    const { service, rows } = setup();
+    const listRecent = jest.fn().mockResolvedValue({ items: [], total: 0 });
+    Object.assign(rows, { listRecent });
+
+    const bad = Object.assign(new AdminLeadQueryDto(), { sort: 'name' });
+    expect(await codeOf(service.list(bad))).toBe('VALIDATION_FAILED');
+
+    await service.list(
+      Object.assign(new AdminLeadQueryDto(), {
+        due: true,
+        district: 'bhopal',
+        sort: '-last_order_at',
+      }),
+    );
+    const [filter, , sort] = listRecent.mock.calls[0] as [
+      Record<string, unknown>,
+      unknown,
+      Record<string, number>,
+    ];
+    expect(filter.due_before).toBeInstanceOf(Date);
+    expect(filter.district).toBe('bhopal');
+    expect(sort).toEqual({ last_order_at: -1 });
+
+    // By follow-up: only leads that have one (nulls would fill page 1).
+    await service.list(
+      Object.assign(new AdminLeadQueryDto(), { sort: 'next_follow_up' }),
+    );
+    const [byFollowUp] = listRecent.mock.calls[1] as [Record<string, unknown>];
+    expect(byFollowUp.has_follow_up).toBe(true);
+  });
+
+  it('gives the map one dot per placed farmer and says when it stopped at the cap', async () => {
+    const { service, rows } = setup();
+    const dot = (pii: string) => ({
+      pii_id: pii,
+      agent_id: ME.agent_id,
+      name: pii,
+      stage: 'won',
+      location: { type: 'Point', coordinates: [77.4, 23.2] },
+      location_source: 'pincode',
+    });
+    const places = jest.fn().mockResolvedValue([dot('PII-1'), dot('PII-2')]);
+    Object.assign(rows, { places });
+
+    const out = await service.places({ stage: 'won' });
+    expect(out.capped).toBe(false);
+    expect(out.items[0]).toEqual({
+      pii_id: 'PII-1',
+      agent_id: ME.agent_id,
+      name: 'PII-1',
+      stage: 'won',
+      lat: 23.2,
+      lng: 77.4,
+      exact: false,
+    });
+    expect((places.mock.calls[0] as [unknown, number])[1]).toBe(5_001);
   });
 });

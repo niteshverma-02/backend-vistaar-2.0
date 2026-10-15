@@ -17,6 +17,7 @@ import { Can } from '@modules/access/guards/capability.guard';
 
 import {
   AdminLeadQueryDto,
+  LeadPlacesQueryDto,
   PiiParamDto,
   TransferLeadDto,
 } from '../dto/lead.dto';
@@ -35,7 +36,7 @@ export class AdminLeadsController {
   @Can('leads.read')
   @ApiOperation({
     summary:
-      "Farmers partners hold, newest first — everyone's, or one partner's (`agent_id`)",
+      "Farmers partners hold — everyone's or one partner's; filter by stage, place, dates, `due`; sort by created_at / updated_at / last_order_at / next_follow_up",
   })
   list(
     @Query() query: AdminLeadQueryDto,
@@ -47,10 +48,20 @@ export class AdminLeadsController {
   @Can('leads.read')
   @ApiOperation({
     summary:
-      'Totals, today, last 7 days, partners adding, by stage, top partners',
+      'Totals, today, last 7 days, partners adding, follow-ups due today and overdue, by stage, top partners',
   })
   summary() {
     return this.leads.summary();
+  }
+
+  @Get('places')
+  @Can('leads.read')
+  @ApiOperation({
+    summary:
+      'Map dots: farmers with a place (pii_id, partner, stage, lat/lng, exact), at most 5,000 — narrow by partner, stage or place',
+  })
+  places(@Query() query: LeadPlacesQueryDto) {
+    return this.leads.places(query);
   }
 
   @Get(':piiId')

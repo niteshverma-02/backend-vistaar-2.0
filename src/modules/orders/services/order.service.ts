@@ -107,6 +107,30 @@ export class OrderService {
     );
   }
 
+  /**
+   * Each of these buyers' confirmed Vistaar business with any partner — HO's
+   * customer lists. Rides `orders_v2`'s `{ pii_id }` index, one page at a time.
+   */
+  async businessOfBuyers(
+    piiIds: readonly string[],
+  ): Promise<Map<string, CustomerBusiness>> {
+    if (piiIds.length === 0) return new Map();
+    const rows = await this.orders.customerStats(null, BUSINESS_STATUSES, [
+      ...new Set(piiIds),
+    ]);
+    return new Map(
+      rows.map((r) => [
+        r.pii_id,
+        {
+          orders: r.orders,
+          spend: r.spend,
+          last_order_at: r.last_order_at,
+          last_order_stage: stageOf(r.last_status),
+        },
+      ]),
+    );
+  }
+
   /** Who the partner ordered for in IST month `YYYY-MM` (cancelled orders and non-orders left out). */
   async buyersIn(agentId: string, month: string): Promise<Set<string>> {
     const ids = await this.orders.buyersBetween(

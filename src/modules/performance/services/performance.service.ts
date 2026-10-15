@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
+import { PageResult } from '@common/http/page-result';
 import {
   addMonths,
   istDaysBetween,
@@ -7,7 +8,10 @@ import {
   istMonthStart,
 } from '@common/utils/ist-day.util';
 import { TtlCache } from '@common/utils/ttl-cache';
-import { AgentsService } from '@modules/agents/services/agents.service';
+import {
+  AgentsService,
+  type AgentRecord,
+} from '@modules/agents/services/agents.service';
 import { AttendanceService } from '@modules/attendance/services/attendance.service';
 import {
   commissionOf,
@@ -32,11 +36,44 @@ import {
   type Tier,
   type TierStanding,
 } from '../performance.domain';
+import type { AdminPerformanceQueryDto } from '../dto/performance.dto';
 
 /** Tier, stage and health move over days; Home and Profile ask on every open. */
 const STANDING_TTL_MS = 5 * 60_000;
 const STANDING_MAX = 10_000;
 const TOP = 4;
+
+/**
+ * Partners worked out at once for HO's table — each book is up to two
+ * queries in flight, so 10 leaves most of the pool to the app.
+ */
+const BOOKS_AT_ONCE = 10;
+/** Rows per page on HO's table: each row is a partner's book. */
+const MAX_ROWS = 50;
+
+/** One partner's month on HO's table. */
+export interface PartnerMonthRow {
+  agent_id: string;
+  name: string | null;
+  cohort: string;
+  district: string | null;
+  state: string | null;
+  month: string;
+  /** Delivered sales (base, before GST) in the month. */
+  sales: number;
+  rate: number;
+  commission: number;
+  orders_placed: number;
+  monthly_target: number;
+  achieved_pct: number;
+  /** All-time confirmed + paid commission, and what can be withdrawn now. */
+  earned: number;
+  withdrawable: number;
+  pending: number;
+  last_order_at: Date | null;
+  lifecycle_stage: LifecycleStage;
+  tier: Tier;
+}
 
 /** What Home and Profile show of the partner's standing. */
 export interface Standing {
@@ -268,6 +305,80 @@ export class PerformanceService {
         monthly_target: partner.monthly_target,
       };
     });
+  }
+
+  /**
+   * HO's partner table (Commission, Sales): approved partners one page at a
+   * time, each with the month's numbers from their book (cached a minute, so
+   * paging back and forth costs nothing), 50 rows a page at most.
+   */
+  async adminList(
+    query: AdminPerformanceQueryDto,
+  ): Promise<PageResult<PartnerMonthRow>> {
+    const now = new Date();
+    const month = query.month ?? istMonthKey(now);
+    query.limit = Math.min(query.limit, MAX_ROWS);
+    const { items, total } = await this.agents.list(
+      {
+        stage: 'approved',
+        cohort: query.cohort,
+        state: query.state,
+        district: query.district,
+        q: query.q,
+      },
+      { skip: query.skip, limit: query.limit, sort: { decided_at: -1 } },
+    );
+    const rows: PartnerMonthRow[] = [];
+    for (let i = 0; i < items.length; i += BOOKS_AT_ONCE) {
+      const batch = items.slice(i, i + BOOKS_AT_ONCE);
+      rows.push(
+        ...(await Promise.all(batch.map((a) => this.monthRow(a, month, now)))),
+      );
+    }
+    return new PageResult(rows, total, query);
+  }
+
+  private async monthRow(
+    a: AgentRecord,
+    month: string,
+    now: Date,
+  ): Promise<PartnerMonthRow> {
+    const { partner, book } = await this.commission.bookOf(
+      a.agent_id ?? '',
+      now,
+      false,
+      a,
+    );
+    const m = book.month(month);
+    const from = istMonthStart(month).getTime();
+    const to = istMonthStart(addMonths(month, 1)).getTime();
+    const last = book.rows[0]?.placed_at ?? null;
+    const last3 = [-3, -2, -1].map((n) => addMonths(istMonthKey(now), n));
+    return {
+      agent_id: a.agent_id ?? '',
+      name: a.profile?.name ?? a.preview?.name ?? null,
+      cohort: a.cohort ?? partner.cohort,
+      district: a.profile?.district ?? a.preview?.district ?? null,
+      state: a.profile?.state ?? a.preview?.state ?? null,
+      month,
+      sales: m.sales,
+      rate: m.rate,
+      commission: commissionOf(m.sales, m.rate),
+      orders_placed: book.rows.filter(
+        (r) => r.placed_at.getTime() >= from && r.placed_at.getTime() < to,
+      ).length,
+      monthly_target: partner.monthly_target,
+      achieved_pct: partner.monthly_target
+        ? Math.min(100, Math.round((m.sales * 100) / partner.monthly_target))
+        : 0,
+      earned: book.earned,
+      withdrawable: book.withdrawable,
+      pending: book.totals.pending.amount,
+      last_order_at: last,
+      lifecycle_stage: lifecycleOf(last ? istDaysBetween(last, now) : null),
+      tier: tierOf(last3.reduce((sum, k) => sum + book.month(k).sales, 0) / 3)
+        .current,
+    };
   }
 
   /** HO sets a partner's own monthly target, or (`null`) puts them back on the default. */

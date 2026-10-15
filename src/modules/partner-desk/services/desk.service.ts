@@ -95,7 +95,7 @@ export class DeskService {
     if (!(DESK_SORTS as readonly string[]).includes(sortKey)) {
       throw badRequest(
         'VALIDATION_FAILED',
-        'This list cannot be sorted that way. Please sort by created, updated or decided date.',
+        'This list cannot be sorted that way. Please sort by created, updated, decided or last login date.',
       );
     }
     const to = query.to ? new Date(query.to) : undefined;

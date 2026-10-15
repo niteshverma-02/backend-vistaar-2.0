@@ -28,13 +28,15 @@ import {
 import { PiiService } from '@modules/spine/services/pii.service';
 import { PincodeService } from '@modules/spine/services/pincode.service';
 
-import type {
-  AddActivityDto,
-  AddFarmerDto,
-  AdminLeadQueryDto,
-  FarmerLeadQueryDto,
-  TransferLeadDto,
-  UpdateLeadDto,
+import {
+  ADMIN_LEAD_SORTS,
+  type AddActivityDto,
+  type AddFarmerDto,
+  type AdminLeadQueryDto,
+  type FarmerLeadQueryDto,
+  type LeadPlacesQueryDto,
+  type TransferLeadDto,
+  type UpdateLeadDto,
 } from '../dto/lead.dto';
 import {
   EX_EMPLOYEE_COHORT,
@@ -72,6 +74,7 @@ import {
 } from '../repositories/vistaar-leads.repository';
 import {
   detailOf,
+  placeOf as farmerPlace,
   viewOf,
   type LeadDetail,
   type LeadView,
@@ -734,11 +737,20 @@ export class LeadsService {
       stage: query.stage,
       origin: query.origin,
       state: query.state?.trim().toUpperCase() || undefined,
+      district: query.district || undefined,
+      due_before: query.due ? endOfToday() : undefined,
       from: query.from ? new Date(query.from) : undefined,
       to,
     };
     const [{ items, total }, window] = await Promise.all([
-      this.rows.listRecent(filter, query),
+      this.rows.listRecent(
+        // Sorted by follow-up = the leads that have one, soonest first.
+        query.sort.replace(/^-/, '') === 'next_follow_up'
+          ? { ...filter, has_follow_up: true }
+          : filter,
+        query,
+        adminSort(query.sort),
+      ),
       this.window(),
     ]);
     const partners = await this.agents.partnersByAgentIds([
@@ -754,12 +766,56 @@ export class LeadsService {
     );
   }
 
+  /** HO's map: every farmer with a place (at most 5,000; narrow by partner, stage or place). */
+  async places(query: LeadPlacesQueryDto): Promise<{
+    items: {
+      pii_id: string;
+      agent_id: string;
+      name: string;
+      stage: LeadStage;
+      lat: number;
+      lng: number;
+      exact: boolean;
+    }[];
+    capped: boolean;
+  }> {
+    const rows = await this.rows.places(
+      {
+        agent_id: query.agent_id?.toUpperCase(),
+        stage: query.stage,
+        state: query.state?.trim().toUpperCase() || undefined,
+        district: query.district || undefined,
+      },
+      MAP_CAP + 1,
+    );
+    return {
+      items: rows.slice(0, MAP_CAP).flatMap((r) => {
+        const place = farmerPlace(r);
+        return place
+          ? [
+              {
+                pii_id: r.pii_id,
+                agent_id: r.agent_id,
+                name: r.name,
+                stage: r.stage,
+                lat: place.lat,
+                lng: place.lng,
+                exact: place.exact,
+              },
+            ]
+          : [];
+      }),
+      capped: rows.length > MAP_CAP,
+    };
+  }
+
   /** HO cards; "today" is the IST day. */
   async summary() {
     const today = istDayStart(new Date());
     const counts = await this.rows.adminSummary({
       today,
       week: new Date(today.getTime() - 6 * DAY_MS),
+      tomorrow: new Date(today.getTime() + DAY_MS),
     });
     const names = await this.agents.partnersByAgentIds(
       counts.by_partner.map((p) => p.key),
@@ -1183,4 +1239,22 @@ export class LeadsService {
       'Could not save the farmer right now. Please try again.',
     );
   }
+}
+
+/** HO's map shows at most this many dots per call. */
+const MAP_CAP = 5_000;
+
+const endOfToday = (): Date =>
+  new Date(istDayStart(new Date()).getTime() + DAY_MS - 1);
+
+/** `sort` as `GET /admin/leads` takes it; anything else is a 400. */
+function adminSort(sort: string): Record<string, 1 | -1> {
+  const key = sort.replace(/^-/, '');
+  if (!(ADMIN_LEAD_SORTS as readonly string[]).includes(key)) {
+    throw badRequest(
+      'VALIDATION_FAILED',
+      'This list can be sorted by created_at, last_order_at or next_follow_up.',
+    );
+  }
+  return { [key]: sort.startsWith('-') ? -1 : 1 };
 }

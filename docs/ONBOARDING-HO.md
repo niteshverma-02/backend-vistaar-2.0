@@ -38,7 +38,7 @@ partner), `rejected` (reopenable) and `blocked` (from anywhere; unblock returns 
 
 List query: `stage`, `cohort`, `state`, `district`, `owner_agent_id`, `q` (name, phone prefix,
 `VST-…`, `PII-…`), `from` / `to` (signup date), `include_unverified`, `page`, `limit` (≤ 200),
-`sort` = `-created_at` (default) | `created_at` | `-updated_at` | `updated_at` | `-decided_at` | `decided_at`.
+`sort` = `-created_at` (default) | `created_at` | `-updated_at` | `updated_at` | `-decided_at` | `decided_at` | `-last_login_at` | `last_login_at` (who has gone quiet).
 
 Row: `{ agent_id, pii_id, phone, name, cohort, sub_cohort, district, state, village, pincode,
 email, stage, otp_verified, is_approved, completion_pct, submitted_at, decided_at, last_login_at,

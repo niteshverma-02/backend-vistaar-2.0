@@ -4,11 +4,16 @@ import {
   IsIn,
   IsInt,
   IsOptional,
+  IsString,
   Matches,
   Max,
+  MaxLength,
   Min,
   ValidateIf,
 } from 'class-validator';
+
+import { PageQueryDto } from '@common/dto/page-query.dto';
+import { MONTH_PATTERN } from '@modules/attendance/attendance.domain';
 
 import { PERIODS, type Period } from '../performance.domain';
 
@@ -45,4 +50,41 @@ export class SetTargetDto {
   @Min(1)
   @Max(100_000_000)
   monthly_target!: number | null;
+}
+
+/** `GET /admin/performance`: approved partners, one page at a time, for a month. */
+export class AdminPerformanceQueryDto extends PageQueryDto {
+  @ApiPropertyOptional({
+    example: '2026-10',
+    description: 'IST month; this month when left out',
+  })
+  @IsOptional()
+  @Matches(MONTH_PATTERN, {
+    message: 'Please choose a valid month, for example 2026-10.',
+  })
+  month?: string;
+
+  @ApiPropertyOptional({ example: 'vistaar_agent' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  cohort?: string;
+
+  @ApiPropertyOptional({ example: 'MADHYA PRADESH' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  state?: string;
+
+  @ApiPropertyOptional({ example: 'BHOPAL' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  district?: string;
+
+  @ApiPropertyOptional({ description: 'Name, phone, VST- or PII- id' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  q?: string;
 }

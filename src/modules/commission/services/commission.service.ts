@@ -209,8 +209,10 @@ export class CommissionService {
     agentId: string,
     now = new Date(),
     fresh = false,
+    /** The partner's record when the caller already read it (HO lists): no second read. */
+    known?: AgentRecord,
   ): Promise<PartnerBook> {
-    const partner = await this.partner(agentId);
+    const partner = await this.partner(agentId, known);
     if (fresh) this.withdrawalsOf.delete(partner.agent_id);
     const [facts, withdrawals, terms, settings, catalogue] = await Promise.all([
       this.facts.get(partner.agent_id, () =>
@@ -433,10 +435,10 @@ export class CommissionService {
   }
 
   /** The partner as commission needs them (cached a minute); 404 when unknown. */
-  async partner(agentId: string): Promise<PartnerTerms> {
+  async partner(agentId: string, known?: AgentRecord): Promise<PartnerTerms> {
     const id = agentId.toUpperCase();
     return this.partners.get(id, async () => {
-      const a = await this.agents.requireByAgentId(id);
+      const a = known ?? (await this.agents.requireByAgentId(id));
       return {
         agent_ref: a._id,
         agent_id: a.agent_id ?? id,

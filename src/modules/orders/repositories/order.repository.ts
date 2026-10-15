@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
 
+import { escapeRegex } from '@common/utils/regex.util';
+
 import { VISTAAR_ORDER_SOURCE } from '../orders.domain';
 import { Order, type OrderRecord } from '../schemas/order.schema';
 
@@ -47,6 +49,15 @@ export interface CustomerOrderStats {
 export interface AdminOrderFilter {
   statuses: string[] | null;
   agentId: string | null;
+  /** One buyer. */
+  piiId?: string | null;
+  paymentMode?: string | null;
+  /** Shipping state, any case. */
+  state?: string | null;
+  /** An exact order id. */
+  orderId?: string | null;
+  /** The end of the buyer's phone. */
+  phoneEnd?: string | null;
   /** Placed at or after (UTC instant of an IST midnight). */
   from: Date | null;
   /** Placed before. */
@@ -108,7 +119,7 @@ export class OrderRepository {
    * date }` index) — a partner has hundreds, not millions.
    */
   customerStats(
-    partnerId: string,
+    partnerId: string | null,
     statuses: readonly string[],
     piiIds?: readonly string[],
   ): Promise<CustomerOrderStats[]> {
@@ -116,7 +127,10 @@ export class OrderRepository {
       .aggregate<CustomerOrderStats>([
         {
           $match: {
-            ...this.ownFilter(partnerId),
+            // No partner: these buyers' Vistaar orders with any partner (HO).
+            ...(partnerId
+              ? this.ownFilter(partnerId)
+              : { source: VISTAAR_ORDER_SOURCE }),
             order_status: { $in: statuses },
             pii_id: piiIds ? { $in: piiIds } : { $type: 'string' },
           },
@@ -186,6 +200,50 @@ export class OrderRepository {
     return [rows, total];
   }
 
+  /**
+   * Counts and value by raw status for the same filter as `adminList`, plus
+   * distinct partners and buyers — the Orders screen's cards in one pass.
+   */
+  async adminSummary(filter: AdminOrderFilter): Promise<{
+    by_status: { status: string; count: number; value: number }[];
+    partners: number;
+    customers: number;
+  }> {
+    const [out] = await this.model
+      .aggregate<{
+        by_status: { _id: string; count: number; value: number }[];
+        partners: { n: number }[];
+        customers: { n: number }[];
+      }>([
+        { $match: this.adminFilter(filter) },
+        {
+          $facet: {
+            by_status: [
+              {
+                $group: {
+                  _id: '$order_status',
+                  count: { $sum: 1 },
+                  value: { $sum: { $ifNull: ['$total_amount', 0] } },
+                },
+              },
+            ],
+            partners: [{ $group: { _id: '$agent' } }, { $count: 'n' }],
+            customers: [{ $group: { _id: '$pii_id' } }, { $count: 'n' }],
+          },
+        },
+      ])
+      .exec();
+    return {
+      by_status: (out?.by_status ?? []).map((s) => ({
+        status: s._id ?? '',
+        count: s.count,
+        value: s.value,
+      })),
+      partners: out?.partners[0]?.n ?? 0,
+      customers: out?.customers[0]?.n ?? 0,
+    };
+  }
+
   adminFindOne(orderId: string): Promise<OrderRecord | null> {
     return this.model
       .findOne(
@@ -205,6 +263,20 @@ export class OrderRepository {
       ...(f.agentId ? { agent: f.agentId } : {}),
       ...(f.statuses ? { order_status: { $in: f.statuses } } : {}),
       ...(f.from || f.to ? { date } : {}),
+      ...(f.piiId ? { pii_id: f.piiId } : {}),
+      ...(f.paymentMode ? { payment_mode: f.paymentMode } : {}),
+      ...(f.state
+        ? {
+            'shipping_address.state': {
+              $regex: `^${escapeRegex(f.state)}$`,
+              $options: 'i',
+            },
+          }
+        : {}),
+      ...(f.orderId ? { order_id: f.orderId } : {}),
+      ...(f.phoneEnd
+        ? { 'customer.phone': { $regex: `${escapeRegex(f.phoneEnd)}$` } }
+        : {}),
     };
   }
 

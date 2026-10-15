@@ -399,4 +399,54 @@ export class AdminLeadQueryDto extends PageQueryDto {
   @IsOptional()
   @IsDateString()
   to?: string;
+
+  @ApiPropertyOptional({ example: 'BHOPAL', description: 'Any case' })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(60)
+  district?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Only open leads whose follow-up is due by the end of today (IST), overdue included',
+  })
+  @IsOptional()
+  @Transform(
+    ({ value }: { value: unknown }) => value === true || value === 'true',
+  )
+  @IsBoolean()
+  due?: boolean;
+}
+
+/** Sorts `GET /admin/leads` accepts (`-` = descending). */
+export const ADMIN_LEAD_SORTS = [
+  'created_at',
+  'last_order_at',
+  'next_follow_up',
+] as const;
+
+export class LeadPlacesQueryDto {
+  @ApiPropertyOptional({ example: 'VST-000001' })
+  @IsOptional()
+  @Matches(/^VST-\d+$/i)
+  agent_id?: string;
+
+  @ApiPropertyOptional({ enum: LEAD_STAGES })
+  @IsOptional()
+  @IsIn(LEAD_STAGES)
+  stage?: LeadStage;
+
+  @ApiPropertyOptional({ example: 'MADHYA PRADESH' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  state?: string;
+
+  @ApiPropertyOptional({ example: 'BHOPAL' })
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(60)
+  district?: string;
 }
