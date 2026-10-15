@@ -10,13 +10,18 @@ import {
 import type { OrderCommission } from '@modules/commission/services/commission.service';
 
 import type {
+  AdminOrderBreakdown,
   AdminOrderSummary,
   AdminOrderView,
   AdminOrdersQueryDto,
   OrderPartner,
 } from '../dto/admin-order.dto';
+import { istDate } from '@modules/attendance/attendance.domain';
+import { ProductFactsService } from '@modules/spine/services/product-facts.service';
+
 import {
   ORDER_STAGES,
+  firstUrl,
   stageOf,
   statusesFor,
   type OrderStage,
@@ -36,6 +41,7 @@ export class AdminOrderService {
     private readonly orders: OrderRepository,
     private readonly agents: AgentsService,
     private readonly partnerOrders: OrderService,
+    private readonly catalogue: ProductFactsService,
   ) {}
 
   async list(query: AdminOrdersQueryDto): Promise<PageResult<AdminOrderView>> {
@@ -54,20 +60,7 @@ export class AdminOrderService {
    * a year: the sums read every matching order, so the range bounds the work.
    */
   async summary(query: AdminOrdersQueryDto): Promise<AdminOrderSummary> {
-    const filter = filterOf(query);
-    if (!filter.from && !filter.to) {
-      filter.from = istMonthStart(istMonthKey(new Date()));
-    }
-    const span =
-      (filter.to ?? new Date()).getTime() -
-      (filter.from ?? new Date(0)).getTime();
-    if (!filter.from || span > MAX_SUMMARY_DAYS * DAY_MS) {
-      throw badRequest(
-        'VALIDATION_FAILED',
-        `Please choose a range of ${MAX_SUMMARY_DAYS} days or less.`,
-      );
-    }
-    const raw = await this.orders.adminSummary(filter);
+    const raw = await this.orders.adminSummary(windowOf(query));
     const stages = new Map<OrderStage, { count: number; value: number }>();
     for (const s of raw.by_status) {
       const stage = stageOf(s.status);
@@ -89,6 +82,81 @@ export class AdminOrderService {
       partners: raw.partners,
       customers: raw.customers,
       by_stage,
+    };
+  }
+
+  /**
+   * The sales panels (per day, partner, state, city, pack, category, repeat
+   * buyers) for the same filters and window as the cards. Cancelled and
+   * returned orders are not sales, so they are left out.
+   */
+  async breakdown(query: AdminOrdersQueryDto): Promise<AdminOrderBreakdown> {
+    const filter = windowOf(query);
+    const raw = await this.orders.adminBreakdown(filter, [
+      ...statusesFor('cancelled'),
+      ...statusesFor('returned'),
+    ]);
+    const skus = raw.by_sku.filter(
+      (s): s is typeof s & { _id: string } => !!s._id,
+    );
+    const top = [...skus]
+      .sort((a, b) => b.value - a.value)
+      .slice(0, TOP_PRODUCTS);
+    const [names, products, catalogue] = await Promise.all([
+      this.agents.partnersByAgentIds(
+        raw.by_partner.flatMap((p) => (p._id ? [p._id] : [])),
+      ),
+      this.partnerOrders.productsFor(top.map((t) => t._id)),
+      this.catalogue.facts(),
+    ]);
+    const byCategory = new Map<string, number>();
+    for (const s of skus) {
+      const name = catalogue.get(s._id)?.category ?? 'Other';
+      byCategory.set(name, (byCategory.get(name) ?? 0) + s.value);
+    }
+    const categoryTotal = [...byCategory.values()].reduce((a, b) => a + b, 0);
+    const round = (n: number) => Math.round(n);
+    return {
+      from: istDate(filter.from ?? new Date()),
+      to: istDate(
+        new Date((filter.to ?? new Date(Date.now() + 1)).getTime() - 1),
+      ),
+      by_day: raw.by_day.map((d) => ({
+        day: d._id ?? '',
+        orders: d.orders,
+        value: round(d.value),
+      })),
+      by_partner: raw.by_partner.map((p) => ({
+        agent_id: p._id ?? '',
+        name: (p._id && names.get(p._id)?.name) || null,
+        orders: p.orders,
+        value: round(p.value),
+      })),
+      by_state: raw.by_state.map((p) => ({
+        state: p._id ?? '',
+        orders: p.orders,
+        value: round(p.value),
+      })),
+      by_city: raw.by_city.map((p) => ({
+        city: p._id ?? '',
+        orders: p.orders,
+        value: round(p.value),
+      })),
+      by_product: top.map((t) => ({
+        sku: t._id,
+        name: products.get(t._id)?.name ?? t._id,
+        image: firstUrl(products.get(t._id)?.hero_image),
+        qty: t.qty,
+        value: round(t.value),
+      })),
+      by_category: [...byCategory]
+        .map(([name, value]) => ({
+          name,
+          value: round(value),
+          pct: categoryTotal ? Math.round((value * 100) / categoryTotal) : 0,
+        }))
+        .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name)),
+      repeat_buyers: raw.repeat[0]?.n ?? 0,
     };
   }
 
@@ -191,4 +259,29 @@ function filterOf(query: AdminOrdersQueryDto): AdminOrderFilter {
     orderId: !isPhone && ORDER_ID.test(q) ? q : null,
     phoneEnd: isPhone ? digits.slice(-10) : null,
   };
+}
+
+/** Packs on the best-selling panel. */
+const TOP_PRODUCTS = 10;
+
+/**
+ * The cards' and panels' filter: this IST month when no dates are given, at
+ * most a year — their sums read every matching order, so the range bounds
+ * the work.
+ */
+function windowOf(query: AdminOrdersQueryDto): AdminOrderFilter {
+  const filter = filterOf(query);
+  if (!filter.from && !filter.to) {
+    filter.from = istMonthStart(istMonthKey(new Date()));
+  }
+  const span =
+    (filter.to ?? new Date()).getTime() -
+    (filter.from ?? new Date(0)).getTime();
+  if (!filter.from || span > MAX_SUMMARY_DAYS * DAY_MS) {
+    throw badRequest(
+      'VALIDATION_FAILED',
+      `Please choose a range of ${MAX_SUMMARY_DAYS} days or less.`,
+    );
+  }
+  return filter;
 }

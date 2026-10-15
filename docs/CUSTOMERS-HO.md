@@ -36,6 +36,8 @@ interface CustomerSummary {
   active_30_days: number;     // ordered in the last 30 days
   new_this_month: number;     // won this IST month
   by_state: { key: string; count: number }[];   // top 10
+  by_partner: { key: string; count: number; name: string | null }[];  // key = agent_id, top 10
+  by_crop: { key: string; count: number }[];    // lower case, top 10
 }
 ```
 

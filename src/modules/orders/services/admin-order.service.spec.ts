@@ -3,6 +3,7 @@ import { plainToInstance } from 'class-transformer';
 import { Types } from 'mongoose';
 
 import type { AgentsService } from '@modules/agents/services/agents.service';
+import type { ProductFactsService } from '@modules/spine/services/product-facts.service';
 
 import { AdminOrdersQueryDto } from '../dto/admin-order.dto';
 import type { OrderRepository } from '../repositories/order.repository';
@@ -41,6 +42,7 @@ describe('AdminOrderService', () => {
   let adminFindOne: jest.Mock;
   let agentsList: jest.Mock;
   let adminSummary: jest.Mock;
+  let adminBreakdown: jest.Mock;
   let service: AdminOrderService;
 
   beforeEach(() => {
@@ -71,13 +73,51 @@ describe('AdminOrderService', () => {
       partners: 2,
       customers: 3,
     });
+    adminBreakdown = jest.fn().mockResolvedValue({
+      by_day: [{ _id: '2026-10-02', orders: 2, value: 1200.4 }],
+      by_partner: [{ _id: 'VST-1', orders: 2, value: 1200 }],
+      by_state: [{ _id: 'MADHYA PRADESH', orders: 2, value: 1200 }],
+      by_city: [{ _id: 'BHOPAL', orders: 2, value: 1200 }],
+      by_sku: [
+        { _id: 'K-1', qty: 3, value: 900 },
+        { _id: 'K-2', qty: 1, value: 300 },
+        { _id: 'K-9', qty: 1, value: 0 },
+      ],
+      repeat: [{ n: 1 }],
+    });
     service = new AdminOrderService(
-      { adminList, adminFindOne, adminSummary } as unknown as OrderRepository,
-      { list: agentsList } as unknown as AgentsService,
+      {
+        adminList,
+        adminFindOne,
+        adminSummary,
+        adminBreakdown,
+      } as unknown as OrderRepository,
+      {
+        list: agentsList,
+        partnersByAgentIds: jest
+          .fn()
+          .mockResolvedValue(
+            new Map([['VST-1', { agent_id: 'VST-1', name: 'Ramesh' }]]),
+          ),
+      } as unknown as AgentsService,
       {
         commissionOf: jest.fn().mockResolvedValue(new Map()),
-        productsFor: jest.fn().mockResolvedValue(new Map()),
+        productsFor: jest
+          .fn()
+          .mockResolvedValue(
+            new Map([
+              ['K-1', { name: 'Humic', hero_image: 'https://x/h.png' }],
+            ]),
+          ),
       } as unknown as OrderService,
+      {
+        facts: jest.fn().mockResolvedValue(
+          new Map([
+            ['K-1', { category: 'Fertilizers & Nutrition' }],
+            ['K-2', { category: 'Insecticides' }],
+          ]),
+        ),
+      } as unknown as ProductFactsService,
     );
   });
 
@@ -193,5 +233,28 @@ describe('AdminOrderService', () => {
     await expect(
       service.summary(query({ from: '2024-01-01', to: '2026-01-01' })),
     ).rejects.toMatchObject({ status: 400 });
+  });
+
+  it('splits sales by category from every pack, names the best packs, and leaves returns out', async () => {
+    const b = await service.breakdown(query({}));
+    const [, off] = adminBreakdown.mock.calls[0] as [unknown, string[]];
+    expect(off).toEqual(expect.arrayContaining(['cancelled', 'rto_delivered']));
+    expect(b.by_category).toEqual([
+      { name: 'Fertilizers & Nutrition', value: 900, pct: 75 },
+      { name: 'Insecticides', value: 300, pct: 25 },
+      { name: 'Other', value: 0, pct: 0 },
+    ]);
+    expect(b.by_product[0]).toEqual({
+      sku: 'K-1',
+      name: 'Humic',
+      image: 'https://x/h.png',
+      qty: 3,
+      value: 900,
+    });
+    expect(b.by_partner).toEqual([
+      { agent_id: 'VST-1', name: 'Ramesh', orders: 2, value: 1200 },
+    ]);
+    expect(b.by_day).toEqual([{ day: '2026-10-02', orders: 2, value: 1200 }]);
+    expect(b.repeat_buyers).toBe(1);
   });
 });

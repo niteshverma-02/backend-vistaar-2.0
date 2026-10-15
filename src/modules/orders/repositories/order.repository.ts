@@ -45,6 +45,18 @@ export interface CustomerOrderStats {
   last_status: string;
 }
 
+type Tally = { _id: string | null; orders: number; value: number };
+
+/** `adminBreakdown` as the aggregation returns it. */
+export interface RawBreakdown {
+  by_day: Tally[];
+  by_partner: Tally[];
+  by_state: Tally[];
+  by_city: Tally[];
+  by_sku: { _id: string | null; qty: number; value: number }[];
+  repeat: { n: number }[];
+}
+
 /** What HO narrows the whole Vistaar book by. */
 export interface AdminOrderFilter {
   statuses: string[] | null;
@@ -242,6 +254,105 @@ export class OrderRepository {
       partners: out?.partners[0]?.n ?? 0,
       customers: out?.customers[0]?.n ?? 0,
     };
+  }
+
+  /**
+   * HO's sales panels for the same filter as `adminSummary`, cancelled and
+   * returned orders left out (`off`): per IST day, partner, shipping state
+   * and city, per pack (every pack sold, for the category split), and how
+   * many buyers ordered twice or more. One pass.
+   */
+  async adminBreakdown(
+    filter: AdminOrderFilter,
+    off: readonly string[],
+  ): Promise<RawBreakdown> {
+    const match: Record<string, unknown> = this.adminFilter(filter);
+    match.order_status = filter.statuses
+      ? { $in: filter.statuses.filter((s) => !off.includes(s)) }
+      : { $nin: off };
+    const value = { $sum: { $ifNull: ['$total_amount', 0] } };
+    const place = (field: string) => ({
+      $toUpper: { $trim: { input: { $ifNull: [field, ''] } } },
+    });
+    const [out] = await this.model
+      .aggregate<RawBreakdown>([
+        { $match: match },
+        {
+          $facet: {
+            by_day: [
+              {
+                $group: {
+                  _id: {
+                    $dateToString: {
+                      format: '%Y-%m-%d',
+                      date: '$date',
+                      timezone: '+05:30',
+                    },
+                  },
+                  orders: { $sum: 1 },
+                  value,
+                },
+              },
+              { $sort: { _id: 1 } },
+            ],
+            by_partner: [
+              { $group: { _id: '$agent', orders: { $sum: 1 }, value } },
+              { $sort: { value: -1, _id: 1 } },
+              { $limit: 10 },
+            ],
+            by_state: [
+              {
+                $group: {
+                  _id: place('$shipping_address.state'),
+                  orders: { $sum: 1 },
+                  value,
+                },
+              },
+              { $sort: { value: -1, _id: 1 } },
+              { $limit: 15 },
+            ],
+            by_city: [
+              {
+                $group: {
+                  _id: place('$shipping_address.city'),
+                  orders: { $sum: 1 },
+                  value,
+                },
+              },
+              { $sort: { value: -1, _id: 1 } },
+              { $limit: 15 },
+            ],
+            by_sku: [
+              { $unwind: '$items' },
+              { $match: { 'items.is_free': { $ne: true } } },
+              {
+                $group: {
+                  _id: '$items.sku',
+                  qty: { $sum: { $ifNull: ['$items.qty', 0] } },
+                  value: { $sum: { $ifNull: ['$items.total_price', 0] } },
+                },
+              },
+            ],
+            repeat: [
+              { $match: { pii_id: { $type: 'string' } } },
+              { $group: { _id: '$pii_id', n: { $sum: 1 } } },
+              { $match: { n: { $gte: 2 } } },
+              { $count: 'n' },
+            ],
+          },
+        },
+      ])
+      .exec();
+    return (
+      out ?? {
+        by_day: [],
+        by_partner: [],
+        by_state: [],
+        by_city: [],
+        by_sku: [],
+        repeat: [],
+      }
+    );
   }
 
   adminFindOne(orderId: string): Promise<OrderRecord | null> {

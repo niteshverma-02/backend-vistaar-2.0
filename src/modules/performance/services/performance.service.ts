@@ -70,10 +70,44 @@ export interface PartnerMonthRow {
   earned: number;
   withdrawable: number;
   pending: number;
+  /** All-time commission paid out. */
+  paid: number;
   last_order_at: Date | null;
   lifecycle_stage: LifecycleStage;
   tier: Tier;
 }
+
+/** One partner on HO's commission board: the month row plus their book of farmers. */
+export interface BoardRow extends PartnerMonthRow {
+  farmers: number;
+  customers: number;
+}
+
+/** Every approved partner's month, exact (each from their own book). */
+export interface CommissionBoard {
+  month: string;
+  computed_at: Date;
+  partners: number;
+  /** Partners whose book could not be worked out this time (left out of rows). */
+  failed: number;
+  totals: {
+    sales: number;
+    commission: number;
+    earned: number;
+    withdrawable: number;
+    pending: number;
+    paid: number;
+  };
+  rows: BoardRow[];
+}
+
+/**
+ * The board sweeps every approved partner's book. Ten minutes old is fine for
+ * HO's dashboards, and one sweep serves every HO viewer in that time.
+ */
+const BOARD_TTL_MS = 10 * 60_000;
+/** Books worked out at once in a sweep — a few, so the app keeps the pool. */
+const BOARD_AT_ONCE = 5;
 
 /** What Home and Profile show of the partner's standing. */
 export interface Standing {
@@ -136,6 +170,7 @@ export interface PerformanceView {
  */
 @Injectable()
 export class PerformanceService {
+  private readonly boards = new TtlCache<CommissionBoard>(BOARD_TTL_MS, 13);
   private readonly standings = new TtlCache<Standing>(
     STANDING_TTL_MS,
     STANDING_MAX,
@@ -338,16 +373,74 @@ export class PerformanceService {
     return new PageResult(rows, total, query);
   }
 
+  /**
+   * HO's commission board: every approved partner's month from their own
+   * book — the app's numbers exactly. Swept on demand, a few partners at a
+   * time and without filling the app's caches, then kept ten minutes.
+   */
+  board(month?: string): Promise<CommissionBoard> {
+    const key = month ?? istMonthKey(new Date());
+    return this.boards.get(key, () => this.sweep(key));
+  }
+
+  private async sweep(month: string): Promise<CommissionBoard> {
+    const now = new Date();
+    const [agents, counts] = await Promise.all([
+      this.agents.approvedBrief(),
+      this.leads.countsByPartner(),
+    ]);
+    const rows: BoardRow[] = [];
+    let failed = 0;
+    for (let i = 0; i < agents.length; i += BOARD_AT_ONCE) {
+      const done = await Promise.allSettled(
+        agents
+          .slice(i, i + BOARD_AT_ONCE)
+          .map((a) => this.monthRow(a, month, now, false)),
+      );
+      for (const d of done) {
+        if (d.status === 'rejected') {
+          failed += 1;
+          continue;
+        }
+        const c = counts.get(d.value.agent_id);
+        rows.push({
+          ...d.value,
+          farmers: c?.farmers ?? 0,
+          customers: c?.customers ?? 0,
+        });
+      }
+    }
+    const sum = (k: keyof CommissionBoard['totals']) =>
+      rows.reduce((n, r) => n + r[k], 0);
+    return {
+      month,
+      computed_at: now,
+      partners: rows.length,
+      failed,
+      totals: {
+        sales: sum('sales'),
+        commission: sum('commission'),
+        earned: sum('earned'),
+        withdrawable: sum('withdrawable'),
+        pending: sum('pending'),
+        paid: sum('paid'),
+      },
+      rows,
+    };
+  }
+
   private async monthRow(
     a: AgentRecord,
     month: string,
     now: Date,
+    store = true,
   ): Promise<PartnerMonthRow> {
     const { partner, book } = await this.commission.bookOf(
       a.agent_id ?? '',
       now,
       false,
       a,
+      store,
     );
     const m = book.month(month);
     const from = istMonthStart(month).getTime();
@@ -374,6 +467,7 @@ export class PerformanceService {
       earned: book.earned,
       withdrawable: book.withdrawable,
       pending: book.totals.pending.amount,
+      paid: book.paid,
       last_order_at: last,
       lifecycle_stage: lifecycleOf(last ? istDaysBetween(last, now) : null),
       tier: tierOf(last3.reduce((sum, k) => sum + book.month(k).sales, 0) / 3)

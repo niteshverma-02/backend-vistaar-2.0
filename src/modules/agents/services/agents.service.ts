@@ -145,6 +145,11 @@ export class AgentsService {
     return !agent || agent.stage === 'blocked' || !agent.is_active;
   }
 
+  /** Every approved partner with only the fields HO's board needs (newest approval first). */
+  approvedBrief(): Promise<AgentRecord[]> {
+    return this.agents.approvedBrief();
+  }
+
   /** Every verified partner's `VST-` id (ids only — ~15 bytes a partner). */
   verifiedAgentIds(): Promise<string[]> {
     return this.agents.verifiedAgentIds();

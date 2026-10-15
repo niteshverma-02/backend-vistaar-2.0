@@ -862,8 +862,12 @@ describe('LeadsService — HO list and map', () => {
       agent_id: ME.agent_id,
       name: pii,
       stage: 'won',
+      village: 'Kolar',
+      district: 'BHOPAL',
+      crops: ['wheat'],
       location: { type: 'Point', coordinates: [77.4, 23.2] },
       location_source: 'pincode',
+      location_at: new Date('2026-10-01T00:00:00Z'),
     });
     const places = jest.fn().mockResolvedValue([dot('PII-1'), dot('PII-2')]);
     Object.assign(rows, { places });
@@ -875,9 +879,14 @@ describe('LeadsService — HO list and map', () => {
       agent_id: ME.agent_id,
       name: 'PII-1',
       stage: 'won',
+      village: 'Kolar',
+      district: 'BHOPAL',
+      state: null,
+      crops: ['wheat'],
       lat: 23.2,
       lng: 77.4,
       exact: false,
+      at: new Date('2026-10-01T00:00:00Z'),
     });
     expect((places.mock.calls[0] as [unknown, number])[1]).toBe(5_001);
   });

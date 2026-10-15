@@ -4,7 +4,11 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PageResult } from '@common/http/page-result';
 import { Can } from '@modules/access/guards/capability.guard';
 
-import type { AdminOrderSummary, AdminOrderView } from '../dto/admin-order.dto';
+import type {
+  AdminOrderBreakdown,
+  AdminOrderSummary,
+  AdminOrderView,
+} from '../dto/admin-order.dto';
 import { AdminOrdersQueryDto } from '../dto/admin-order.dto';
 import { OrderParamDto } from '../dto/order-request.dto';
 import { AdminOrderService } from '../services/admin-order.service';
@@ -35,6 +39,16 @@ export class AdminOrderController {
   })
   summary(@Query() query: AdminOrdersQueryDto): Promise<AdminOrderSummary> {
     return this.orders.summary(query);
+  }
+
+  @Get('breakdown')
+  @Can('orders.read')
+  @ApiOperation({
+    summary:
+      'Sales panels for the same filters and window as /summary: per day, partner, state, city, best packs, category split, repeat buyers (cancelled + returned left out)',
+  })
+  breakdown(@Query() query: AdminOrdersQueryDto): Promise<AdminOrderBreakdown> {
+    return this.orders.breakdown(query);
   }
 
   @Get(':id')

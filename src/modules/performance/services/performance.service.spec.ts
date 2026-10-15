@@ -94,6 +94,11 @@ describe('PerformanceService', () => {
           conversion_pct: 60,
           overdue_follow_ups: 1,
         }),
+        countsByPartner: jest
+          .fn()
+          .mockResolvedValue(
+            new Map([['VST-000001', { farmers: 12, customers: 4 }]]),
+          ),
       } as unknown as LeadsService,
       { fieldDays } as unknown as AttendanceService,
       {
@@ -123,6 +128,23 @@ describe('PerformanceService', () => {
           ],
           total: 1,
         }),
+        approvedBrief: jest.fn().mockResolvedValue([
+          {
+            agent_id: 'VST-000001',
+            cohort: 'vistaar_agent',
+            profile: { name: 'Asha' },
+          },
+          {
+            agent_id: 'VST-000002',
+            cohort: 'consultant',
+            profile: { name: 'Ravi' },
+          },
+          {
+            agent_id: 'VST-000003',
+            cohort: 'other',
+            profile: { name: 'Broken' },
+          },
+        ]),
         setMonthlyTarget: jest.fn().mockResolvedValue({
           agent_id: 'VST-000001',
           monthly_target: 150_000,
@@ -210,5 +232,31 @@ describe('PerformanceService', () => {
       tier: 'gold',
       lifecycle_stage: 'active',
     });
+  });
+
+  it('boards every approved partner from their own book, without caching their books, kept 10 minutes', async () => {
+    const real = bookOf.getMockImplementation()!;
+    bookOf.mockImplementation((id: string, ...rest: unknown[]) =>
+      id === 'VST-000003'
+        ? Promise.reject(new Error('bad book'))
+        : (real as (...a: unknown[]) => Promise<PartnerBook>)(id, ...rest),
+    );
+    const board = await service.board(addMonths(THIS, -1));
+    expect(board.partners).toBe(2);
+    expect(board.failed).toBe(1);
+    expect(board.rows.map((r) => [r.agent_id, r.farmers, r.customers])).toEqual(
+      [
+        ['VST-000001', 12, 4],
+        ['VST-000002', 0, 0],
+      ],
+    );
+    // Same book for both in this test: 60,000 delivered last month at 7%.
+    expect(board.totals).toMatchObject({ sales: 120_000, commission: 8_400 });
+    // The sweep never stores books (5th argument false).
+    expect((bookOf.mock.calls[0] as unknown[])[4]).toBe(false);
+
+    const calls = bookOf.mock.calls.length;
+    await service.board(addMonths(THIS, -1));
+    expect(bookOf.mock.calls.length).toBe(calls);
   });
 });

@@ -14,6 +14,7 @@ Capability: `orders.read` (head roles: USR-1037, USR-1000, USR-1001). Others get
 |---|---|---|
 | `GET` | `/admin/orders?page=1&limit=200&status=&agent_id=&customer=&from=&to=&payment_mode=&state=&q=` | `PageResult<AdminOrderView>`, newest first |
 | `GET` | `/admin/orders/summary?…same filters…` | `AdminOrderSummary` — the screen's cards |
+| `GET` | `/admin/orders/breakdown?…same filters…` | `AdminOrderBreakdown` — the sales panels |
 | `GET` | `/admin/orders/:id` | `AdminOrderView` (404 if it is not a Vistaar order) |
 
 | Query | Meaning |
@@ -39,8 +40,23 @@ interface AdminOrderSummary {
 }
 ```
 
-Cards and tables: read the list one page at a time and the cards from
-`/summary` — never add up a page. For a CSV export, page through `has_more`.
+```ts
+// /breakdown: same filters and window as /summary; cancelled + returned left out
+// (a status filter of cancelled / returned answers empty panels).
+interface AdminOrderBreakdown {
+  from: string; to: string;                                  // IST days covered
+  by_day: { day: string; orders: number; value: number }[];  // YYYY-MM-DD, IST, oldest first; days with no orders absent
+  by_partner: { agent_id: string; name: string | null; orders: number; value: number }[];  // top 10 by value
+  by_state: { state: string; orders: number; value: number }[];   // shipping state, upper case, top 15
+  by_city: { city: string; orders: number; value: number }[];     // shipping city, upper case, top 15
+  by_product: { sku: string; name: string | null; image: string | null; qty: number; value: number }[];  // top 10 packs by value; free items left out
+  by_category: { name: string; value: number; pct: number }[];    // every pack's value by product category ("Other" if unknown)
+  repeat_buyers: number;                                     // buyers with 2+ orders in the window
+}
+```
+
+Cards and tables: read the list one page at a time, the cards from `/summary` and the
+panels from `/breakdown` — never add up a page. For a CSV export, page through `has_more`.
 
 Rides Stockship's `{ source, order_status, date }` index (`{ agent, … }` with a
 partner), so other channels' orders are never scanned.

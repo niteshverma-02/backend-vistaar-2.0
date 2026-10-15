@@ -773,9 +773,15 @@ export class LeadsService {
       agent_id: string;
       name: string;
       stage: LeadStage;
+      village: string;
+      district: string | null;
+      state: string | null;
+      crops: string[];
       lat: number;
       lng: number;
       exact: boolean;
+      /** When the place was set (the GPS fix, or the pincode placing). */
+      at: Date | null;
     }[];
     capped: boolean;
   }> {
@@ -798,15 +804,38 @@ export class LeadsService {
                 agent_id: r.agent_id,
                 name: r.name,
                 stage: r.stage,
+                village: r.village,
+                district: r.district ?? null,
+                state: r.state ?? null,
+                crops: r.crops ?? [],
                 lat: place.lat,
                 lng: place.lng,
                 exact: place.exact,
+                at: place.at,
               },
             ]
           : [];
       }),
       capped: rows.length > MAP_CAP,
     };
+  }
+
+  /** Farmers and customers per partner (`VST-` id) — HO's board. */
+  async countsByPartner(): Promise<
+    Map<string, { farmers: number; customers: number }>
+  > {
+    const rows = await this.rows.countsByPartner();
+    return new Map(
+      rows.map((r) => [
+        r.agent_id,
+        { farmers: r.farmers, customers: r.customers },
+      ]),
+    );
+  }
+
+  /** `VST-` id → the partner's id and name, for another list in this module. */
+  partnerNames(agentIds: readonly string[]) {
+    return this.agents.partnersByAgentIds(agentIds);
   }
 
   /** HO cards; "today" is the IST day. */
