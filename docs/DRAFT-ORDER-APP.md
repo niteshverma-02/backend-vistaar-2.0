@@ -62,6 +62,7 @@ All routes are under `/api/v2/draft-orders` and answer
 
 | Status | Code | When |
 |---|---|---|
+| 403 | `PARTNER_NOT_APPROVED` / `ACCOUNT_BLOCKED` | Save, restore or mark a reminder before approval or when blocked (reading and deleting drafts are never refused) |
 | 409 | `DRAFT_CART_EMPTY` | Save with an empty cart |
 | 404 | `NOT_FOUND` | Draft not found / not yours / already ordered; or the cart's customer no longer exists or is not one of the partner's farmers (checked again on save and restore) |
 | 503 | `DRAFT_ID_UNAVAILABLE` | Draft ids cannot be issued — retry later |

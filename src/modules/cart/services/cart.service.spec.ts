@@ -3,7 +3,9 @@ import { Types } from 'mongoose';
 import type { PartnerRef } from '@common/auth/current-partner.decorator';
 
 import type { CatalogVariant } from '@modules/catalog/catalog.domain';
+import type { AgentsService } from '@modules/agents/services/agents.service';
 import type { CatalogService } from '@modules/catalog/services/catalog.service';
+import { forbidden } from '@common/errors/api-error';
 import type { LeadsService } from '@modules/leads/services/leads.service';
 
 import { lineFrom } from '../cart.domain';
@@ -64,6 +66,7 @@ describe('CartService', () => {
   let leads: jest.Mocked<Pick<LeadsService, 'holds' | 'recordLocation'>>;
   let catalog: Map<string, CatalogVariant>;
   let service: CartService;
+  let agents: { requireWorkingPartner: jest.Mock };
 
   beforeEach(() => {
     active = null;
@@ -108,11 +111,36 @@ describe('CartService', () => {
       recordLocation: jest.fn().mockResolvedValue(true),
     };
 
+    agents = { requireWorkingPartner: jest.fn().mockResolvedValue({}) };
     service = new CartService(
       repo,
       leads as unknown as LeadsService,
       catalogService,
+      agents as unknown as AgentsService,
     );
+  });
+
+  describe('approval', () => {
+    it('refuses building an order for a partner not approved, before any write', async () => {
+      agents.requireWorkingPartner.mockRejectedValue(
+        forbidden('PARTNER_NOT_APPROVED', 'not yet'),
+      );
+      await expect(
+        service.addItem(PARTNER, TOKEN, { sku: 'K-1', quantity: 1 }),
+      ).rejects.toMatchObject({ status: 403 });
+      await expect(
+        service.setCustomer(PARTNER, TOKEN, { pii_id: 'PII-1' }),
+      ).rejects.toMatchObject({ status: 403 });
+      expect(repo.insertActive).not.toHaveBeenCalled();
+      expect(repo.updateActive).not.toHaveBeenCalled();
+    });
+
+    it('still lets anyone read their cart', async () => {
+      agents.requireWorkingPartner.mockRejectedValue(
+        forbidden('ACCOUNT_BLOCKED', 'blocked'),
+      );
+      await expect(service.get(PARTNER, TOKEN)).resolves.toBeDefined();
+    });
   });
 
   describe('addItem', () => {

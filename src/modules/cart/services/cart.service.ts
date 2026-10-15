@@ -8,6 +8,7 @@ import type { CatalogVariant } from '@modules/catalog/catalog.domain';
 import { CatalogService } from '@modules/catalog/services/catalog.service';
 import { LeadsService } from '@modules/leads/services/leads.service';
 
+import { AgentsService } from '@modules/agents/services/agents.service';
 import {
   addItem,
   MAX_LINES,
@@ -58,7 +59,13 @@ export class CartService {
     private readonly carts: CartRepository,
     private readonly leads: LeadsService,
     private readonly catalog: CatalogService,
+    private readonly agents: AgentsService,
   ) {}
+
+  /** Building an order is for approved partners; reading or emptying a cart is not refused. */
+  private canOrder(partner: PartnerRef): Promise<unknown> {
+    return this.agents.requireWorkingPartner(partner.agent_id, 'place orders');
+  }
 
   async get(partner: PartnerRef, token: string): Promise<CartView> {
     return this.view(
@@ -73,6 +80,7 @@ export class CartService {
     token: string,
     dto: AddCartItemDto,
   ): Promise<CartView> {
+    await this.canOrder(partner);
     const variant = await this.sellable(dto.sku, token);
 
     return this.mutate(partner, token, (current) =>
@@ -89,6 +97,7 @@ export class CartService {
     sku: string,
     quantity: number,
   ): Promise<CartView> {
+    await this.canOrder(partner);
     const variant =
       quantity > 0 ? await this.catalog.variant(sku, token) : null;
 
@@ -115,6 +124,7 @@ export class CartService {
     token: string,
     dto: SetCartCustomerDto,
   ): Promise<CartView> {
+    await this.canOrder(partner);
     await this.requireCustomer(partner, dto.pii_id);
 
     const view = await this.mutate(partner, token, (current) =>
@@ -157,6 +167,7 @@ export class CartService {
     lines: readonly { sku: string; quantity: number }[],
     piiId: string | null,
   ): Promise<CartView> {
+    await this.canOrder(partner);
     await this.requireCustomer(partner, piiId);
 
     const catalog = await this.catalog.variants(

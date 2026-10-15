@@ -12,6 +12,7 @@ import type { CartView } from '@modules/cart/dto/cart-view.dto';
 import { CartService } from '@modules/cart/services/cart.service';
 import { CatalogService } from '@modules/catalog/services/catalog.service';
 
+import { AgentsService } from '@modules/agents/services/agents.service';
 import {
   draftOrderId,
   formDataFor,
@@ -47,6 +48,7 @@ export class DraftOrderService {
     private readonly customers: CustomerLookupRepository,
     private readonly cart: CartService,
     private readonly catalog: CatalogService,
+    private readonly agents: AgentsService,
   ) {}
 
   /**
@@ -54,7 +56,8 @@ export class DraftOrderService {
    * customer — one open draft per customer, so saving again replaces it. The
    * cart itself is left as it is, as on the phone.
    */
-  save(partner: PartnerRef, token: string): Promise<DraftOrderView> {
+  async save(partner: PartnerRef, token: string): Promise<DraftOrderView> {
+    await this.agents.requireWorkingPartner(partner.agent_id, 'save carts');
     return this.saves.run(partner.agent_id, () =>
       this.writeDraft(partner, token),
     );
@@ -109,6 +112,7 @@ export class DraftOrderService {
     partnerId: string,
     id: string,
   ): Promise<DraftOrderView> {
+    await this.agents.requireWorkingPartner(partnerId, 'send reminders');
     return this.viewOf(
       await this.found(this.drafts.markReminderSent(partnerId, id)),
     );

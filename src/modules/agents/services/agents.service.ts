@@ -1,6 +1,6 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 
-import { apiError, notFound } from '@common/errors/api-error';
+import { apiError, forbidden, notFound } from '@common/errors/api-error';
 import type { GeoPoint } from '@common/utils/geo.util';
 import { CountersService } from '@modules/counters/services/counters.service';
 import { SettingsService } from '@modules/settings/services/settings.service';
@@ -136,6 +136,31 @@ export class AgentsService {
     const agent = await this.agents.findByAgentId(agentId.toUpperCase());
     if (!agent || !agent.otp_verified)
       throw notFound('This partner could not be found.');
+    return agent;
+  }
+
+  /**
+   * Approved and active, else refused: the app hides selling to others, but
+   * the server must refuse it too. `doing` finishes "You can … once your
+   * account is approved."
+   */
+  async requireWorkingPartner(
+    agentId: string,
+    doing: string,
+  ): Promise<AgentRecord> {
+    const agent = await this.requireByAgentId(agentId);
+    if (agent.stage === 'blocked' || !agent.is_active) {
+      throw forbidden(
+        'ACCOUNT_BLOCKED',
+        'This account is blocked. Contact Katyayani support.',
+      );
+    }
+    if (agent.stage !== 'approved') {
+      throw forbidden(
+        'PARTNER_NOT_APPROVED',
+        `You can ${doing} once your account is approved.`,
+      );
+    }
     return agent;
   }
 
