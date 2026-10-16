@@ -191,8 +191,8 @@ declared in code.
 
 | Domain | Collection | Note |
 |---|---|---|
-| Partners | `vistaar_v2_agents` | Created at OTP send (`otp_verified: false`); `VST-` id + `pii_id` at verify; `stage` drives the HO pipeline; profile mapped at approval. Never deleted |
-| Onboarding | `vistaar_v2_onboarding_data` | `vistar_onboarding_data`: generic fields + `raw_data`, written per key; KYC review per document; optimistic `version` |
+| Partners | `vistaar_v2_agents` | Created at OTP send (`otp_verified: false`); `VST-` id + `pii_id` at verify; `stage` drives the HO pipeline; profile mapped at approval, then the partner's own edits (`PATCH /me`; a new name waits in `pending_name` for HO); HO `verification_calls[]`. Never deleted |
+| Onboarding | `vistaar_v2_onboarding_data` | `vistar_onboarding_data`: generic fields + `raw_data`, written per key; KYC review per document; optimistic `version`; `id_keys` (Aadhaar hash, PAN) for the cross-partner duplicate check; one `bank_change` at a time (HO approval re-verifies the proof and copies it to `piis`, as a KYC verify does) |
 | Forms | `vistaar_v2_onboarding_configs` | Per cohort and version; published versions immutable; one draft per cohort |
 | Cohorts | `vistaar_v2_cohorts` | HO-managed partner types |
 | Sessions | `vistaar_v2_sessions` | SHA-256 of refresh tokens, TTL |

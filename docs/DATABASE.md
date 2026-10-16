@@ -10,8 +10,8 @@ writes its retailers.
 
 | Collection | One row per | Key fields |
 |---|---|---|
-| `vistaar_v2_agents` | phone that asked for an OTP | `_id` UUID (token `sub`), `agent_id` `VST-000001` (at OTP verify), `pii_id`, `user_role` `USR-1040`, `phone` + `country_code`, `otp_verified`, `stage`, `stage_history[]`, `blocked_from`, `onboarding_id`, `cohort`, `preview{name,district,state,pincode}`, `owner_agent_id`, `is_approved`, `decided_by/at`, `rejection_reason`, `profile{…}` + `location` (mapped at approval; `state` / `district` from a known pincode, as `preview`), `monthly_target` (HO's own target for the partner, ₹; `null` = the settings default), `is_active`, `created_by/updated_by`, timestamps |
-| `vistaar_v2_onboarding_data` | partner (`vistar_onboarding_data`) | `agent_ref`, `agent_id`, `pii_id`, `cohort`, `config_id` + `config_version`, **`raw_data{}`**, `current_step`, `completed_steps`, `completion_pct`, `documents_review{key:{status,reason,by,at,sig}}`, `remarks{}`, `location`, `submitted_at`, `submit_count`, `updated_data[]` (HO edits, last 200), `source`, `created_by/updated_by`, `version` (optimistic lock) |
+| `vistaar_v2_agents` | phone that asked for an OTP | `_id` UUID (token `sub`), `agent_id` `VST-000001` (at OTP verify), `pii_id`, `user_role` `USR-1040`, `phone` + `country_code`, `otp_verified`, `stage`, `stage_history[]`, `blocked_from`, `onboarding_id`, `cohort`, `preview{name,district,state,pincode}`, `owner_agent_id`, `is_approved`, `decided_by/at`, `rejection_reason`, `profile{…}` + `location` (mapped at approval; `state` / `district` from a known pincode, as `preview`; the partner's Edit Profile (`PATCH /me`) then sets `email`, `village`, `district`, `state`, `pincode`, `photo` (private path under `KO-documents/<pii_id>/`) and `details.language_pref`, and mirrors place into `preview`), `verification_calls[]{at, by (HO email), outcome reached/not_reached/verified, note}` (HO calls before a decision; absent on older rows), `pending_name{value, requested_at}` (a name waiting for HO; `null` = none), `name_change{value, approved, reason, by, at}` (HO's last decision; approval also sets `profile.name` + `preview.name`), `monthly_target` (HO's own target for the partner, ₹; `null` = the settings default), `is_active`, `created_by/updated_by`, timestamps |
+| `vistaar_v2_onboarding_data` | partner (`vistar_onboarding_data`) | `agent_ref`, `agent_id`, `pii_id`, `cohort`, `config_id` + `config_version`, **`raw_data{}`**, `current_step`, `completed_steps`, `completion_pct`, `documents_review{key:{status,reason,by,at,sig}}`, `remarks{}`, `location`, `submitted_at`, `submit_count`, `updated_data[]` (HO edits and approved bank changes, last 200), `id_keys{aadhaar_hash (SHA-256 of the 12 digits), pan (upper case)}` (rewritten on every form write, for the cross-partner duplicate check; never returned), `bank_change{status pending/approved/rejected/withdrawn, account_holder, account_number, ifsc, proof_path, requested_at, decided_at, decided_by (HO email or `self`), reason}` (the latest request only; the form's account changes only on approval), `source`, `created_by/updated_by`, `version` (optimistic lock) |
 | `vistaar_v2_onboarding_configs` | cohort × version | `_id` `<cohort>@<version>`, `status` draft/published/archived, `steps[]`, `published_at/by` |
 | `vistaar_v2_cohorts` | partner type | `_id` key, `label{}`, `description{}`, `icon`, `sub_types[]`, `order`, `is_active` |
 | `vistaar_v2_sessions` | signed-in device | `_id` = SHA-256 of the refresh token, `agent_ref`, `expires_at` (TTL) |
@@ -49,7 +49,7 @@ writes its retailers.
 ### Indexes (declared on the schemas; listed in PROD-CHECKLIST)
 
 - agents: `{phone, country_code}` unique · `{agent_id}` unique partial (string) · `{pii_id}` unique partial (string) · `{otp_verified, stage, updated_at:-1}` · `{owner_agent_id, stage}` · `{otp_verified, stage, decided_at:-1}` · `{otp_verified, stage, last_login_at:-1}` · `{location: 2dsphere}`
-- onboarding_data: `{agent_ref}` unique · `{location: 2dsphere}`
+- onboarding_data: `{agent_ref}` unique · `{location: 2dsphere}` · `{id_keys.aadhaar_hash}` partial · `{id_keys.pan}` partial (not unique: the save refuses a clash; older rows may hold duplicates)
 - onboarding_configs: `{cohort, version:-1}` unique · `{cohort, status}` unique partial `status: draft` (one draft per cohort)
 - sessions: `{agent_ref}` · `{expires_at}` TTL 0
 - leads: `{pii_id}` unique · `{agent_id, created_at:-1}` · `{agent_id, stage}` · `{agent_id, next_follow_up}` · `{created_at:-1}` · `{phone}` · `{last_order_at:-1, _id}` (HO customers) · `{next_follow_up, _id}` (HO follow-ups)
@@ -262,7 +262,7 @@ with the next number, up to 3 times.
 | Collection | What | When |
 |---|---|---|
 | `piis` | find by phone (oldest first); **insert** a new person only if none holds the phone (`pii_id`, `phone_number[]`, `country_code`, empty `addresses` / `gst_numbers`; never `referral_id`) | first OTP verify |
-| `piis` | `$set documents.<org_document>` = `{ id, image, back_image?, is_verified, validity: null, source: 'vistaar', verified_at }` — only if the slot is empty or ours; reject sets our `is_verified: false` | HO verifies / rejects a KYC document |
+| `piis` | `$set documents.<org_document>` = `{ id, image, back_image?, is_verified, validity: null, source: 'vistaar', verified_at }` — only if the slot is empty or ours; reject sets our `is_verified: false` | HO verifies / rejects a KYC document; HO approves a bank account change (`bank_details`, the new proof as `{ id: null, image }`) |
 | `app_counters` | `$inc` on `_id: piis` — same as ko-sales | when a PII is inserted |
 
 ## Shared — read only
@@ -272,7 +272,7 @@ with the next number, up to 3 times.
 | `orders_v2` (owner: Stockship) | the partner's orders: `{ source: 'vistaar', agent: <VST id> }`, newest by `date`; status filter is `order_status $in`, `?customer=` adds `pii_id`. Customers: each farmer's confirmed business (count, Σ `total_amount`, latest) grouped by `pii_id` over the same filter, for the lists. Rides Stockship's `{ agent, order_status, date }` index. Never written here |
 | `orders_v2` — commission | the partner's whole book for commission, wallet and My Performance: one aggregation on `{ agent, source }` (the `{ agent, order_status, date }` index), `order_status $nin` failed / pseudo / split / merged; projects lines (`sku, qty, total_price, is_free`), Σ discounts, coins, and only the delivery / cancel / return entries of `order_status_map`. Cached 60 s per partner |
 | `products_v2` (owner: Stockship) | name, `hero_image`, `variant` of an order's skus, one `$in` per page, on its `sku` index. Also read **whole** (with `bulk_v2` → `gst_rate`, `category.cat_id`, and `categories_v2` → `name`) into memory hourly for commission's GST and My Performance's categories (~4,900 packs, 7 categories) |
-| `agents_v2` | HO role (`user_role`) and owner names |
+| `agents_v2` | HO role (`user_role`), owner names; the owner's phone (`contact.phone_number`) for the app's reporting officer |
 | `pincode_map_v2` | pincode → state / district (cached 6 h) |
 | `franchises`, `prasar_v2_retailers`, `vistaaragents` | nearby-network warning at approval. ⚠️ `vistaaragents.latestCoordinates.coordinates` is stored `[lat, lng]` (swapped) — matched with a box, not a geo query |
 

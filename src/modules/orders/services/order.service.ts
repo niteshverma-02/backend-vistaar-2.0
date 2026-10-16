@@ -24,6 +24,7 @@ import {
   firstUrl,
   lastStatusAt,
   markTimes,
+  orderSearch,
   personName,
   sizeLabel,
   stageOf,
@@ -68,6 +69,7 @@ export class OrderService {
       query.limit,
       query.customer ?? null,
       checkedRange(query.from, query.to),
+      orderSearch(query.q),
     );
     const [products, commission] = await Promise.all([
       this.productsFor(rows.flatMap((o) => (o.items ?? []).map((i) => i.sku))),

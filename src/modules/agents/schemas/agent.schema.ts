@@ -3,7 +3,12 @@ import { SchemaTypes, type HydratedDocument } from 'mongoose';
 
 import type { GeoPoint } from '@common/utils/geo.util';
 
-import { PARTNER_ROLE_CODE, STAGES, type Stage } from '../agents.domain';
+import {
+  PARTNER_ROLE_CODE,
+  STAGES,
+  type CallOutcome,
+  type Stage,
+} from '../agents.domain';
 
 export const AGENTS_COLLECTION = 'vistaar_v2_agents';
 
@@ -33,7 +38,33 @@ export interface AgentProfile {
   district?: string;
   state?: string;
   pincode?: string;
+  /** Private file under `KO-documents/<pii_id>/`, set from the app's profile edit. */
+  photo?: string;
   details?: Record<string, unknown>;
+}
+
+/** One HO call to an applicant (PRD K1 / AD2). Not a stage: the pipeline is unchanged. */
+export interface VerificationCall {
+  at: Date;
+  /** HO email. */
+  by: string;
+  outcome: CallOutcome;
+  note: string | null;
+}
+
+/** A name the partner asked for; HO approves it before it reaches `profile.name`. */
+export interface PendingName {
+  value: string;
+  requested_at: Date;
+}
+
+/** HO's last decision on a name change — the partner sees a refusal's reason. */
+export interface NameChangeResult {
+  value: string;
+  approved: boolean;
+  reason: string | null;
+  by: string;
+  at: Date;
 }
 
 /**
@@ -89,6 +120,14 @@ export class Agent {
   @Prop({ type: SchemaTypes.Mixed, default: null })
   profile!: AgentProfile | null;
   @Prop({ type: SchemaTypes.Mixed, default: undefined }) location?: GeoPoint;
+
+  /** Absent on partners created before calls were logged. */
+  @Prop({ type: [SchemaTypes.Mixed], default: [] })
+  verification_calls?: VerificationCall[];
+  @Prop({ type: SchemaTypes.Mixed, default: null })
+  pending_name?: PendingName | null;
+  @Prop({ type: SchemaTypes.Mixed, default: null })
+  name_change?: NameChangeResult | null;
 
   /** ₹ of delivered sales a month HO expects of this partner; `null` = the settings default. */
   @Prop({ type: Number, default: null }) monthly_target!: number | null;

@@ -293,3 +293,37 @@ export const MARK_STATUSES: readonly string[] = [
   ...statusesFor('cancelled'),
   ...statusesFor('returned'),
 ];
+
+/**
+ * `orders_v2.order_id` as the channels issue it: `KSK-341382`, or
+ * `ORD/K0-150/41350`.
+ */
+export const ORDER_ID_PATTERN = /^[A-Z0-9][A-Z0-9_/-]{1,39}$/;
+
+/** What a search box on an orders list means: exactly one of these is set. */
+export interface OrderSearch {
+  /** Exact, upper case. */
+  orderId: string | null;
+  /** The last (up to 10) digits of the buyer's phone. */
+  phoneEnd: string | null;
+  /** Part of the buyer's name, as typed. */
+  name: string | null;
+}
+
+/**
+ * 4+ digits are the end of a phone; an id-shaped word is an order id only
+ * with a digit in it (every channel's ids are numbered), so a one-word name
+ * like `Ramesh` is still a name.
+ */
+export function orderSearch(raw: string | null | undefined): OrderSearch {
+  const q = (raw ?? '').trim();
+  const none: OrderSearch = { orderId: null, phoneEnd: null, name: null };
+  if (!q) return none;
+  const digits = q.replace(/\D/g, '');
+  if (/^[\d\s+-]+$/.test(q) && digits.length >= 4)
+    return { ...none, phoneEnd: digits.slice(-10) };
+  const id = q.toUpperCase();
+  if (ORDER_ID_PATTERN.test(id) && /\d/.test(id))
+    return { ...none, orderId: id };
+  return { ...none, name: q };
+}

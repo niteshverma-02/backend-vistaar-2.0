@@ -171,7 +171,8 @@ export class DeskService {
       : undefined;
     const point = agent.location ?? onboarding?.location ?? null;
     return {
-      agent,
+      // Partners from before calls were logged have no list yet.
+      agent: { ...agent, verification_calls: agent.verification_calls ?? [] },
       owner:
         owner && agent.owner_agent_id
           ? {

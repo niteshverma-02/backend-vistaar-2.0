@@ -81,7 +81,8 @@ export const STAGE_LABELS: Record<Stage, string> = {
 };
 
 /** An action as HO staff say it, to finish "You cannot … this partner". */
-export type RefusedAction = StageAction | 'unblock' | 'edit';
+export type RefusedAction =
+  StageAction | 'unblock' | 'edit' | 'verification_call';
 
 export const ACTION_LABELS: Record<RefusedAction, string> = {
   start_onboarding: 'start onboarding for',
@@ -93,8 +94,87 @@ export const ACTION_LABELS: Record<RefusedAction, string> = {
   block: 'block',
   unblock: 'unblock',
   edit: 'edit the form of',
+  verification_call: 'log a verification call for',
 };
 
 /** Why a stage move was refused, in words HO staff use. */
 export const stageRefusal = (action: RefusedAction, stage: Stage): string =>
   `You cannot ${ACTION_LABELS[action]} this partner right now. This partner is ${STAGE_LABELS[stage]}.`;
+
+/** What HO's verification call (PRD K1 / AD2) came to. */
+export const CALL_OUTCOMES = ['reached', 'not_reached', 'verified'] as const;
+export type CallOutcome = (typeof CALL_OUTCOMES)[number];
+
+/** HO may log a call until the partner is decided; the call is not a stage. */
+export const CALLABLE_STAGES: readonly Stage[] = [
+  'signed_up',
+  'onboarding',
+  'kyc_review',
+  'changes_requested',
+];
+
+/** The app's status steps, in the order it shows them. */
+export const TIMELINE_STEPS = [
+  'applied',
+  'verification_call',
+  'documents_review',
+  'approved',
+  'active',
+] as const;
+export type TimelineStep = (typeof TIMELINE_STEPS)[number];
+
+export interface TimelineEntry {
+  step: TimelineStep;
+  /** When the step was reached; `null` when nothing recorded it. */
+  at: Date | null;
+  /** Reached. */
+  done: boolean;
+}
+
+const later = (a: Date, b: Date): Date => (a.getTime() >= b.getTime() ? a : b);
+
+/**
+ * Applied = the first submit (the only move into `kyc_review`); the call =
+ * the first `verified` one; documents are under review once both happened;
+ * approved = the first move into `approved` (an unblock also lands there).
+ *
+ * Active needs Product Knowledge L1 (PK-L1), which does not exist yet — until
+ * it does, an approved partner who is not blocked or switched off is active.
+ *
+ * A later step reached means the earlier ones were passed even when nothing
+ * recorded them (partners approved before calls were logged), so `done`
+ * never has gaps; their `at` stays `null`.
+ */
+export const partnerTimeline = (agent: {
+  stage: Stage;
+  is_active: boolean;
+  stage_history: readonly { to: Stage; at: Date }[];
+  verification_calls?: readonly { outcome: CallOutcome; at: Date }[] | null;
+}): TimelineEntry[] => {
+  const firstTo = (stage: Stage): Date | null =>
+    agent.stage_history.find((e) => e.to === stage)?.at ?? null;
+  const applied = firstTo('kyc_review');
+  const call =
+    (agent.verification_calls ?? []).find((c) => c.outcome === 'verified')
+      ?.at ?? null;
+  const approved = firstTo('approved');
+  const reached: Record<TimelineStep, Date | null> = {
+    applied,
+    verification_call: call,
+    documents_review: applied && call ? later(applied, call) : null,
+    approved,
+    active:
+      approved && agent.stage === 'approved' && agent.is_active
+        ? approved
+        : null,
+  };
+
+  let laterDone = false;
+  return [...TIMELINE_STEPS]
+    .reverse()
+    .map((step) => {
+      laterDone ||= reached[step] !== null;
+      return { step, at: reached[step], done: laterDone };
+    })
+    .reverse();
+};

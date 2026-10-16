@@ -4,7 +4,7 @@ import type { Model } from 'mongoose';
 
 import { escapeRegex } from '@common/utils/regex.util';
 
-import { VISTAAR_ORDER_SOURCE } from '../orders.domain';
+import { VISTAAR_ORDER_SOURCE, type OrderSearch } from '../orders.domain';
 import { Order, type OrderRecord } from '../schemas/order.schema';
 
 /**
@@ -76,6 +76,27 @@ export interface AdminOrderFilter {
   to: Date | null;
 }
 
+/**
+ * The search box's narrowing, the same on the app's list and HO's. It only
+ * adds conditions next to `agent` / `source`, so it never widens a filter.
+ */
+function searchFilter(s: OrderSearch | null): Record<string, unknown> {
+  if (s?.orderId) return { order_id: s.orderId };
+  if (s?.phoneEnd)
+    return { 'customer.phone': { $regex: `${escapeRegex(s.phoneEnd)}$` } };
+  if (!s?.name) return {};
+  // Word by word in either half: a full name may sit in `first_name` alone
+  // or be split across both.
+  return {
+    $and: s.name.split(/\s+/).map((word) => {
+      const re = { $regex: escapeRegex(word), $options: 'i' };
+      return {
+        $or: [{ 'customer.first_name': re }, { 'customer.last_name': re }],
+      };
+    }),
+  };
+}
+
 /** Read-only: `orders_v2` belongs to Stockship. */
 @Injectable()
 export class OrderRepository {
@@ -92,6 +113,7 @@ export class OrderRepository {
     limit: number,
     piiId: string | null = null,
     placed: { from: Date | null; to: Date | null } = { from: null, to: null },
+    search: OrderSearch | null = null,
   ): Promise<[OrderRecord[], number]> {
     const date: Record<string, Date> = {};
     if (placed.from) date.$gte = placed.from;
@@ -101,6 +123,7 @@ export class OrderRepository {
       ...(statuses ? { order_status: { $in: statuses } } : {}),
       ...(piiId ? { pii_id: piiId } : {}),
       ...(placed.from || placed.to ? { date } : {}),
+      ...searchFilter(search),
     };
 
     const rows = await this.model
@@ -384,10 +407,11 @@ export class OrderRepository {
             },
           }
         : {}),
-      ...(f.orderId ? { order_id: f.orderId } : {}),
-      ...(f.phoneEnd
-        ? { 'customer.phone': { $regex: `${escapeRegex(f.phoneEnd)}$` } }
-        : {}),
+      ...searchFilter({
+        orderId: f.orderId ?? null,
+        phoneEnd: f.phoneEnd ?? null,
+        name: null,
+      }),
     };
   }
 

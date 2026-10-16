@@ -17,7 +17,7 @@ orders come back. No `x-b2b-token` is needed.
 
 | Method | Path | Returns |
 |---|---|---|
-| `GET` | `/orders?page=1&limit=50&status=shipped&customer=PII-123&from=2026-09-01&to=2026-09-30` | `PageResult<OrderView>`, newest first. `limit` ≤ 200; all filters optional: `status`, `customer` (one farmer's `pii_id` — a customer's Orders tab), `from` / `to` (IST days placed, **both included**; Reports → Order history) |
+| `GET` | `/orders?page=1&limit=50&status=shipped&customer=PII-123&from=2026-09-01&to=2026-09-30&q=ramesh` | `PageResult<OrderView>`, newest first. `limit` ≤ 200; all filters optional: `status`, `customer` (one farmer's `pii_id` — a customer's Orders tab), `from` / `to` (IST days placed, **both included**; Reports → Order history), `q` (search, below) |
 | `GET` | `/orders/:id` | `OrderView` |
 
 `:id` is the order's `order_id` (`KSK-341382`); case does not matter. An id with `/` (`ORD/K0-150/41350`) is sent URL-encoded: `/orders/ORD%2FK0-150%2F41350`.
@@ -25,6 +25,19 @@ orders come back. No `x-b2b-token` is needed.
 `status` is one of `placed`, `punched`, `shipped`, `delivered`, `cancelled`,
 `returned` — the app's `OrderStatus` minus `draft` (drafts are
 `/draft-orders`).
+
+`q` — the Orders search box: 2–60 characters (trimmed), else `400 VALIDATION_FAILED`
+"Please type 2 to 60 characters to search." It works with the other filters and only ever
+over your own orders. Read in this order:
+
+| `q` | Matches |
+|---|---|
+| 4+ digits (spaces, `+`, `-` allowed) | the end of the buyer's phone (its last 10 digits) |
+| an id-shaped word with a digit (`ksk-341382`) | `order_id` exactly, any case |
+| anything else | a name: every word must appear, any case, in the buyer's first or last name |
+
+So `9826` is a phone, `KSK-341382` an id, `Ram Kumar` a name. 2–3 digits alone are read as an
+exact order id (usually no match).
 
 ## `OrderView`
 

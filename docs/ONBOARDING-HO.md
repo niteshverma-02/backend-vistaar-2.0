@@ -13,8 +13,8 @@ Gate screens and buttons on `capabilities`, never on role names.
 | Capability | Allows |
 |---|---|
 | `agents.read` | pipeline, partner detail, settings read |
-| `agents.edit` | correct a partner's form values (audited) |
-| `kyc.review` | verify / reject a KYC document |
+| `agents.edit` | correct a partner's form values (audited); approve / reject a name change |
+| `kyc.review` | verify / reject a KYC document; log verification calls; approve / reject a bank account change |
 | `agents.decide` | approve, reject, request changes, block, unblock, reopen |
 | `agents.assign` | change a partner's owner |
 | `config.read` / `config.write` / `config.publish` | cohorts and forms |
@@ -56,7 +56,10 @@ Detail:
 {
   "agent": { "agent_id": "VST-000001", "pii_id": "PII-…", "phone": "…", "stage": "kyc_review",
              "stage_history": [{ "from": "onboarding", "to": "kyc_review", "by": "self", "at": "…" }],
-             "owner_agent_id": "A0-2691", "is_approved": false, "profile": null, … },
+             "owner_agent_id": "A0-2691", "is_approved": false, "profile": null,
+             "verification_calls": [{ "at": "…", "by": "ho@…", "outcome": "verified", "note": null }],  // always an array
+             "pending_name": null,          // { value, requested_at } — waiting for HO (§3)
+             "name_change": null, … },      // { value, approved, reason, by, at } — the last decision
   "owner": { "agent_id": "A0-2691", "name": "Manav Barodiya", "email": "…" },   // | null
   "onboarding": {                                                              // | null (form not started)
     "steps": [ … the form version this partner filled … ],   // render the values with it
@@ -64,7 +67,9 @@ Detail:
     "documents_review": { "pan": { "status": "pending|verified|rejected", "reason", "by", "at" } },
     "remarks": { … }, "missing_required": [], "completion_pct": 100,
     "updated_data": [ { "field", "old_value", "new_value", "by", "at" } ],   // HO edits
-    "location": { "type": "Point", "coordinates": [lng, lat] }, …
+    "location": { "type": "Point", "coordinates": [lng, lat] },
+    "duplicate_ids": [ { "kind": "aadhaar|pan", "agent_ids": ["VST-000012"] } ],  // [] when none
+    …
   },
   "nearby": {
     "radius_km": 5, "center": { "lat": 23.25, "lng": 77.41 },             // | null (no location)
@@ -80,6 +85,13 @@ has no location — then `vistaar` and `network` are `[]` and `has_conflicts` is
 `vistaar[].stage` is a pipeline stage, or `"applicant"` for someone whose form is not yet
 approved (then `name` is `null`).
 
+`onboarding.duplicate_ids` — other partners whose form holds the same Aadhaar or PAN (at most 50
+partners read); show it as a warning beside Approve. The app refuses a clash on save and submit
+(`409 ID_IN_USE`), so this catches rows saved before the check, or two saves at the same
+moment. Also in the edit-values and review-document answers. The numbers are never listed.
+
+`agent.profile.photo` (set by the partner's Edit Profile) is a storage path, not a link.
+
 ## 3. Decisions
 
 | Method | Path | Body | Rule | Returns |
@@ -91,11 +103,67 @@ approved (then `name` is `null`).
 | POST | `/admin/agents/:agentId/reopen` | `{ reason? }` | rejected → onboarding | the updated partner (shape of `detail.agent`) |
 | POST | `/admin/agents/:agentId/block` | `{ reason }` | login refused, refresh refused | the updated partner (shape of `detail.agent`) |
 | POST | `/admin/agents/:agentId/unblock` | `{ reason? }` | back to the previous stage | the updated partner (shape of `detail.agent`) |
-| PATCH | `/admin/agents/:agentId/onboarding` | `{ data: { key: value } }` | only in `onboarding`, `kyc_review` or `changes_requested` (`409 STAGE_NOT_ALLOWED` otherwise). Corrects values (same validation as the app); `null` clears a value; a changed document goes back to pending. Unknown key → `400 UNKNOWN_FIELD`, `details` = the keys; bad value → `400 VALIDATION_FAILED`, `details` = sentences | the updated `onboarding` (shape of `detail.onboarding`) |
+| PATCH | `/admin/agents/:agentId/onboarding` | `{ data: { key: value } }` | only in `onboarding`, `kyc_review` or `changes_requested` (`409 STAGE_NOT_ALLOWED` otherwise). Corrects values (same validation as the app); `null` clears a value; a changed document goes back to pending. Unknown key → `400 UNKNOWN_FIELD`, `details` = the keys; bad value → `400 VALIDATION_FAILED`, `details` = sentences; an Aadhaar / PAN another partner holds → `409 ID_IN_USE`, `details` = the field keys | the updated `onboarding` (shape of `detail.onboarding`) |
 | PUT | `/admin/agents/:agentId/owner` | `{ owner_agent_id: "A0-…" }` | must be an active `agents_v2` account | the updated partner (shape of `detail.agent`) |
+| POST | `/admin/agents/:agentId/verification-call` | `{ outcome: reached\|not_reached\|verified, note? }` (note ≤ 300) | `kyc.review`. Any stage before a decision (`signed_up`, `onboarding`, `kyc_review`, `changes_requested`); `409 STAGE_NOT_ALLOWED` once approved, rejected or blocked. Not a stage: the pipeline does not move. The first `verified` call is the app's "Verification call" step | `{ agent_id, verification_calls }` |
+| POST | `/admin/agents/:agentId/name-change/approve` | — | `agents.edit`. The partner's `pending_name` becomes `profile.name` (and the list's name); `name_change` records it | the updated partner, without `stage_history` |
+| POST | `/admin/agents/:agentId/name-change/reject` | `{ reason }` (1–300, the partner sees it) | `agents.edit`. `pending_name` cleared; `profile.name` unchanged | the updated partner, without `stage_history` |
 
 A decision on a partner whose stage moved meanwhile answers `409 STAGE_NOT_ALLOWED` — refresh the drawer.
 Every POST here answers `200`, not `201`.
+
+A name decision applies only to the name HO saw: if the partner sent another one meanwhile,
+or none is waiting, it answers `409 NAME_CHANGE_NOT_PENDING` — refresh. A partner with a
+name waiting shows it in `agent.pending_name`; there is no list of them.
+
+Calls and name changes write `vistaar_v2_agents` only.
+
+### Bank account change (approved partners)
+
+The partner asks in the app (ONBOARDING-APP.md §6); payouts keep going to the old, verified
+account until HO approves. `kyc.review` on all three. No list of waiting changes: open the
+partner.
+
+| Method | Path | Body | Returns |
+|---|---|---|---|
+| GET | `/admin/agents/:agentId/bank-change` | — | the waiting or last change, or `null` |
+| POST | `/admin/agents/:agentId/bank-change/approve` | — | the change, `status: "approved"` |
+| POST | `/admin/agents/:agentId/bank-change/reject` | `{ reason }` (required, ≤ 300; the partner sees it) | the change, `status: "rejected"` |
+
+```jsonc
+{ "agent_id": "VST-000001", "status": "pending",      // pending · approved · rejected · withdrawn
+  "account_holder": "Suresh Kumar", "account_number": "000123454321", "ifsc": "SBIN0001234",
+  "proof_path": "KO-documents/PII-9/…", "proof_url": "https://signed…",   // 1 h
+  "requested_at": "…", "decided_at": null,
+  "decided_by": null,                                  // HO email, or "self" when the partner withdrew
+  "reason": null,
+  "current_account": { "account_holder", "account_number", "ifsc" } }   // paid into now | null
+```
+
+**Approve** puts the new holder, number and IFSC into the form's payout account (a UPI ID
+there is kept) and the proof into the bank-proof field, marked verified by you now — the
+same entry the KYC review writes. Both changes go into `updated_data` (old and new value).
+It writes `vistaar_v2_onboarding_data` and, like a KYC verify, copies the proof to the
+person's org record `piis.documents.bank_details` (`source: 'vistaar'`; another portal's
+entry there is never replaced). The old proof file stays in storage. The partner profile's
+copy `profile.details.bank_account` is **not** updated — payouts and the bank file read the
+form, not that copy.
+
+**Reject** keeps the old account, still verified; writes `vistaar_v2_onboarding_data` only.
+
+Approve and reject act only on the change that is waiting; one decided or withdrawn meanwhile
+→ `409 BANK_CHANGE_NOT_PENDING`. A form with no payout account field → `409 CONFIG_INVALID`.
+While a change waits the partner cannot ask for a new withdrawal; withdrawals already
+requested or approved are not touched (COMMISSION-HO.md §2).
+
+### Duplicate Aadhaar / PAN — one-off backfill
+
+Each form row keeps `id_keys` (Aadhaar as a SHA-256 hash, PAN upper case) for the check.
+Rows saved before it have none and are invisible to it until this runs once per environment, after deploy:
+
+`node dist/scripts/backfill-id-keys.js` (dry run) → then `--apply`. Fills `id_keys` on
+`vistaar_v2_onboarding_data` only; skips a row saved meanwhile; prints each Aadhaar / PAN held
+by more than one partner as agent ids, never the number. Safe to run again.
 
 ## 4. Forms (Onboarding Flow Configuration)
 
@@ -157,5 +225,8 @@ Both owners must be active `agents_v2` accounts (`400 OWNER_NOT_FOUND`).
 | `COHORT_REQUIRED` 400 | the partner has not started the form, so review, edit, request-changes and approve cannot run |
 | `COHORT_NOT_FOUND` 400 | unknown cohort key on DELETE cohort, PUT draft or clone-from |
 | `VERSION_CONFLICT` 409 | a concurrent save won — retry |
+| `ID_IN_USE` 409 | edit values: the Aadhaar / PAN is on another partner's form; `details` = field keys |
+| `NAME_CHANGE_NOT_PENDING` 409 | no name waiting, or the partner sent a newer one — refresh |
+| `BANK_CHANGE_NOT_PENDING` 409 | no bank change waiting (decided or withdrawn) — refresh |
 | `UNAUTHORIZED` 401 | missing, expired or partner token |
 | `SERVICE_UNAVAILABLE` 503 | SSO unreachable |

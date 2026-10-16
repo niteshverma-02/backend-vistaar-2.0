@@ -47,6 +47,7 @@ India (+91) numbers only for now.
 | POST | `/auth/refresh` | public | `{ refresh_token }` | a new session — **store the new refresh token** |
 | POST | `/auth/logout` | bearer | `{ refresh_token }` | `{ signed_out: true }` — this device only |
 | GET | `/me` | bearer | — | status (below) |
+| PATCH | `/me` | bearer | profile edit (ONBOARDING-APP.md §6) | status (below) |
 
 `phone` is 10 digits (`+91 98765 43210`, `09876543210` are accepted and cleaned).
 `country_code` defaults to `+91`.
@@ -79,10 +80,45 @@ On `401` from any route: call `/auth/refresh` once; if that also fails, show the
   "rejection_reason": null,
   "onboarding": { "onboarding_id": "ffb3…", "cohort": "vistaar_agent", "completion_pct": 100,
                   "submitted_at": "2026-10-09T07:20:47.059Z", "fields_to_fix": 0 },
-  "profile": null,                  // filled when approved
+  "profile": null,                  // filled when approved; also profile.photo (storage path),
+                                    // profile.details.language_pref
+  "photo_url": null,                // signed link to profile.photo (1 h), or null
+  "pending_name": null,             // { value, requested_at } — a new name waiting for HO
+  "name_change": null,              // { value, approved, reason, at } — HO's last decision on one
+  "reporting_officer": { "agent_id": "A0-2691", "name": "Manav Barodiya",
+                         "phone": "9876543210", "role": "Offline Head" },   // | null
+  "timeline": [
+    { "step": "applied",           "at": "2026-10-09T07:20:47.059Z", "done": true },
+    { "step": "verification_call", "at": null, "done": false },
+    { "step": "documents_review",  "at": null, "done": false },
+    { "step": "approved",          "at": null, "done": false },
+    { "step": "active",            "at": null, "done": false }
+  ],
   "member_since": "2026-10-09T07:20:45.600Z"
 }
 ```
+
+**`reporting_officer`** — the partner's HO owner, for the Profile and Help cards: name and
+phone from the company staff list (`agents_v2`), `role` = `Offline Head` · `Super Admin` ·
+`Admin`, or `null` for any other role. `phone` may be `null`. The whole object is `null` when
+the partner has no owner or the owner's account is not found.
+
+**`timeline`** — the application tracker, always these five steps in this order:
+
+| Step | Reached when |
+|---|---|
+| `applied` | the form was first submitted |
+| `verification_call` | HO logged the first call with outcome `verified` |
+| `documents_review` | both of the above happened; `at` = the later one |
+| `approved` | the partner was first approved |
+| `active` | approved, while the stage is still `approved` and the account is not switched off (`at` = the approval). Will also need Product Knowledge L1 once that exists |
+
+`done` = reached. When a later step is done, every earlier one is `done: true` too, with
+`at: null` if nothing recorded it (partners approved before calls were logged) — so the
+tracker never has gaps. A blocked partner keeps `approved` done; `active` turns off.
+
+**`pending_name` / `name_change`** — a name sent with `PATCH /me` waits for HO; `profile.name`
+stays the old one until HO approves. A refused one shows HO's `reason`.
 
 Route on `next_action` — never on the login answer alone (`agent.stage` in the verify answer is
 the same value, usable for the first screen right after login):

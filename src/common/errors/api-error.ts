@@ -45,6 +45,8 @@ export const API_ERROR_CODES = [
   'NOT_A_DOCUMENT',
   'DOCUMENT_MISSING',
   'DOCUMENTS_NOT_VERIFIED',
+  // Aadhaar / PAN already on another partner's form.
+  'ID_IN_USE',
   // Config and cohorts (HO).
   'CONFIG_INVALID',
   'NO_DRAFT',
@@ -146,6 +148,12 @@ export const API_ERROR_CODES = [
   'WITHDRAWAL_OPEN',
   'BANK_NOT_VERIFIED',
   'WITHDRAWAL_CHANGED',
+  // Profile: HO decided a name change that is no longer waiting (409).
+  'NAME_CHANGE_NOT_PENDING',
+  // Bank account change: one waiting at a time, no new withdrawal meanwhile;
+  // HO / the partner acted on one that is no longer waiting (409).
+  'BANK_CHANGE_PENDING',
+  'BANK_CHANGE_NOT_PENDING',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

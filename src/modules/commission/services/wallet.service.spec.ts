@@ -79,6 +79,7 @@ describe('WalletService', () => {
       pan_number: 'ABCDE1234F',
       pan_verified: true,
       bank_verified: true,
+      bank_change_pending: false,
       bank_account: {
         account_holder: 'Suresh Kumar',
         account_number: '000123454321',
@@ -197,6 +198,17 @@ describe('WalletService', () => {
       });
       expect(repo.insert).not.toHaveBeenCalled();
     });
+  });
+
+  it('refuses a new withdrawal while a bank account change waits for HO', async () => {
+    facts.bank_change_pending = true;
+    await expect(
+      service.request('VST-000001', { amount: 500 }),
+    ).rejects.toMatchObject({
+      status: 409,
+      response: { error: 'BANK_CHANGE_PENDING' },
+    });
+    expect(repo.insert).not.toHaveBeenCalled();
   });
 
   describe('approve', () => {
