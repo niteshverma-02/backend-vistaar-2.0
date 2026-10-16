@@ -113,11 +113,12 @@ function setup(opts: {
     }),
   };
   const earning = { recomputeLater: jest.fn() };
+  const leads = { mirrorFollowUp: jest.fn().mockResolvedValue(undefined) };
   const service = new CustomersService(
     repo as unknown as VistaarLeadsRepository,
     orders as unknown as OrderService,
     settings as unknown as SettingsService,
-    {} as LeadsService,
+    leads as unknown as LeadsService,
     earning as unknown as EarningCohortsService,
   );
   return { service, repo, orders, earning };

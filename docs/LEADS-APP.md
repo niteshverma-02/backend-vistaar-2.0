@@ -13,6 +13,10 @@ detail, Home "follow-ups due" (PRD C2, C4, C9, H5).
 > visit / WhatsApp on a due follow-up can earn coin / gig rewards (EARNINGS-APP.md) —
 > the server makes them; nothing extra to send.
 >
+> **Updated 2026-10-16 — follow-up shared with Katyayani.** The follow-up you set is also
+> copied to Katyayani's own record of a farmer you added (cleared when you clear it, the
+> lead is lost or won, or the farmer leaves you). No route or field changed.
+>
 > **Updated 2026-10-14 (3) — where the farmer is.** `POST /leads`, `PATCH /leads/:piiId` and
 > `POST /leads/:piiId/activities` (a `visit`) take an optional `location` — the phone's GPS
 > then; every lead now has `location { lat, lng, exact, source, at }` (or `null`). It feeds

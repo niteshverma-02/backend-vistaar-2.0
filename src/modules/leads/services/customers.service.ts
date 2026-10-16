@@ -231,6 +231,11 @@ export class CustomersService {
         { stage: row.stage, customer_at: null },
       );
       if (won) {
+        await this.leads.mirrorFollowUp(
+          won.lead_id,
+          row.next_follow_up,
+          won.next_follow_up,
+        );
         // One open lead fewer, one customer more.
         this.earning.recomputeLater([row.agent_id], 'holdings_changed');
         return { result: 'won', pii_id: row.pii_id };
