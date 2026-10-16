@@ -167,6 +167,9 @@ submit nothing on the gig changes until HO decides.
   approved gigs show in the wallet as `gig_earned` (`COMMISSION-APP.md`).
 - While `pay_enabled` is `false`, do not promise wallet money — show the payout as
   approved pay that will be added once gig pay starts.
+- Follow-up **gig rewards** (₹ for a call / visit / WhatsApp on a due follow-up) are not
+  gigs: they are listed in `GET /rewards` (`EARNINGS-APP.md`), and only add to the same
+  wallet `gig_earned`. `earned_this_month` here counts meeting gigs only.
 
 ## Shapes
 

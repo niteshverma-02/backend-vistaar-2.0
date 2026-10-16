@@ -309,7 +309,7 @@ export interface Book {
   totals: StatusTotals;
   /** Σ confirmed and paid rows at today's rates, plus `gig_earned`. */
   earned: number;
-  /** Σ approved meeting gigs' pay (0 while gig pay is off). */
+  /** Σ approved meeting gigs' and follow-up gig rewards' pay (0 while gig pay is off). */
   gig_earned: number;
   /** Σ withdrawals paid out. */
   paid: number;

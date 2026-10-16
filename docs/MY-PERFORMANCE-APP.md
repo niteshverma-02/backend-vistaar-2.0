@@ -65,7 +65,7 @@ Cached up to 5 minutes; call on app open.
 | `orders_placed` | live orders placed in the period (cancelled included; failed / split / merged rows are not orders) |
 | `active_customers` | distinct farmers with a non-cancelled order placed in the period (shop stock is not a customer) |
 | `lead_conversion.pct` | won ÷ **all** leads added in the period (the Leads tile's rule); `null` with none |
-| `commission.value` | Σ month sales × that month's rate |
+| `commission.value`, `monthly[].commission` | Σ commission of the orders delivered in each month, each at its own plan's rate (orders in one month can earn on different earning-cohort plans — COMMISSION-LOGIC.md); `monthly[].rate` is the headline slab of the plan new orders earn on, so `commission` need not equal `sales × rate` |
 | `by_category`, `top_products` | lines of orders delivered in the period, by catalogue category ("Other" when the bulk has none) and by pack |
 | `tier` | average delivered sales of the **3 completed months** before this one (so a tier does not drop on the 1st): Bronze 0 · Silver 50K · Gold 1L · Platinum 2.5L; `progress_pct` towards the next, ≤ 100 |
 | `lifecycle_stage` | `onboarded` (no order yet) · `active` · `at_risk` (30+ days since the last order) · `lost` (90+) |

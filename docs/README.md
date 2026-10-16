@@ -24,10 +24,10 @@ Contract docs, one per feature, named by who reads them:
 | [BANNERS-HO.md](./BANNERS-HO.md) | HO portal | Add, schedule, target, reorder and delete Home banners |
 | [ORDERS-APP.md](./ORDERS-APP.md) | app | My orders: list by stage / dates, details, tracking steps, each order's commission (read from `orders_v2`) |
 | [ORDERS-HO.md](./ORDERS-HO.md) | HO portal | Every partner's orders, filters, one order with its commission |
-| [COMMISSION-LOGIC.md](./COMMISSION-LOGIC.md) | both, Finance | The commission rules: base, slabs, statuses, wallet maths, TDS |
-| [COMMISSION-APP.md](./COMMISSION-APP.md) | app | Commission summary, ledger, plans; wallet and withdrawals; commission statement and TDS reports |
+| [COMMISSION-LOGIC.md](./COMMISSION-LOGIC.md) | both, Finance | The commission rules: base, slabs, plans per earning cohort (fixed / slabs, minimum order), statuses, wallet maths incl. gig pay, TDS |
+| [COMMISSION-APP.md](./COMMISSION-APP.md) | app | Commission summary, ledger, "My plan" (`my_plan`, by earning cohort); wallet and withdrawals; commission statement and TDS reports |
 | [MY-PERFORMANCE-APP.md](./MY-PERFORMANCE-APP.md) | app | My Performance by period; tier, lifecycle stage, health score (Home / Profile) |
-| [COMMISSION-HO.md](./COMMISSION-HO.md) | HO portal | Commission plans, payouts (approve, bank file, UTR), TDS and Form 16A, a partner's commission / performance / target, commission settings |
+| [COMMISSION-HO.md](./COMMISSION-HO.md) | HO portal | Commission plans (per partner type or earning cohort), payouts (approve, bank file, UTR), TDS and Form 16A, a partner's commission / performance / target, commission settings |
 | [ATTENDANCE-APP.md](./ATTENDANCE-APP.md) | app | Punch in / out, today's state, monthly log and summary |
 | [ATTENDANCE-HO.md](./ATTENDANCE-HO.md) | HO portal | Day board across partners, 14-day trend, one partner's month |
 | [TESTIMONIALS-APP.md](./TESTIMONIALS-APP.md) | App | Send a farmer testimonial (video / photo / quote) with consent; my submissions; the library |
@@ -40,7 +40,7 @@ Contract docs, one per feature, named by who reads them:
 | [MEETINGS-APP.md](./MEETINGS-APP.md) | app | My farmer meetings: schedule, invite, attendance and walk-ins, capture leads, cancel / complete |
 | [MEETINGS-HO.md](./MEETINGS-HO.md) | HO portal | Partners' farmer meetings (read-only): list, summary cards, one meeting with attendees |
 | [GIGS-APP.md](./GIGS-APP.md) | app | Paid meeting gigs: available / mine / history, accept, give back, GPS check-in, farmers, photos, submit, pay |
-| [GIGS-HO.md](./GIGS-HO.md) | HO portal | Post, edit, assign, reopen, cancel gigs; review check-in, farmers and photos; approve / reject; gig settings |
+| [GIGS-HO.md](./GIGS-HO.md) | HO portal | Post, edit, assign, reopen, cancel gigs; payout fixed or by the taker's earning cohort; review check-in, farmers and photos; approve / reject; gig settings |
 | [TERMS-APP.md](./TERMS-APP.md) | app | The Vistaar partner T&C document link for Privacy & Terms and the login screen (public) |
 | [TERMS-HO.md](./TERMS-HO.md) | HO portal | Add, edit, switch and delete versions of the Vistaar partner T&C (shared `terms_and_conditions`) |
 | [FAQS-APP.md](./FAQS-APP.md) | app | Help FAQs and their sections for the /faqs screen (`GET /faqs`) |
@@ -49,8 +49,8 @@ Contract docs, one per feature, named by who reads them:
 | [INFO-PAGES-HO.md](./INFO-PAGES-HO.md) | HO portal | Edit About Vistaar, About Katyayani and Contact Us |
 | [FEEDBACK-APP.md](./FEEDBACK-APP.md) | app | Feedback screen: NPS + reasons + comment + app stars, Suggest a product, HO-edited chips |
 | [FEEDBACK-HO.md](./FEEDBACK-HO.md) | HO portal | NPS dashboard, answers list, detractor call-backs, reason chips, product suggestions |
-| [EARNINGS-APP.md](./EARNINGS-APP.md) | app | The partner's earning cohort and its coin / gig rules on `GET /me`; farmer OTP on lead add (breaking); my rewards and coin / gig totals |
-| [EARNINGS-HO.md](./EARNINGS-HO.md) | HO portal | Earning cohorts (filters, priority, default, archive), a partner's cohort history, coin / gig rules from the catalog; the rewards desk (approve / reject, bulk, totals) |
+| [EARNINGS-APP.md](./EARNINGS-APP.md) | app | The partner's earning cohort and its coin / gig rules on `GET /me`; what it changes in commission ("My plan") and meeting-gig pay ("Your rate"); farmer OTP on lead add (breaking); my rewards and coin / gig totals |
+| [EARNINGS-HO.md](./EARNINGS-HO.md) | HO portal | Earning cohorts (filters, priority, default, archive), a partner's cohort history, commission plan and meeting-gig payout per cohort, coin / gig rules from the catalog; the rewards desk (approve / reject, bulk, totals) |
 | [DATABASE.md](./DATABASE.md) | both | Every collection this service reads or writes |
 | [TEST-DATA.md](./TEST-DATA.md) | everyone testing on beta | Test partners and farmers, what each is for, how to seed and remove them |
 | [PROD-CHECKLIST.md](./PROD-CHECKLIST.md) | backend | What must exist in production before a feature goes live |

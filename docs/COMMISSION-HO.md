@@ -43,7 +43,7 @@ Rules in COMMISSION-LOGIC.md (*Earning cohorts*).
 | GET | `/admin/commission-plans/in-effect?month=2026-10&scope=earning` | each active cohort's rates in a month (default this month): `scope=partner_type` (default) the partner types; `scope=earning` the earning cohorts in priority order, `ec_default` last. `plan_id` `null` = PRD default; `inherits` (below) |
 | GET | `/admin/commission-plans/:id` | one, with its change `history` |
 | POST | `/admin/commission-plans` | add |
-| PATCH | `/admin/commission-plans/:id` | change slabs / notes (this month or later) or sign off (`draft`, any plan) |
+| PATCH | `/admin/commission-plans/:id` | change `kind`, slabs / rate, `min_order_value`, notes (this month or later) or sign off (`draft`, any plan) |
 | DELETE | `/admin/commission-plans/:id` | this month or later only; the cohort goes back to its earlier plan |
 
 `:id` = `<cohort>@<YYYY-MM>`, e.g. `ec_paddy_belt@2026-11`, `vistaar_agent@2026-11`.
@@ -164,10 +164,10 @@ interface PartnerMonthRow {
   month: string;              // YYYY-MM
   sales: number;              // delivered sales before GST in the month
   rate: number;               // slab % reached on the plan new orders earn on (headline)
-  commission: number;         // sales × rate — an estimate when orders earned on different plans
+  commission: number;         // Σ commission of orders delivered in the month, each at its own plan's rate (exact; need not equal sales × rate)
   orders_placed: number;      // in the month
   monthly_target: number; achieved_pct: number;   // pct ≤ 100
-  earned: number;             // all-time confirmed + paid commission (+ approved gigs when gig pay is on)
+  earned: number;             // all-time confirmed + paid commission (+ approved meeting gigs and follow-up gig rewards when gig pay is on)
   withdrawable: number; pending: number;
   last_order_at: string | null;
   lifecycle_stage: "onboarded" | "active" | "at_risk" | "lost";
@@ -229,7 +229,7 @@ An order's commission is also on `GET /admin/orders/:id` (ORDERS-HO.md).
 | `tds_rate_with_pan` | 2 | 0–30, ≤ 2 decimals | TDS % with a verified PAN |
 | `tds_rate_without_pan` | 20 | 0–40, ≤ 2 decimals | TDS % without |
 | `monthly_target` | 1,00,000 | 1–10,00,00,000 | default monthly target (₹ delivered sales) |
-| `gig_pay_enabled` | false | true / false | approved meeting gigs' pay reaches the wallet (COMMISSION-LOGIC.md, *Meeting gigs*) |
+| `gig_pay_enabled` | false | true / false | approved meeting gigs' and follow-up gig rewards' pay reaches the wallet (COMMISSION-LOGIC.md, *Gigs*) |
 
 Changing `return_window_days` moves the confirm date of orders not yet confirmed.
 
@@ -241,7 +241,7 @@ Changing `return_window_days` moves the confirm date of orders not yet confirmed
 | `COHORT_NOT_FOUND` | 400 | plan for a cohort that does not exist (partner type or earning cohort) |
 | `EARNING_ARCHIVED` | 409 | a new plan for an archived earning cohort |
 | `PLAN_EXISTS` | 409 | that cohort already has a plan from that month |
-| `PLAN_LOCKED` | 409 | slabs / notes / delete on a past month's plan; or a past `effective_from` |
+| `PLAN_LOCKED` | 409 | kind / slabs / rate / `min_order_value` / notes, or delete, on a past month's plan; or a past `effective_from` |
 | `VERSION_CONFLICT` | 409 | PATCH / DELETE raced another change to the same plan at that moment — reload and retry. No version is sent: a change made after the editor opened is not detected |
 | `WITHDRAWAL_CHANGED` | 409 | not in a state for that action (e.g. pay a requested one, approve a paid one) |
 | `NOT_ENOUGH_BALANCE` | 409 | approve: the partner's balance fell below the request (a rate fell) — reject it |

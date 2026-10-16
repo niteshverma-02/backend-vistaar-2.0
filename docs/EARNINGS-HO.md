@@ -2,9 +2,9 @@
 
 Partners earn three ways (user + TL, 2026-10-16): **commission** on orders, **gig** ₹
 for actions, and **coins** (points) for actions. All three depend on the partner's
-**earning cohort**. This doc covers the cohorts, their coin / gig **rules** and the
-**rewards** desk (pending → approved / rejected); the commission per cohort is in
-`COMMISSION-HO.md`. The app side is `EARNINGS-APP.md`.
+**earning cohort**. This doc covers the cohorts, their commission and meeting-gig pay,
+their coin / gig **rules** and the **rewards** desk (pending → approved / rejected). The
+full commission-plan contract is `COMMISSION-HO.md` §1; the app side is `EARNINGS-APP.md`.
 
 > An earning cohort is **not** the onboarding cohort (`/admin/cohorts` — the partner
 > type and its form). The two are separate lists.
@@ -143,6 +143,47 @@ first looked at first (priority 1, 2, …). A list that misses one or names anot
 seen after this feature shipped) · `recompute` (HO's button). A partner approved before
 this feature is placed on their first app open, on this route, or on the recompute
 button — run it once after deploy.
+
+## Commission per cohort
+
+A cohort's commission is a **plan** on the commission-plans routes, the same ones as the
+partner-type plans — body, fields, `PATCH` and errors in `COMMISSION-HO.md` §1, rules in
+`COMMISSION-LOGIC.md` (*Earning cohorts*). Capability `commission.read` /
+`commission.plans` (not `earning.*`).
+
+- `POST /api/v2/admin/commission-plans` with `"cohort": "ec_…"`; the plan's id is
+  `ec_…@YYYY-MM` — from that month on, until the cohort's next plan; past months are
+  locked.
+- `kind: "fixed"` (one `rate` on every order, whatever the month's sales) or `"slabs"`
+  (a slab table; the slab is reached by the partner's whole delivered sales of the month).
+- `min_order_value` (optional, ₹ of base — after discount and coins, before GST): an
+  order below it earns `ec_default`'s plan of that month. Not allowed on `ec_default`.
+- A cohort with no plan of its own inherits `ec_default`'s. While `ec_default` has none
+  either, every partner stays on their partner-type plan — **nothing changes until HO
+  saves an `ec_default` plan**, and saving one moves every approved partner's new orders
+  onto it (agree it with Finance first).
+- `GET /api/v2/admin/commission-plans/in-effect?month=&scope=earning` — the cohort table
+  for a month, active cohorts in priority order, `ec_default` last, each row with
+  `inherits`: `null` (its own plan) · `"ec_default"` · `"partner_type"` (no plan here or
+  on the default — `slabs: []`).
+- The plan an order earns on is fixed by the cohort the partner was in **when the order
+  was placed** and that cohort's plan for the **month placed**; the slab level comes from
+  the partner's total delivered sales of the **delivery** month. Orders placed before a
+  partner's first earning cohort keep their partner-type plan.
+- A plan for an unknown `ec_…` → `400 COHORT_NOT_FOUND`; for an archived cohort →
+  `409 EARNING_ARCHIVED`.
+
+## Meeting-gig payout per cohort
+
+`meeting_gig_payout` (₹; `null` = settings `gig_payout`) is what a partner of the cohort
+earns for a meeting gig whose payout HO left empty (`payout_source: "cohort"` —
+`GIGS-HO.md` *Pay*):
+
+- It is fixed on the gig when the partner accepts it or HO assigns it: the taker's cohort
+  then, else settings `gig_payout`. Changing `meeting_gig_payout` later never touches a
+  gig already taken.
+- A payout set on the gig itself wins, whoever takes it.
+- Give-back or HO reopen clears it, so the next taker gets their own cohort's rate.
 
 ## Coin and gig rules — the light rule engine
 

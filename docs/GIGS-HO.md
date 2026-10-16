@@ -182,12 +182,16 @@ every check-in.
 | `gig_min_farmers` | 15 | 1–300 | farmers needed to submit |
 | `gig_photos_required` | 3 | 0–6 | photos needed to submit |
 | `gig_checkin_radius_m` | 500 | 50–20,000 | check-in farther than this from `venue_point` is flagged `far` (m) |
-| `gig_pay_enabled` | false | true / false | approved gigs' pay reaches the wallet (`COMMISSION-LOGIC.md`, *Meeting gigs*). **Keep off until Finance confirms the TDS on gig pay** |
+| `gig_pay_enabled` | false | true / false | approved gigs' pay — and approved follow-up gig rewards' — reaches the wallet (`COMMISSION-LOGIC.md`, *Gigs*). **Keep off until Finance confirms the TDS on gig pay** |
 | `gig_pay_enabled_at` | null | read-only | set once, the first time gig pay is switched on; never cleared. Gigs approved earlier count from this moment |
 
 While gig pay is off nothing reaches the wallet; approval still records the gig as
 earned (the app's `earned_this_month`). Switching it off again takes every gig's pay
 back out of the wallet, also pay already withdrawn — keep it on once on.
+
+Follow-up **gig rewards** (₹ for a call / visit / WhatsApp on a due follow-up, from the
+earning rules) are not gigs on this desk: HO approves them on the rewards desk
+(`EARNINGS-HO.md`); the same `gig_pay_enabled` switch puts them in the wallet.
 
 ## Errors
 

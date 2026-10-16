@@ -11,7 +11,7 @@ detail, Home "follow-ups due" (PRD C2, C4, C9, H5).
 > `400 LEAD_OTP_INVALID`. An app build without this step **cannot add farmers** against
 > this backend. See *Farmer OTP* below. Also new: adding a farmer and logging a call /
 > visit / WhatsApp on a due follow-up can earn coin / gig rewards (EARNINGS-APP.md) —
-> no change to those calls.
+> the server makes them; nothing extra to send.
 >
 > **Updated 2026-10-14 (3) — where the farmer is.** `POST /leads`, `PATCH /leads/:piiId` and
 > `POST /leads/:piiId/activities` (a `visit`) take an optional `location` — the phone's GPS
@@ -271,8 +271,8 @@ With a `visit`, send `location` (the phone's GPS at the farm) — the best place
 farmer. `PATCH` takes `location` too ("set the farm here").
 Activities are a log: added and read, never edited or deleted.
 A call / visit / WhatsApp logged on a lead whose `next_follow_up` is due today (IST) or
-overdue completes that follow-up and can earn a gig reward, once per due day
-(EARNINGS-APP.md). Logging does not move `next_follow_up` — set the next one with
+overdue completes that follow-up and can earn a reward (coin or gig ₹, by the
+partner's earning-cohort rules), once per due day (EARNINGS-APP.md). Logging does not move `next_follow_up` — set the next one with
 `PATCH`.
 
 ## `DELETE /leads/:piiId`

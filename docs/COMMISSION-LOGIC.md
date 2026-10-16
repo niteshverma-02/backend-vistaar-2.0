@@ -34,9 +34,9 @@ where they differ), plus the decisions below. Code: `src/modules/commission/comm
 | R7 | Not counted at all: Stockship's `failed` / `pseudo` rows, a `split` parent (its `-S1` / `-S2` children carry the lines) and an order `merged` into another |
 | R8 | Shop stock (the partner's own `pii_id`) earns the normal rate |
 
-### Slabs (PRD; drafts until HO signs them off)
+### Partner-type slabs (PRD; drafts until HO signs them off)
 
-| Cohort | ₹0 – 50K | ₹50K – 1L | > ₹1L |
+| Partner type | ₹0 – 50K | ₹50K – 1L | > ₹1L |
 |---|---|---|---|
 | `vistaar_agent`, `ex_employee` | 5% | 7% | 10% |
 | `other_company_employee`, `other` | 5% | 7% | 7% |
@@ -45,6 +45,18 @@ where they differ), plus the decisions below. Code: `src/modules/commission/comm
 A partner type HO adds later earns as `other` until it has a plan. HO changes rates by adding a
 plan from a month on (this month or later — past months are locked). Since 2026-10-16 these
 partner-type plans set only orders placed **before** the partner's first earning cohort.
+
+## Example — the retro slab (Vistaar Agent, October)
+
+| Event | Oct delivered sales | Every Oct order's rate |
+|---|---|---|
+| A delivered, base ₹30,000 | 30,000 | 5% → A ₹1,500 |
+| B delivered, base ₹40,000 | 70,000 | 7% → A ₹2,100, B ₹2,800 |
+| C placed, not delivered | 70,000 | C shows 7% (this month's), pending |
+
+A rate that rises after a payout owes the partner the difference (it shows in
+`withdrawable`). A rate that falls (a same-month return before its window) takes nothing
+back: the payout is only not made twice.
 
 ## Earning cohorts (user + TL, 2026-10-16)
 
@@ -79,10 +91,11 @@ every partner keeps their own partner-type plan (5 / 7 / 10 for Vistaar Agent an
 Ex-employee, 6 / 8 / 8 for Consultant, …). Save an `ec_default` plan to move everyone else
 onto one plan.
 
-The month's **headline** (summary `current_rate`, `next_slab`, `plan_draft`; My Performance)
-is the plan a new order would earn on: the cohort the partner is in at the month's end (now,
-for this month), before any minimum check. `month_commission_estimate` is the sum of each
-delivered order's own commission, not sales × one rate.
+The month's **headline** (summary `current_rate`, `next_slab`, `plan_draft`; My Performance
+`monthly[].rate`, HO's `rate` column) is the plan a new order would earn on: the cohort the
+partner is in at the month's end (now, for this month), before any minimum check. A month's
+**commission** — `month_commission_estimate`, My Performance `commission`, HO's partner
+table and board — is the sum of each delivered order's own commission, not sales × one rate.
 
 Each ledger row says which: `cohort_id` (`null` = before earning cohorts), `plan_id`
 (`null` = PRD built-in rates), `below_min_order`.
@@ -95,18 +108,6 @@ Example — Ravi (Vistaar Agent) in `ec_paddy` (fixed 8 %, minimum ₹2,000) fro
 | A | 3 Oct (before 10 Oct) | 10,000 | his partner-type plan, Oct sales 31,500 | 5 % |
 | B | 12 Oct | 20,000 | `ec_paddy@2026-10` | 8 % |
 | C | 15 Oct | 1,500 | below ₹2,000 → `ec_default@2026-10`, Oct sales 31,500 | 5 % |
-
-## Example (Vistaar Agent, October)
-
-| Event | Oct delivered sales | Every Oct order's rate |
-|---|---|---|
-| A delivered, base ₹30,000 | 30,000 | 5% → A ₹1,500 |
-| B delivered, base ₹40,000 | 70,000 | 7% → A ₹2,100, B ₹2,800 |
-| C placed, not delivered | 70,000 | C shows 7% (this month's), pending |
-
-A rate that rises after a payout owes the partner the difference (it shows in
-`withdrawable`). A rate that falls (a same-month return before its window) takes nothing
-back: the payout is only not made twice.
 
 ## Money
 
@@ -124,26 +125,23 @@ approved, bank proof verified by HO. **TDS** at request, fixed at approval: 2% w
 verified PAN, else 20% (settings). Approved by a head (USR-1037/1000/1001) until Finance has
 a role code; paid by bank file + UTR (no payout API).
 
-## Meeting gigs
+## Gigs (meeting gigs and follow-up gig rewards)
+
+Gig pay comes from two places, treated alike: approved **meeting gigs** (`vistaar_v2_gigs`,
+GIGS-HO.md) and approved **follow-up gig rewards** (`vistaar_v2_rewards`, `kind: 'gig'`,
+earned by the earning rules — EARNINGS-HO.md). **Coins never enter the wallet.**
 
 **Off by default** — settings `gig_pay_enabled` (`false`) until Finance confirms the TDS
-section (user, 2026-10-15). While off the book is exactly as above.
+section (user, 2026-10-15); one switch for both. While off the book is exactly as above.
 
-When on, each approved gig's pay is **earned at approval** (confirmed at once, no
-pending) and final — no reversal. It adds to `earned` and `withdrawable`, and shows as
+When on, each approved gig's (or gig reward's) pay is **earned at approval**
+(`reviewed_at`; confirmed at once, no pending) and final — no reversal. It adds to `earned` and `withdrawable`, and shows as
 `gig_earned`; it has no ledger row (the ledger stays orders). Payouts cover orders and
 gigs together in time order — an order by its confirm date, a gig by its approval — so
 a gig approved later never moves an order already paid. Gigs approved while it was off
 count from the moment it was first switched on (`gig_pay_enabled_at`, set once), so a
 payout made while it was off stays on the orders it paid. A withdrawal carries the
 **same TDS** as the rest (2% / 20%, 194H) until Finance says otherwise.
-Gigs: `vistaar_v2_gigs`, read only when on, cached 60 s like withdrawals, fresh before
-money moves.
-
-Approved follow-up **gig rewards** (`vistaar_v2_rewards`, `kind: 'gig'`, `status:
-'approved'`; EARNINGS-HO.md) are credited exactly like approved meeting gigs: earned at
-`reviewed_at`, only while `gig_pay_enabled` is on, clamped to `gig_pay_enabled_at`, in
-`gig_earned`, no ledger row. **Coins never enter the wallet.**
 
 ## How it is built
 
@@ -156,8 +154,9 @@ fix-up, and there is nothing to drift.
 | The partner's orders | one aggregation on `{ agent, order_status, date }`, cached 60 s per partner (shared by every screen in that minute) |
 | GST and categories | the catalogue in memory (`ProductFactsService`, hourly) |
 | Plans | `vistaar_v2_commission_plans`, in memory (60 s) |
-| Earning-cohort stretches | `vistaar_v2_earning_assignments` (a few rows per partner), cached 60 s like withdrawals, fresh before money moves |
-| Withdrawals | `vistaar_v2_withdrawals`, read fresh (tens of rows per partner) |
+| Withdrawals | `vistaar_v2_withdrawals` (tens of rows per partner), cached 60 s per partner for display, read fresh before money moves (wallet, withdraw, HO approve) |
+| Gig pay | `vistaar_v2_gigs` (approved) and `vistaar_v2_rewards` (approved, `kind: 'gig'`), read only while gig pay is on, cached like withdrawals |
+| Earning-cohort stretches | `vistaar_v2_earning_assignments` (a few rows per partner), cached like withdrawals — an order placed in the minute after a move may show the old cohort's rate until then |
 | Form 16A | `vistaar_v2_tds_certificates` + a private PDF |
 
 ## Not built (later)

@@ -3,8 +3,8 @@
 Partners earn three ways (user + TL, 2026-10-16): **commission** on orders, **gig** ₹
 for actions, and **coins** (points) for actions. Which rates and rewards apply depends
 on the partner's **earning cohort**, which HO sets up (`EARNINGS-HO.md`). This doc covers
-the cohort, the farmer OTP that lead add now needs, and the coin / gig **rewards**;
-commission itself is `COMMISSION-APP.md`.
+the cohort, what it changes in commission and gig pay, the farmer OTP that lead add now
+needs, and the coin / gig **rewards**; the full commission contract is `COMMISSION-APP.md`.
 
 > ⚠️ **BREAKING (2026-10-16): Add Lead needs the farmer's OTP.** `POST /leads` without
 > a fresh `otp_token` now answers `400 LEAD_OTP_REQUIRED`. Ship the new OTP step
@@ -58,26 +58,30 @@ commission itself is `COMMISSION-APP.md`.
 - It is worked out again on its own when the partner adds a farmer, a lead is won,
   lost, reopened or removed, or HO changes the cohorts. Refresh `/me` after adding a
   lead or on app resume; there is nothing to call.
-- Commission on an order follows the cohort the partner was in **when the order was
-  placed** (`COMMISSION-APP.md`).
+
+## Commission and meeting-gig pay
+
+- An order earns on the plan of the cohort the partner was in **when it was placed**
+  (fixed % or slabs, maybe with a minimum order value). Orders placed before the
+  partner's first earning cohort keep their old rate.
+- **"My plan"** = `GET /commission/plans` → `my_plan` (new): `earning_cohort`,
+  `inherits`, `kind`, `slabs` (a fixed plan is one slab), `min_order_value`,
+  `below_min_order` (what an order under the minimum earns on). Shapes and screen text in
+  `COMMISSION-APP.md`.
+- Ledger rows (`GET /commission/ledger`) carry `cohort_id`, `plan_id` and
+  `below_min_order`.
+- Meeting gigs: `payout_source: "cohort"` means the payout is the partner's own cohort
+  rate — label it "Your rate". It is shown per viewer (two partners may see different
+  amounts on an open gig) and fixed when the partner takes the gig (`GIGS-APP.md` *Pay*).
 
 ## ⚠️ BREAKING — farmer OTP on every lead add
 
 From this release `POST /leads` refuses to save without the farmer's own OTP (TL,
-2026-10-16). The Add Lead screen gets one new step — full contract in `LEADS-APP.md`:
-
-1. `GET /leads/check?phone=` as today (do not send an OTP to a farmer you cannot add).
-2. `POST /leads/otp/send { "phone": "9876543210" }` → `{ "sent": true, "resend_after_seconds": 30 }`.
-   Resend: same route with `"resend": true`. 3 sends per mobile per 10 minutes.
-3. The farmer reads the code out; `POST /leads/otp/verify { "phone", "otp" }` →
-   `{ "otp_token": "…", "expires_at": "…" }` — good for **15 minutes**, for **this
-   mobile** and **this partner** only. 5 tries per mobile per 10 minutes.
-4. `POST /leads { …farmer…, "otp_token": "…" }`. Missing → `400 LEAD_OTP_REQUIRED`;
-   another mobile's, another partner's or expired → `400 LEAD_OTP_INVALID` (verify
-   again). A retry of the same save within the 15 minutes reuses the token.
-
-The farmer's OTP is separate from the partner's own sign-in OTP (own limits). Test
-farmers on beta use `OTP_TEST_NUMBERS` / `OTP_TEST_CODE` as sign-in does.
+2026-10-16), so a `lead_created` reward is always for a verified mobile. Add Lead gets one
+new step: `GET /leads/check` → `POST /leads/otp/send` → the farmer reads the code out →
+`POST /leads/otp/verify` → `otp_token` (15 minutes, this mobile, this partner) → sent with
+`POST /leads`. The full contract — bodies, limits, errors — is in `LEADS-APP.md`
+(*Farmer OTP*); this doc does not repeat it.
 
 ## Rewards — coins and gig ₹
 

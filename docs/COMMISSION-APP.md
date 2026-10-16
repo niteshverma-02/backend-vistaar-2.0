@@ -2,15 +2,17 @@
 
 **Base URL:** `{API_BASE}/api/v2` · bearer = partner `access_token` (AUTH-APP.md).
 Everything is the logged-in partner's own; no partner id in any path. The rules behind
-every number are in COMMISSION-LOGIC.md.
-
-> **Earning cohorts (2026-10-16).** An order now earns on the plan of the partner's
-> **earning cohort when it was placed** (`GET /me` → `earning_cohort`; EARNINGS-APP.md) — a
-> fixed % or slabs, maybe with a minimum order value below which the order earns the
-> default cohort's rate. "My plan" is `my_plan` in `GET /commission/plans` (new); each
-> ledger row says which cohort and plan it earned on. Orders placed before keep their
-> old rate. Replaces the app's seed `commissionPlans` /
+every number are in COMMISSION-LOGIC.md. Replaces the app's seed `commissionPlans` /
 `monthlySales` and the phone-side commission (the backend works it out from the orders).
+
+> **Updated 2026-10-16 — earning cohorts.** An order now earns on the plan of the
+> partner's **earning cohort when it was placed** (`GET /me` → `earning_cohort`;
+> EARNINGS-APP.md) — a fixed % or slabs, maybe with a minimum order value below which the
+> order earns the default cohort's plan. "My plan" is the new `my_plan` in
+> `GET /commission/plans`; each ledger row says which cohort and plan it earned on
+> (`cohort_id`, `plan_id`, `below_min_order`). Orders placed before the partner's first
+> earning cohort keep their old rate. `gig_earned` now also counts approved follow-up gig
+> rewards.
 
 Money: commission in whole ₹ (int); TDS and net to the paisa (`19.4`). Rates are % numbers
 (`7`, `7.5`). Months `YYYY-MM` (IST); quarters `FY2026-Q2` (the year the FY starts; Q1 =
@@ -124,7 +126,7 @@ slabs instead of `current_rate`.
   "month": "2026-10",
   "my_plan": {                             // NEW — "My plan": what my new orders earn on now
     "earning_cohort": { "id": "ec_paddy_belt", "name": "Paddy belt", "since": "…" },  // null before approval
-    "inherits": null,                      // null = the cohort's own plan · "ec_default" = the default cohort's · "partner_type" = my partner type's
+    "inherits": null,                      // null = the cohort's own plan (or not approved yet) · "ec_default" = the default cohort's · "partner_type" = my partner type's
     "plan_id": "ec_paddy_belt@2026-10",    // null = built-in rates
     "kind": "fixed",                       // fixed · slabs
     "draft": false, "effective_from": "2026-10",

@@ -13,11 +13,7 @@ import {
   type AgentRecord,
 } from '@modules/agents/services/agents.service';
 import { AttendanceService } from '@modules/attendance/services/attendance.service';
-import {
-  commissionOf,
-  type Book,
-  type LedgerRow,
-} from '@modules/commission/commission.domain';
+import type { Book, LedgerRow } from '@modules/commission/commission.domain';
 import { CommissionService } from '@modules/commission/services/commission.service';
 import {
   GigReadsService,
@@ -259,7 +255,8 @@ export class PerformanceService {
         month: m,
         sales: f.sales,
         rate: f.rate,
-        commission: commissionOf(f.sales, f.rate),
+        // Each order at its own plan's rate: one month can mix earning cohorts.
+        commission: f.commission,
         in_period: months.includes(m),
       };
     });
@@ -297,10 +294,7 @@ export class PerformanceService {
       },
       gigs,
       commission: {
-        value: months.reduce((sum, m) => {
-          const f = book.month(m);
-          return sum + commissionOf(f.sales, f.rate);
-        }, 0),
+        value: months.reduce((sum, m) => sum + book.month(m).commission, 0),
         draft_rate: months.some((m) => book.month(m).draft),
       },
       monthly,
@@ -464,7 +458,7 @@ export class PerformanceService {
       month,
       sales: m.sales,
       rate: m.rate,
-      commission: commissionOf(m.sales, m.rate),
+      commission: m.commission,
       orders_placed: book.rows.filter(
         (r) => r.placed_at.getTime() >= from && r.placed_at.getTime() < to,
       ).length,
