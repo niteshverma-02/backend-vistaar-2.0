@@ -31,6 +31,11 @@ node dist/scripts/seed-test-leads.js            # dry run — lists what it woul
 node dist/scripts/seed-test-leads.js --apply    # adds the missing ones; existing are skipped
 ```
 
+The farmer OTP is mandatory on lead add (2026-10-16); the seed signs the token
+`POST /leads/otp/verify` would give with the server's own secret, so no SMS is sent. Adding
+them in the app instead needs the mobiles in `OTP_TEST_NUMBERS` (with `OTP_TEST_CODE`). With
+earning rules set, the seed's adds record pending `lead_created` rewards like real ones.
+
 | Mobile | Farmer | Partner | What it tests |
 |---|---|---|---|
 | 6000000101 | Ramesh Patel | VST-000006 | contacted, follow-up tomorrow |

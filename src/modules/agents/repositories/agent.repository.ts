@@ -17,10 +17,24 @@ import {
   Agent,
   type AgentDocument,
   type AgentPreview,
+  type AgentProfile,
+  type EarningCohortRef,
   type StageHistoryEntry,
 } from '../schemas/agent.schema';
 
 export type AgentRecord = Agent;
+
+/** What the earning module matches a cohort on, and the cohort it holds now. */
+export type EarningPartnerRecord = Pick<
+  Agent,
+  '_id' | 'agent_id' | 'stage' | 'is_active' | 'earning_cohort'
+> & {
+  profile?: Pick<AgentProfile, 'state' | 'district' | 'pincode'> | null;
+  preview?: Pick<AgentPreview, 'state' | 'district' | 'pincode'>;
+};
+
+const EARNING_FIELDS =
+  '_id agent_id stage is_active earning_cohort profile.state profile.district profile.pincode preview.state preview.district preview.pincode';
 
 export interface AgentListFilter {
   stage?: Stage;
@@ -84,6 +98,62 @@ export class AgentRepository {
       )
       .sort({ decided_at: -1 })
       .lean<AgentRecord[]>()
+      .exec();
+  }
+
+  /** One verified partner's earning facts by `VST-` id. */
+  earningPartner(agentId: string): Promise<EarningPartnerRecord | null> {
+    return this.model
+      .findOne({ agent_id: agentId, otp_verified: true })
+      .select(EARNING_FIELDS)
+      .lean<EarningPartnerRecord | null>()
+      .exec();
+  }
+
+  /** Every approved partner's earning facts — ~150 bytes a partner. */
+  earningPartners(): Promise<EarningPartnerRecord[]> {
+    return this.model
+      .find({
+        otp_verified: true,
+        stage: 'approved',
+        agent_id: { $type: 'string' },
+      })
+      .select(EARNING_FIELDS)
+      .lean<EarningPartnerRecord[]>()
+      .exec();
+  }
+
+  /** The current cohort copied onto each partner; `updated_at` is not touched (not the partner's edit). */
+  async setEarningCohorts(
+    rows: readonly { agent_id: string; cohort: EarningCohortRef }[],
+  ): Promise<void> {
+    if (rows.length === 0) return;
+    await this.model.bulkWrite(
+      rows.map((r) => ({
+        updateOne: {
+          filter: { agent_id: r.agent_id },
+          update: { $set: { earning_cohort: r.cohort } },
+          timestamps: false,
+        },
+      })),
+      { ordered: false },
+    );
+  }
+
+  /** Approved partners per earning cohort id. */
+  async countByEarningCohort(): Promise<{ id: string; count: number }[]> {
+    return this.model
+      .aggregate<{ id: string; count: number }>([
+        {
+          $match: {
+            otp_verified: true,
+            stage: 'approved',
+            'earning_cohort.id': { $type: 'string' },
+          },
+        },
+        { $group: { _id: '$earning_cohort.id', count: { $sum: 1 } } },
+        { $project: { _id: 0, id: '$_id', count: 1 } },
+      ])
       .exec();
   }
 

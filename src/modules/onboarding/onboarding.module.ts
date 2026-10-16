@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 
 import { AccessModule } from '@modules/access/access.module';
 import { AgentsModule } from '@modules/agents/agents.module';
+import { EarningModule } from '@modules/earning/earning.module';
 import { SpineModule } from '@modules/spine/spine.module';
 import { UploadsModule } from '@modules/uploads/uploads.module';
 
@@ -36,6 +37,7 @@ import { OnboardingService } from './services/onboarding.service';
     ]),
     AccessModule,
     AgentsModule,
+    EarningModule,
     SpineModule,
     UploadsModule,
   ],

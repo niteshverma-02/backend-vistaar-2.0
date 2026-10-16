@@ -76,3 +76,40 @@ describe('OtpService limits', () => {
     );
   });
 });
+
+describe('OtpService scopes', () => {
+  const config = {
+    get: (key: string) =>
+      ({
+        OTP_API_URL: 'https://otp.example',
+        OTP_TIMEOUT_MS: 1000,
+        OTP_TEST_NUMBERS: '9000000001',
+        OTP_TEST_CODE: '1234',
+      })[key],
+  } as unknown as ConfigService<Env, true>;
+
+  it('counts a farmer OTP apart from sign-in, with the same limits', async () => {
+    const attempts = {
+      take: jest.fn().mockResolvedValue(0),
+      reset: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = new OtpService(
+      config,
+      attempts as unknown as OtpAttemptRepository,
+    );
+    await service.send('9000000001', '+91', false, 'lead');
+    await service.verify('9000000001', '+91', '1234', 'lead');
+    await service.verify('9000000001', '+91', '1234');
+    expect(
+      attempts.take.mock.calls.map((c: unknown[]) => c.slice(0, 2)),
+    ).toEqual([
+      ['lead-send:9000000001', 3],
+      ['lead-verify:9000000001', 5],
+      ['verify:9000000001', 5],
+    ]);
+    expect(attempts.reset.mock.calls).toEqual([
+      ['lead-verify:9000000001'],
+      ['verify:9000000001'],
+    ]);
+  });
+});

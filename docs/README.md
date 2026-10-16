@@ -13,7 +13,7 @@ Contract docs, one per feature, named by who reads them:
 | [ONBOARDING-HO.md](./ONBOARDING-HO.md) | HO portal | Access, pipeline, KYC review, approval, form editor, settings |
 | [CART-APP.md](./CART-APP.md) | app | Cart and Checkout screens, "Ordering for" |
 | [DRAFT-ORDER-APP.md](./DRAFT-ORDER-APP.md) | app | Saved Carts, "Save for later" |
-| [LEADS-APP.md](./LEADS-APP.md) | app | Add lead (consent, phone check), Leads list / board, Lead detail, Home "follow-ups due" |
+| [LEADS-APP.md](./LEADS-APP.md) | app | Add lead (consent, phone check, **farmer OTP — mandatory, breaking**), Leads list / board, Lead detail, Home "follow-ups due" |
 | [LEADS-HO.md](./LEADS-HO.md) | HO portal | Leads screen (cards, list, drawer), farmer-consent wording, lead owner |
 | [CUSTOMERS-HO.md](./CUSTOMERS-HO.md) | HO portal | Every partner's customers with their business; cards; one customer |
 | [CUSTOMERS-APP.md](./CUSTOMERS-APP.md) | app | Customers list, tiles, detail; a lead becomes a customer on its first confirmed order |
@@ -49,6 +49,8 @@ Contract docs, one per feature, named by who reads them:
 | [INFO-PAGES-HO.md](./INFO-PAGES-HO.md) | HO portal | Edit About Vistaar, About Katyayani and Contact Us |
 | [FEEDBACK-APP.md](./FEEDBACK-APP.md) | app | Feedback screen: NPS + reasons + comment + app stars, Suggest a product, HO-edited chips |
 | [FEEDBACK-HO.md](./FEEDBACK-HO.md) | HO portal | NPS dashboard, answers list, detractor call-backs, reason chips, product suggestions |
+| [EARNINGS-APP.md](./EARNINGS-APP.md) | app | The partner's earning cohort and its coin / gig rules on `GET /me`; farmer OTP on lead add (breaking); my rewards and coin / gig totals |
+| [EARNINGS-HO.md](./EARNINGS-HO.md) | HO portal | Earning cohorts (filters, priority, default, archive), a partner's cohort history, coin / gig rules from the catalog; the rewards desk (approve / reject, bulk, totals) |
 | [DATABASE.md](./DATABASE.md) | both | Every collection this service reads or writes |
 | [TEST-DATA.md](./TEST-DATA.md) | everyone testing on beta | Test partners and farmers, what each is for, how to seed and remove them |
 | [PROD-CHECKLIST.md](./PROD-CHECKLIST.md) | backend | What must exist in production before a feature goes live |

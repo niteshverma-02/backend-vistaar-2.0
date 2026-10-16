@@ -2,13 +2,20 @@ import type {
   AgentRecord,
   AgentsService,
 } from '@modules/agents/services/agents.service';
+import type { EarningCohortsService } from '@modules/earning/services/earning-cohorts.service';
 import type { GigReadsService } from '@modules/gigs/services/gig-reads.service';
 import type { OnboardingService } from '@modules/onboarding/services/onboarding.service';
+import type { RewardsService } from '@modules/rewards/services/rewards.service';
 import type { SettingsService } from '@modules/settings/services/settings.service';
 import type { ProductFactsService } from '@modules/spine/services/product-facts.service';
 import type { StorageService } from '@modules/uploads/services/storage.service';
 
-import { defaultPlan, type OrderFact } from '../commission.domain';
+import {
+  defaultPlan,
+  type OrderFact,
+  type PlanInEffect,
+  type SavedPlans,
+} from '../commission.domain';
 import { LedgerQueryDto } from '../dto/commission.dto';
 import type { CommissionOrderRepository } from '../repositories/commission-order.repository';
 import type { TdsCertificateRepository } from '../repositories/tds-certificate.repository';
@@ -43,6 +50,9 @@ describe('CommissionService', () => {
   let forAgent: jest.Mock;
   let settingsGet: jest.Mock;
   let creditsFor: jest.Mock;
+  let assignmentsOf: jest.Mock;
+  let current: jest.Mock;
+  let saved: SavedPlans;
   let service: CommissionService;
 
   beforeEach(() => {
@@ -61,12 +71,22 @@ describe('CommissionService', () => {
       return_window_days: 7,
       monthly_target: 100_000,
       gig_pay_enabled: false,
+      tds_rate_with_pan: 2,
+      tds_rate_without_pan: 20,
+      min_withdrawal: 500,
     });
     creditsFor = jest
       .fn()
       .mockResolvedValue([
         { id: 'GIG-1', amount: 250, approved_at: new Date(Date.now() - DAY) },
       ]);
+
+    assignmentsOf = jest.fn().mockResolvedValue([]);
+    current = jest.fn().mockResolvedValue({
+      cohort: { _id: 'ec_default', name: 'Everyone else' },
+      since: null,
+    });
+    saved = () => null;
 
     service = new CommissionService(
       { factsFor } as unknown as CommissionOrderRepository,
@@ -79,6 +99,8 @@ describe('CommissionService', () => {
           plan_id: null,
           effective_from: null,
         })),
+        saved: jest.fn(() => Promise.resolve(saved)),
+        inEffect: jest.fn().mockResolvedValue([]),
       } as unknown as CommissionPlansService,
       { get: settingsGet } as unknown as SettingsService,
       {
@@ -98,6 +120,10 @@ describe('CommissionService', () => {
       } as unknown as ProductFactsService,
       {} as StorageService,
       { creditsFor } as unknown as GigReadsService,
+      { assignmentsOf, current } as unknown as EarningCohortsService,
+      {
+        gigCreditsFor: jest.fn().mockResolvedValue([]),
+      } as unknown as RewardsService,
     );
   });
 
@@ -189,5 +215,89 @@ describe('CommissionService', () => {
     expect(factsFor).toHaveBeenCalledTimes(2);
     await service.summary('VST-000001');
     expect(factsFor).toHaveBeenCalledTimes(3);
+  });
+
+  const paddy = (terms: Partial<PlanInEffect> = {}): PlanInEffect => ({
+    cohort: 'ec_paddy',
+    plan_id: 'ec_paddy@2026-09',
+    effective_from: '2026-09',
+    kind: 'fixed',
+    slabs: [{ from: 0, to: null, rate: 8 }],
+    min_order_value: null,
+    notes: [],
+    draft: false,
+    ...terms,
+  });
+
+  it('earns orders placed in an earning cohort at its plan, the stretches read once a minute', async () => {
+    assignmentsOf.mockResolvedValue([
+      {
+        agent_id: 'VST-000001',
+        cohort_id: 'ec_paddy',
+        from: new Date(Date.now() - 40 * DAY),
+        to: null,
+      },
+    ]);
+    saved = (cohort) => (cohort === 'ec_paddy' ? paddy() : null);
+
+    const page = await service.ledger('VST-000001', new LedgerQueryDto());
+    expect(page.items.find((i) => i.order_id === 'A')).toMatchObject({
+      rate: 8,
+      amount: 800,
+      cohort_id: 'ec_paddy',
+      plan_id: 'ec_paddy@2026-09',
+      below_min_order: false,
+    });
+    await service.summary('VST-000001');
+    expect(assignmentsOf).toHaveBeenCalledTimes(1);
+    expect(assignmentsOf).toHaveBeenCalledWith(['VST-000001']);
+
+    // Before money moves, read fresh.
+    await service.bookOf('VST-000001', new Date(), true);
+    expect(assignmentsOf).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows My plan from the earning cohort now, and what a small order earns', async () => {
+    current.mockResolvedValue({
+      cohort: { _id: 'ec_paddy', name: 'Paddy belt' },
+      since: new Date('2026-09-10T00:00:00Z'),
+    });
+    saved = (cohort) =>
+      cohort === 'ec_paddy' ? paddy({ min_order_value: 2_000 }) : null;
+
+    const { my_plan } = await service.plansFor('VST-000001');
+    expect(my_plan).toMatchObject({
+      earning_cohort: { id: 'ec_paddy', name: 'Paddy belt' },
+      inherits: null,
+      kind: 'fixed',
+      slabs: [{ from: 0, to: null, rate: 8 }],
+      min_order_value: 2_000,
+      // No default-cohort plan saved: the partner-type plan.
+      below_min_order: {
+        kind: 'slabs',
+        slabs: defaultPlan('vistaar_agent').slabs,
+      },
+    });
+  });
+
+  it('shows the partner-type plan before approval, and while no earning plan is saved', async () => {
+    const before = await service.plansFor('VST-000001');
+    expect(before.my_plan).toMatchObject({
+      earning_cohort: null,
+      inherits: null,
+      slabs: defaultPlan('vistaar_agent').slabs,
+      below_min_order: null,
+    });
+
+    current.mockResolvedValue({
+      cohort: { _id: 'ec_paddy', name: 'Paddy belt' },
+      since: new Date(),
+    });
+    const after = await service.plansFor('VST-000001');
+    expect(after.my_plan).toMatchObject({
+      earning_cohort: { id: 'ec_paddy' },
+      inherits: 'partner_type',
+      slabs: defaultPlan('vistaar_agent').slabs,
+    });
   });
 });

@@ -95,6 +95,11 @@ export class VistaarLead {
   consent!: { version: number; at: Date };
   /** Ex-employee partners: "did not handle this farmer at Katyayani in the last 12 months". */
   @Prop({ type: Date, default: null }) ex_employee_declared_at!: Date | null;
+  /**
+   * When the farmer's mobile was last verified by OTP on an add by this
+   * partner (mandatory from 2026-10-16); `null` on rows from before.
+   */
+  @Prop({ type: Date, default: null }) otp_verified_at!: Date | null;
 
   /** Set by the first order (won). */
   @Prop({ type: Date, default: null }) customer_at!: Date | null;

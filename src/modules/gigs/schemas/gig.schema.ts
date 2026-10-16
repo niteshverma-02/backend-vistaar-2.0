@@ -3,9 +3,11 @@ import { SchemaTypes, type HydratedDocument } from 'mongoose';
 
 import {
   GIG_STATUSES,
+  PAYOUT_SOURCES,
   type CheckinFlag,
   type GigPoint,
   type GigStatus,
+  type PayoutSource,
 } from '../gigs.domain';
 
 export interface GigRelease {
@@ -62,8 +64,14 @@ export class Gig {
   @Prop({ type: Number, default: 0 }) expected_farmers!: number;
   @Prop({ type: Number, required: true }) min_farmers!: number;
   @Prop({ type: Number, required: true }) photos_required!: number;
-  /** ₹, fixed once a partner holds the gig. */
-  @Prop({ type: Number, required: true }) payout!: number;
+  /**
+   * ₹, fixed once a partner holds the gig. `null` only while a cohort-paid
+   * gig is open: the taker's cohort rate is fixed at accept / assign.
+   */
+  @Prop({ type: Number, default: null }) payout!: number | null;
+  /** Rows from before 2026-10-16 have none: read as `gig` (`payoutSourceOf`). */
+  @Prop({ type: String, enum: PAYOUT_SOURCES, default: 'gig' })
+  payout_source?: PayoutSource;
   @Prop({ type: [String], default: [] }) products!: string[];
   /** Free lines shown to the partner, e.g. "2 testimonials". */
   @Prop({ type: [String], default: [] }) requirements!: string[];

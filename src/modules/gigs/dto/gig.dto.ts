@@ -250,13 +250,16 @@ export class UpdateGigDto {
 
   @ApiPropertyOptional({
     example: 250,
-    description: '₹. Default: settings `gig_payout`',
+    nullable: true,
+    type: Number,
+    description:
+      '₹. Left out or `null` = the taking partner’s earning-cohort meeting-gig payout (else settings `gig_payout`), fixed when they accept or HO assigns',
   })
-  @ValidateIf((_, v) => v !== undefined)
+  @ValidateIf((_, v) => v !== undefined && v !== null)
   @IsInt()
   @Min(0)
   @Max(100000)
-  payout?: number;
+  payout?: number | null;
 
   @ApiPropertyOptional({ example: ['Humic acid 98%'] })
   @ValidateIf((_, v) => v !== undefined)

@@ -36,6 +36,12 @@ export interface AgentProfile {
   details?: Record<string, unknown>;
 }
 
+/** The partner's earning cohort now — a copy of the open `vistaar_v2_earning_assignments` row. */
+export interface EarningCohortRef {
+  id: string;
+  since: Date;
+}
+
 /**
  * One Vistaar partner, from the moment an OTP is asked for. The record is
  * created at OTP send with `otp_verified: false`; the `VST-` id and the
@@ -89,6 +95,10 @@ export class Agent {
   @Prop({ type: SchemaTypes.Mixed, default: null })
   profile!: AgentProfile | null;
   @Prop({ type: SchemaTypes.Mixed, default: undefined }) location?: GeoPoint;
+
+  /** Written only by the earning module; absent until first assigned. */
+  @Prop({ type: SchemaTypes.Mixed, default: undefined })
+  earning_cohort?: EarningCohortRef | null;
 
   /** ₹ of delivered sales a month HO expects of this partner; `null` = the settings default. */
   @Prop({ type: Number, default: null }) monthly_target!: number | null;

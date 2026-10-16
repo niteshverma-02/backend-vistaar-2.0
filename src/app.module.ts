@@ -21,6 +21,7 @@ import { TestimonialsModule } from '@modules/testimonials/testimonials.module';
 import { CartModule } from '@modules/cart/cart.module';
 import { CommissionModule } from '@modules/commission/commission.module';
 import { DraftOrderModule } from '@modules/draft-order/draft-order.module';
+import { EarningModule } from '@modules/earning/earning.module';
 import { EventsModule } from '@modules/events/events.module';
 import { GigsModule } from '@modules/gigs/gigs.module';
 import { MeetingsModule } from '@modules/meetings/meetings.module';
@@ -34,6 +35,7 @@ import { OrdersModule } from '@modules/orders/orders.module';
 import { PartnerDeskModule } from '@modules/partner-desk/partner-desk.module';
 import { PaymentsModule } from '@modules/payments/payments.module';
 import { PerformanceModule } from '@modules/performance/performance.module';
+import { RewardsModule } from '@modules/rewards/rewards.module';
 import { SettingsModule } from '@modules/settings/settings.module';
 import { StoriesModule } from '@modules/stories/stories.module';
 import { TermsModule } from '@modules/terms/terms.module';
@@ -97,6 +99,8 @@ import { UploadsModule } from '@modules/uploads/uploads.module';
     DraftOrderModule,
     OrdersModule,
     CommissionModule,
+    EarningModule,
+    RewardsModule,
     PerformanceModule,
     BannersModule,
     TestimonialsModule,

@@ -11,6 +11,7 @@ import {
   type CustomerBusiness,
 } from '@modules/orders/services/order.service';
 import type { OrderStage } from '@modules/orders/orders.domain';
+import { EarningCohortsService } from '@modules/earning/services/earning-cohorts.service';
 import { SettingsService } from '@modules/settings/services/settings.service';
 
 import type {
@@ -113,6 +114,7 @@ export class CustomersService {
     private readonly orders: OrderService,
     private readonly settings: SettingsService,
     private readonly leads: LeadsService,
+    private readonly earning: EarningCohortsService,
   ) {}
 
   // ── HO ───────────────────────────────────────────────────────────────
@@ -228,7 +230,11 @@ export class CustomersService {
         },
         { stage: row.stage, customer_at: null },
       );
-      if (won) return { result: 'won', pii_id: row.pii_id };
+      if (won) {
+        // One open lead fewer, one customer more.
+        this.earning.recomputeLater([row.agent_id], 'holdings_changed');
+        return { result: 'won', pii_id: row.pii_id };
+      }
       // The partner moved the lead meanwhile: read it again.
     }
     throw serviceUnavailable(

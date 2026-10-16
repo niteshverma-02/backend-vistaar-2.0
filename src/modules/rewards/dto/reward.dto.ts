@@ -1,0 +1,130 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsIn,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+} from 'class-validator';
+
+import { PageQueryDto } from '@common/dto/page-query.dto';
+import {
+  EARNING_TRIGGERS,
+  REWARD_KINDS,
+  type EarningTrigger,
+  type RewardKind,
+} from '@modules/earning/earning.domain';
+
+import {
+  BULK_MAX,
+  REWARD_STATUSES,
+  type RewardStatus,
+} from '../rewards.domain';
+
+const trim = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim() : value;
+const upper = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.trim().toUpperCase() : value;
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+/** `lead_created:PII-1:coin`, `follow_up_done:PII-1:2026-10-16:gig`. */
+const REWARD_ID =
+  /^[a-z_]{1,20}:PII-[A-Z0-9-]{1,20}(:\d{4}-\d{2}-\d{2})?:[a-z]{1,10}$/i;
+
+/** The app's list: the partner's own rewards, newest first. */
+export class RewardsQueryDto extends PageQueryDto {
+  @ApiPropertyOptional({ enum: REWARD_KINDS })
+  @IsOptional()
+  @IsIn(REWARD_KINDS)
+  kind?: RewardKind;
+
+  @ApiPropertyOptional({ enum: REWARD_STATUSES })
+  @IsOptional()
+  @IsIn(REWARD_STATUSES)
+  status?: RewardStatus;
+}
+
+/** HO's queue and history. */
+export class AdminRewardsQueryDto extends RewardsQueryDto {
+  @ApiPropertyOptional({ enum: EARNING_TRIGGERS })
+  @IsOptional()
+  @IsIn(EARNING_TRIGGERS)
+  trigger?: EarningTrigger;
+
+  @ApiPropertyOptional({ example: 'VST-000006' })
+  @IsOptional()
+  @Transform(upper)
+  @Matches(/^VST-\d+$/, { message: 'agent_id is a VST- id.' })
+  agent_id?: string;
+
+  @ApiPropertyOptional({
+    example: '2026-10-01',
+    description: 'Earned on or after this IST day',
+  })
+  @IsOptional()
+  @Matches(DAY, { message: 'from is a YYYY-MM-DD day.' })
+  from?: string;
+
+  @ApiPropertyOptional({
+    example: '2026-10-31',
+    description: 'Earned on or before this IST day',
+  })
+  @IsOptional()
+  @Matches(DAY, { message: 'to is a YYYY-MM-DD day.' })
+  to?: string;
+}
+
+/** HO's cards: the same window as the list. */
+export class AdminRewardsSummaryQueryDto {
+  @ApiPropertyOptional({ example: '2026-10-01', description: 'IST day' })
+  @IsOptional()
+  @Matches(DAY, { message: 'from is a YYYY-MM-DD day.' })
+  from?: string;
+
+  @ApiPropertyOptional({ example: '2026-10-31', description: 'IST day' })
+  @IsOptional()
+  @Matches(DAY, { message: 'to is a YYYY-MM-DD day.' })
+  to?: string;
+}
+
+export class RewardParamDto {
+  @ApiProperty({ example: 'lead_created:PII-1620070:coin' })
+  @Matches(REWARD_ID, { message: 'This is not a reward id.' })
+  id!: string;
+}
+
+export class RejectRewardDto {
+  @ApiProperty({ example: 'Same farmer added twice under two numbers' })
+  @Transform(trim)
+  @IsString()
+  @IsNotEmpty({ message: 'Give a reason — the partner sees it.' })
+  @MaxLength(300)
+  reason!: string;
+}
+
+export class BulkRewardsDto {
+  @ApiProperty({
+    type: [String],
+    example: ['lead_created:PII-1620070:coin'],
+    description: `1–${BULK_MAX} reward ids; only pending ones change`,
+  })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(BULK_MAX)
+  @Matches(REWARD_ID, { each: true, message: 'This is not a reward id.' })
+  ids!: string[];
+}
+
+export class BulkRejectRewardsDto extends BulkRewardsDto {
+  @ApiProperty({ example: 'Follow-ups logged without a real call' })
+  @Transform(trim)
+  @IsString()
+  @IsNotEmpty({ message: 'Give a reason — the partner sees it.' })
+  @MaxLength(300)
+  reason!: string;
+}

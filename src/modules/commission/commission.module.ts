@@ -4,8 +4,10 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AccessModule } from '@modules/access/access.module';
 import { AgentsModule } from '@modules/agents/agents.module';
 import { CountersModule } from '@modules/counters/counters.module';
+import { EarningModule } from '@modules/earning/earning.module';
 import { GigsModule } from '@modules/gigs/gigs.module';
 import { OnboardingModule } from '@modules/onboarding/onboarding.module';
+import { RewardsModule } from '@modules/rewards/rewards.module';
 import { SettingsModule } from '@modules/settings/settings.module';
 import { SpineModule } from '@modules/spine/spine.module';
 import { UploadsModule } from '@modules/uploads/uploads.module';
@@ -47,8 +49,10 @@ import { WalletService } from './services/wallet.service';
     AccessModule,
     AgentsModule,
     CountersModule,
+    EarningModule,
     GigsModule,
     OnboardingModule,
+    RewardsModule,
     SettingsModule,
     SpineModule,
     UploadsModule,

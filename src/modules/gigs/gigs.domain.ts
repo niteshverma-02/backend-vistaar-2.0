@@ -45,6 +45,40 @@ export interface GigPoint {
   lng: number;
 }
 
+/**
+ * Whose pay a gig carries (user + TL, 2026-10-16): `gig` = HO set a payout on
+ * the gig; `cohort` = HO left it empty, so the partner who takes it earns
+ * their earning cohort's meeting-gig payout, fixed when they take it.
+ */
+export const PAYOUT_SOURCES = ['gig', 'cohort'] as const;
+export type PayoutSource = (typeof PAYOUT_SOURCES)[number];
+
+/** Gigs posted before payout sources carry HO's payout (settings' default copied at posting). */
+export const payoutSourceOf = (g: {
+  payout_source?: PayoutSource | null;
+}): PayoutSource => g.payout_source ?? 'gig';
+
+/** A cohort-paid gig's ₹ for one partner: their cohort's meeting-gig payout, else settings. */
+export const cohortPayout = (
+  cohortRate: number | null,
+  settingsRate: number,
+): number => cohortRate ?? settingsRate;
+
+/** What taking a gig (accept / HO assign) sets on its pay: a cohort-paid gig fixes the taker's rate. */
+export function payoutOnTake(
+  g: { payout_source?: PayoutSource | null },
+  takerRate: number,
+): { payout?: number } {
+  return payoutSourceOf(g) === 'cohort' ? { payout: takerRate } : {};
+}
+
+/** What giving a gig back (release / HO reopen) sets: a cohort-paid gig waits for the next taker's rate. */
+export function payoutOnRelease(g: { payout_source?: PayoutSource | null }): {
+  payout?: null;
+} {
+  return payoutSourceOf(g) === 'cohort' ? { payout: null } : {};
+}
+
 /** Defaults from settings, HO-changeable per gig (user's decision, 2026-10-15). */
 export interface GigRules {
   payout: number;

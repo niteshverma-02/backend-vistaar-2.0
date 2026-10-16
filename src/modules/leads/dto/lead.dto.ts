@@ -167,6 +167,47 @@ export class AddFarmerDto {
   @ValidateNested()
   @Type(() => LocationDto)
   location?: LocationDto;
+
+  /**
+   * Optional here only so a missing one answers `LEAD_OTP_REQUIRED` rather
+   * than a generic validation error — the service refuses a save without it.
+   */
+  @ApiProperty({
+    description:
+      'Required. From `POST /leads/otp/verify` for this mobile, within 15 minutes — else 400 LEAD_OTP_REQUIRED / LEAD_OTP_INVALID',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(400)
+  otp_token?: string;
+}
+
+/** Send the farmer an OTP before adding them (approved partners only). */
+export class LeadOtpSendDto {
+  @ApiProperty({ example: MOBILE_EXAMPLE, description: 'The farmer’s mobile' })
+  @IsString()
+  @MaxLength(20)
+  phone!: string;
+
+  @ApiPropertyOptional({
+    default: false,
+    description: 'The farmer did not get it: send again (same limits)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  resend?: boolean;
+}
+
+export class LeadOtpVerifyDto {
+  @ApiProperty({ example: MOBILE_EXAMPLE, description: 'The farmer’s mobile' })
+  @IsString()
+  @MaxLength(20)
+  phone!: string;
+
+  @ApiProperty({ example: '6942' })
+  @Transform(trim)
+  @Matches(/^\d{4,6}$/, { message: 'Please enter the OTP (4 to 6 digits).' })
+  otp!: string;
 }
 
 /**

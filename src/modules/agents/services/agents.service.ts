@@ -17,13 +17,20 @@ import {
   AgentRepository,
   type AgentListFilter,
   type AgentRecord,
+  type EarningPartnerRecord,
 } from '../repositories/agent.repository';
-import type { AgentPreview, AgentProfile } from '../schemas/agent.schema';
+import type {
+  AgentPreview,
+  AgentProfile,
+  EarningCohortRef,
+} from '../schemas/agent.schema';
 
 export type {
   AgentRecord,
   AgentListFilter,
+  EarningPartnerRecord,
 } from '../repositories/agent.repository';
+export type { EarningCohortRef } from '../schemas/agent.schema';
 
 /** A partner as a list row names them. */
 export interface PartnerCard {
@@ -173,6 +180,30 @@ export class AgentsService {
   /** Every approved partner with only the fields HO's board needs (newest approval first). */
   approvedBrief(): Promise<AgentRecord[]> {
     return this.agents.approvedBrief();
+  }
+
+  // ── Earning cohorts (written only by the earning module) ─────────────
+
+  /** A verified partner's place and current earning cohort; `null` = no such partner. */
+  earningPartner(agentId: string): Promise<EarningPartnerRecord | null> {
+    return this.agents.earningPartner(agentId.toUpperCase());
+  }
+
+  /** Every approved partner's place and current earning cohort. */
+  earningPartners(): Promise<EarningPartnerRecord[]> {
+    return this.agents.earningPartners();
+  }
+
+  setEarningCohorts(
+    rows: readonly { agent_id: string; cohort: EarningCohortRef }[],
+  ): Promise<void> {
+    return this.agents.setEarningCohorts(rows);
+  }
+
+  /** Earning cohort id → approved partners in it now. */
+  async earningCohortCounts(): Promise<Map<string, number>> {
+    const rows = await this.agents.countByEarningCohort();
+    return new Map(rows.map((r) => [r.id, r.count]));
   }
 
   /** Every verified partner's `VST-` id (ids only — ~15 bytes a partner). */

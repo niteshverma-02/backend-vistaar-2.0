@@ -20,42 +20,83 @@ withheld by email in `access.domain.ts`).
 
 ## 1. Commission plans
 
-A plan = one cohort's slabs **from a month on**, until that cohort's next plan. A cohort
-with no plan earns at the PRD's rates (shown as a draft). Past months are **locked** (they
-have been paid on): a change is made from this month or a later one.
+A plan = one cohort's rates **from a month on**, until that cohort's next plan. Past months
+are **locked** (they have been paid on): a change is made from this month or a later one.
+
+The cohort is either:
+
+- an **earning cohort** (`ec_…`, EARNINGS-HO.md) — **the one that matters from 2026-10-16**:
+  an order earns on the plan of the earning cohort the partner was in **when it was placed**,
+  for the month placed. An earning cohort with no plan saved by then earns `ec_default`'s;
+  with none saved there either, each partner keeps their partner-type plan — so nothing
+  changes until HO saves an earning plan. Save an `ec_default` plan to put everyone else on
+  one plan.
+- a **partner type** (onboarding cohort, `vistaar_agent` …) — its plan now sets only orders
+  placed **before** the partner's first earning cohort. With no plan it earns the PRD's
+  rates (shown as a draft).
+
+Rules in COMMISSION-LOGIC.md (*Earning cohorts*).
 
 | Method | Path | |
 |---|---|---|
 | GET | `/admin/commission-plans?cohort=&page=&limit=` | saved plans, by cohort, latest month first |
-| GET | `/admin/commission-plans/in-effect?month=2026-10` | each active cohort's slabs in a month (default this month), with `plan_id` (`null` = PRD default) |
+| GET | `/admin/commission-plans/in-effect?month=2026-10&scope=earning` | each active cohort's rates in a month (default this month): `scope=partner_type` (default) the partner types; `scope=earning` the earning cohorts in priority order, `ec_default` last. `plan_id` `null` = PRD default; `inherits` (below) |
 | GET | `/admin/commission-plans/:id` | one, with its change `history` |
 | POST | `/admin/commission-plans` | add |
 | PATCH | `/admin/commission-plans/:id` | change slabs / notes (this month or later) or sign off (`draft`, any plan) |
 | DELETE | `/admin/commission-plans/:id` | this month or later only; the cohort goes back to its earlier plan |
 
-`:id` = `<cohort>@<YYYY-MM>`, e.g. `vistaar_agent@2026-11`.
+`:id` = `<cohort>@<YYYY-MM>`, e.g. `ec_paddy_belt@2026-11`, `vistaar_agent@2026-11`.
 
 ```jsonc
-// POST body
+// POST body — slabs
 {
-  "cohort": "vistaar_agent",
+  "cohort": "ec_paddy_belt",              // an earning cohort id, or a partner-type key
   "effective_from": "2026-11",            // this month or later
+  "kind": "slabs",                        // optional, default "slabs"
   "slabs": [
     { "from": 0, "to": 50000, "rate": 5 },
     { "from": 50000, "to": 100000, "rate": 7 },
     { "from": 100000, "to": null, "rate": 10 }
   ],
+  "min_order_value": 2000,                // optional ₹ 1–10,00,000 or null; earning cohorts other than ec_default only
   "notes": ["The slab is decided by your delivered sales in the calendar month."],  // optional; shown in the app
   "draft": true                            // optional, default true; false = signed off (the app drops the "Draft" tag)
 }
+
+// POST body — fixed %
+{ "cohort": "ec_paddy_belt", "effective_from": "2026-11", "kind": "fixed", "rate": 8 }
 ```
 
-Slabs: 1–10, the first from ₹0, each starting where the last ends, the last `to: null`,
-rates 0–100 with ≤ 2 decimals. A plan answers with `id`, the fields above, `created_by`,
-`updated_by`, `history` (every earlier state, oldest first: `at`, `by`, `action: "created" | "updated"`,
-`slabs`, `notes`, `draft`) and
-the timestamps. **Editor:** a slab table per cohort + month picker + notes + "Signed off"
-toggle; show `in-effect` as "Current rates".
+| Field | Rule |
+|---|---|
+| `kind` | `slabs` (send `slabs`) or `fixed` (send `rate`) — the other one sent too is `400` |
+| `slabs` | 1–10, the first from ₹0, each starting where the last ends, the last `to: null`, rates 0–100 with ≤ 2 decimals. The slab is reached by the partner's whole delivered sales of the month |
+| `rate` | fixed only: 0–100, ≤ 2 decimals. Stored as one slab `{ from: 0, to: null, rate }`, so `slabs` always answers |
+| `min_order_value` | ₹ of base (after discount and coins, before GST) an order needs to earn on this plan; below it the order earns `ec_default`'s plan of that month. On `ec_default` or a partner type → `400` |
+
+A plan answers with `id`, the fields above (`kind` and `min_order_value` always present —
+`"slabs"` / `null` on plans saved before), `created_by`, `updated_by`, `history` (every
+earlier state, oldest first: `at`, `by`, `action: "created" | "updated"`, `kind`, `slabs`,
+`min_order_value`, `notes`, `draft`) and the timestamps.
+
+**PATCH:** any of `kind`, `slabs` / `rate`, `min_order_value` (`null` clears), `notes`,
+`draft`. Changing `kind` needs its terms in the same body (`{ "kind": "fixed", "rate": 8 }`);
+`rate` alone changes a fixed plan, `slabs` alone a slab plan.
+
+**In effect** rows: the plan fields + `cohort`, `label` (cohort name), `plan_id`,
+`effective_from`, and `inherits`:
+
+| `inherits` | Meaning | Show |
+|---|---|---|
+| `null` | the cohort's own plan | its rates |
+| `"ec_default"` | no plan of its own by that month: `ec_default`'s (`plan_id` is `ec_default@…`) | "As Everyone else" + the rates |
+| `"partner_type"` | no plan here or on `ec_default`: each partner earns their partner type's plan (`slabs: []`) | "Each partner's partner-type rates — save a plan to set one" |
+
+**Editor:** per earning cohort (Earnings → cohort → Commission tab): fixed / slabs switch,
+a rate or a slab table, optional minimum order value, month picker, notes, "Signed off"
+toggle; `in-effect?scope=earning` as "Current rates". Partner-type plans stay in their own
+(older) table.
 
 ## 2. Payouts
 
@@ -122,8 +163,8 @@ interface PartnerMonthRow {
   district: string | null; state: string | null;
   month: string;              // YYYY-MM
   sales: number;              // delivered sales before GST in the month
-  rate: number;               // slab % reached
-  commission: number;         // sales × rate
+  rate: number;               // slab % reached on the plan new orders earn on (headline)
+  commission: number;         // sales × rate — an estimate when orders earned on different plans
   orders_placed: number;      // in the month
   monthly_target: number; achieved_pct: number;   // pct ≤ 100
   earned: number;             // all-time confirmed + paid commission (+ approved gigs when gig pay is on)
@@ -171,7 +212,7 @@ partner's own screens (§5) are always current. Not paged — one row per approv
 
 | Method | Path | |
 |---|---|---|
-| GET | `/admin/commission/partners/:agentId?status=&page=&limit=` | `{ partner, summary, wallet, ledger }` — the app's summary, wallet and ledger for that partner; `summary` and `wallet` carry `gig_earned` (approved meeting gigs' pay inside `earned`, 0 while gig pay is off) |
+| GET | `/admin/commission/partners/:agentId?status=&page=&limit=` | `{ partner, summary, wallet, ledger }` — the app's summary, wallet and ledger for that partner; `summary` and `wallet` carry `gig_earned` (approved meeting gigs' pay and follow-up gig rewards inside `earned`, 0 while gig pay is off); each ledger row has `cohort_id`, `plan_id`, `below_min_order` (which earning cohort and plan it earned on) |
 | GET | `/admin/performance/:agentId?period=month\|3m\|fy` | their My Performance (MY-PERFORMANCE-APP.md) |
 | PUT | `/admin/performance/:agentId/target` | `{ "monthly_target": 150000 }` sets their own target; `null` puts them back on the default. Answers `{ agent_id, own_target }` |
 
@@ -196,8 +237,9 @@ Changing `return_window_days` moves the confirm date of orders not yet confirmed
 
 | Code | HTTP | When |
 |---|---|---|
-| `VALIDATION_FAILED` | 400 | bad slabs (the message says which), month, quarter, UTR, date |
-| `COHORT_NOT_FOUND` | 400 | plan for a cohort that does not exist |
+| `VALIDATION_FAILED` | 400 | bad slabs / rate for the kind, a minimum order value where it cannot apply (the message says which), month, quarter, UTR, date |
+| `COHORT_NOT_FOUND` | 400 | plan for a cohort that does not exist (partner type or earning cohort) |
+| `EARNING_ARCHIVED` | 409 | a new plan for an archived earning cohort |
 | `PLAN_EXISTS` | 409 | that cohort already has a plan from that month |
 | `PLAN_LOCKED` | 409 | slabs / notes / delete on a past month's plan; or a past `effective_from` |
 | `VERSION_CONFLICT` | 409 | PATCH / DELETE raced another change to the same plan at that moment — reload and retry. No version is sent: a change made after the editor opened is not detected |

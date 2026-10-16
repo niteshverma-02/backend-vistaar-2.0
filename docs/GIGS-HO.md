@@ -40,7 +40,7 @@ open → accepted → checked_in → submitted → approved | rejected
 | Action | From | Then |
 |---|---|---|
 | assign | `open` | `accepted` for that partner (`assigned_by` = HO email) |
-| reopen | `accepted`, `checked_in` | `open` for anyone; check-in, farmers and photos are cleared from the gig — **the photo files stay in the bucket** (audit); `releases[]` gets `{ agent_id, at, by: "ho" }` |
+| reopen | `accepted`, `checked_in` | `open` for anyone; check-in, farmers and photos are cleared from the gig — **the photo files stay in the bucket** (audit); `releases[]` gets `{ agent_id, at, by: "ho" }`; a cohort-paid gig's `payout` goes back to `null` (see *Pay*) |
 | cancel | anything not `approved` / `rejected` / `cancelled` | `cancelled`, final; the partner sees `cancel_reason` |
 | approve / reject | `submitted` | final; the partner sees `reject_reason`. A rejected gig cannot be sent again |
 
@@ -65,7 +65,7 @@ it — reload").
   "expected_farmers": 25,                        // optional, 0–300 (default 0)
   "min_farmers": 15,                             // optional, 1–300 — default settings gig_min_farmers
   "photos_required": 3,                          // optional, 0–6 — default settings gig_photos_required
-  "payout": 250,                                 // optional, ₹ 0–1,00,000 — default settings gig_payout
+  "payout": 250,                                 // optional, ₹ 0–1,00,000; left out or null = the taking partner's cohort rate (see Pay)
   "products": ["Humic acid 98%"],                // optional, ≤ 20, each ≤ 80
   "requirements": ["2 testimonials"],            // optional, ≤ 10, each ≤ 120 — shown to the partner
   "cohorts": ["vistaar_agent"]                   // optional — cohort keys; empty = every partner
@@ -80,12 +80,31 @@ it — reload").
   `venue`, `venue_point`; `null` on any other field is `400`. A new `starts_at` must be in the future. A gig a
   partner gave back (or HO reopened) is open again and can be edited, not deleted.
 
+## Pay (earning cohorts, 2026-10-16)
+
+| `payout` sent | `payout_source` | `payout` on the gig |
+|---|---|---|
+| a number (0–1,00,000) | `gig` | that ₹ — HO's payout wins, whoever takes it |
+| left out or `null` | `cohort` | `null` while open; when a partner accepts or HO assigns, fixed to **that partner's** earning cohort `meeting_gig_payout` (EARNINGS-HO.md), else settings `gig_payout` |
+
+- The fixed ₹ never changes while the partner holds the gig (a later cohort move or
+  settings change does not touch it). Release / reopen of a `cohort` gig sets `payout`
+  back to `null`, so the next taker gets their own rate.
+- `PATCH` with `payout: null` switches a gig to `cohort`; a number switches it to `gig`
+  (only while open and nobody holds it, as any edit).
+- Gigs posted before 2026-10-16 carry `payout_source: "gig"` (their payout was copied
+  from settings at posting).
+- Accept / assign is refused (`409 GIG_TAKEN` / `GIG_CLOSED`) if the payout was edited
+  between reading and taking — reload.
+- Lists and the calendar: show `payout: null` as "Partner's cohort rate"; `approved_payout`
+  in the summary counts fixed payouts only (every approved gig has one).
+
 ## `POST /admin/gigs/:id/assign`
 
 Open gigs that have not started. The partner must be approved and active and in the
 gig's cohorts (each `400 VALIDATION_FAILED`, the message says which). The state and the
 partner's other gigs that day are not checked. A partner who took it meanwhile →
-`409 GIG_TAKEN`.
+`409 GIG_TAKEN`. A cohort-paid gig fixes this partner's cohort rate (see *Pay*).
 
 ## Review — `GET /admin/gigs/:id`
 
@@ -110,7 +129,8 @@ partner's other gigs that day are not checked. A partner who took it meanwhile �
   "reject_reason": null, "cancelled_by": null, "cancel_reason": null,
   "accepted_at": "…", "assigned_by": null, "posted_by": "ho@…", "updated_by": "VST-000006"
   // + title, village, district, state, pincode, venue, starts_at, ends_at,
-  //   expected_farmers, min_farmers, photos_required, payout, products,
+  //   expected_farmers, min_farmers, photos_required, payout (null = cohort-paid,
+  //   not yet taken), payout_source ("gig" | "cohort"), products,
   //   requirements, cohorts, agent_id, created_at, updated_at
 }
 ```
@@ -152,12 +172,13 @@ gigs; `farmers` = attendees on every gig in the window.
 ## Settings
 
 In `GET /admin/settings` (`agents.read`) / `PUT /admin/settings` (`settings.write`).
-The first four are defaults for a **new** gig (each gig keeps its own copy); the
-radius is read at every check-in.
+`gig_min_farmers` and `gig_photos_required` are defaults for a **new** gig (each gig keeps
+its own copy); `gig_payout` is read when a cohort-paid gig is taken; the radius is read at
+every check-in.
 
 | Field | Default | Range | What |
 |---|---|---|---|
-| `gig_payout` | 250 | 0–1,00,000 | ₹ per gig |
+| `gig_payout` | 250 | 0–1,00,000 | ₹ per cohort-paid gig when the taker's earning cohort has no `meeting_gig_payout` (read when the gig is taken) |
 | `gig_min_farmers` | 15 | 1–300 | farmers needed to submit |
 | `gig_photos_required` | 3 | 0–6 | photos needed to submit |
 | `gig_checkin_radius_m` | 500 | 50–20,000 | check-in farther than this from `venue_point` is flagged `far` (m) |
@@ -185,7 +206,8 @@ back out of the wallet, also pay already withdrawn — keep it on once on.
 - **Calendar / list** — `GET /admin/gigs?from=&to=` by month, filters status, state,
   district, partner; a *Missed* badge from `missed`.
 - **Post / edit** — the `CreateGig` form with a map pin for `venue_point`; defaults
-  shown from settings; delete only for never-taken gigs, else cancel with a reason.
+  shown from settings; the payout field empty by default with the hint "Partner's
+  cohort rate"; delete only for never-taken gigs, else cancel with a reason.
 - **Review queue** — `status=submitted`; the drawer shows the map (venue pin +
   check-in point), flags, farmers with repeat-phone warnings, photos; approve / reject.
 - **Actions** — assign (partner picker), reopen, cancel.

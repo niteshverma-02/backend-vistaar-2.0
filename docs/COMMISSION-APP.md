@@ -2,7 +2,14 @@
 
 **Base URL:** `{API_BASE}/api/v2` · bearer = partner `access_token` (AUTH-APP.md).
 Everything is the logged-in partner's own; no partner id in any path. The rules behind
-every number are in COMMISSION-LOGIC.md. Replaces the app's seed `commissionPlans` /
+every number are in COMMISSION-LOGIC.md.
+
+> **Earning cohorts (2026-10-16).** An order now earns on the plan of the partner's
+> **earning cohort when it was placed** (`GET /me` → `earning_cohort`; EARNINGS-APP.md) — a
+> fixed % or slabs, maybe with a minimum order value below which the order earns the
+> default cohort's rate. "My plan" is `my_plan` in `GET /commission/plans` (new); each
+> ledger row says which cohort and plan it earned on. Orders placed before keep their
+> old rate. Replaces the app's seed `commissionPlans` /
 `monthlySales` and the phone-side commission (the backend works it out from the orders).
 
 Money: commission in whole ₹ (int); TDS and net to the paisa (`19.4`). Rates are % numbers
@@ -42,9 +49,9 @@ Refresh on app open, after an order, on pull-to-refresh.
   "month": "2026-10",
   "month_delivered_sales": 62000,          // base (before GST) delivered this month
   "monthly_target": 100000,
-  "current_rate": 7,                       // use for every "Earn ~₹X" (price ÷ (1+GST) × rate)
-  "next_slab": { "rate": 10, "gap": 38000 },   // null on the top slab
-  "month_commission_estimate": 4340,       // month_delivered_sales × current_rate ÷ 100
+  "current_rate": 7,                       // my plan now, at this month's slab — use for every "Earn ~₹X" (price ÷ (1+GST) × rate)
+  "next_slab": { "rate": 10, "gap": 38000 },   // null on the top slab (always null on a fixed plan)
+  "month_commission_estimate": 4340,       // Σ commission of this month's delivered orders, each at its own rate
   "totals": {
     "pending":   { "count": 3, "amount": 1520 },
     "confirmed": { "count": 2, "amount": 970 },   // amount = confirmed and not yet paid out
@@ -52,7 +59,7 @@ Refresh on app open, after an order, on pull-to-refresh.
     "reversed":  { "count": 1, "amount": 140 }
   },
   "earned": 7180,                          // confirmed + paid, all time (+ gig_earned)
-  "gig_earned": 0,                         // approved meeting gigs' pay inside earned; 0 while gig pay is off
+  "gig_earned": 0,                         // approved meeting gigs + follow-up gig rewards inside earned; 0 while gig pay is off
   "withdrawable": 970,                     // what Withdraw can ask for now
   "plan_draft": true                       // rates not signed off by HO → "Draft" tag
 }
@@ -72,6 +79,9 @@ Refresh on app open, after an order, on pull-to-refresh.
       "order_value": 11980,                // the base
       "order_status": "delivered",         // the order's stage (ORDERS-APP.md)
       "rate": 7, "amount": 838,
+      "cohort_id": "ec_paddy_belt",        // earning cohort when placed; null = before earning cohorts
+      "plan_id": "ec_paddy_belt@2026-10",  // the plan the rate came from; null = built-in rates
+      "below_min_order": false,            // true = under the cohort's minimum → earned the default cohort's rate
       "status": "confirmed",
       "paid_amount": 0,                    // covered by payouts so far
       "created_at": "…", "delivered_at": "…",
@@ -92,24 +102,44 @@ On every `OrderView` (`GET /orders`, `/orders/:id`), and the same fields on a le
 | Field | Rule |
 |---|---|
 | `base` | lines after discount and coins, before GST; no delivery |
-| `rate` | slab % of the month it was delivered in; this month's rate until then — so a pending amount can still move |
+| `rate` | the order's plan (its earning cohort when placed) at the slab of the month it was delivered in; this month's slab until then — so a pending amount can still move |
 | `amount` | round(base × rate ÷ 100) |
 | `status` | `pending` → `confirmed` at `confirms_at` → `paid`; `reversed` if cancelled / returned first |
 | `confirms_at` | delivery + 7 days; `null` until delivered |
 | `paid_at`, `withdrawal_id` | the payout that covered it |
 | `reversed_reason` | `cancelled` / `returned` |
 
-`commission: null` → hide it.
+`commission: null` → hide it. `cohort_id`, `plan_id`, `below_min_order` are on ledger rows
+only (not on `OrderView.commission`).
+
+**"Earn ~₹X" with a minimum:** when `my_plan.min_order_value` is set and the cart's base
+(price ÷ (1+GST), after discount) is below it, estimate with `my_plan.below_min_order`'s
+slabs instead of `current_rate`.
 
 ## `GET /commission/plans`
 
 ```jsonc
 {
-  "my_cohort": "vistaar_agent",
+  "my_cohort": "vistaar_agent",            // the partner type picked at signup
   "month": "2026-10",
-  "plans": [                               // every cohort (Compare cohorts); find mine by my_cohort
+  "my_plan": {                             // NEW — "My plan": what my new orders earn on now
+    "earning_cohort": { "id": "ec_paddy_belt", "name": "Paddy belt", "since": "…" },  // null before approval
+    "inherits": null,                      // null = the cohort's own plan · "ec_default" = the default cohort's · "partner_type" = my partner type's
+    "plan_id": "ec_paddy_belt@2026-10",    // null = built-in rates
+    "kind": "fixed",                       // fixed · slabs
+    "draft": false, "effective_from": "2026-10",
+    "slabs": [ { "from": 0, "to": null, "rate": 8 } ],   // fixed = one slab
+    "min_order_value": 2000,               // ₹ of base; null = none
+    "below_min_order": {                   // what an order under min_order_value earns on; null = no minimum
+      "kind": "slabs",
+      "slabs": [ { "from": 0, "to": 50000, "rate": 5 }, … ]
+    },
+    "notes": []
+  },
+  "plans": [                               // every partner type (Compare); they set only orders placed before my first earning cohort
     {
       "cohort": "vistaar_agent", "label": "Vistaar Agent",
+      "kind": "slabs",
       "draft": true, "effective_from": null,     // null = the PRD's rates (no HO plan yet)
       "slabs": [
         { "from": 0, "to": 50000, "rate": 5 },
@@ -126,6 +156,12 @@ On every `OrderView` (`GET /orders`, `/orders/:id`), and the same fields on a le
 ```
 
 Slab match: `from ≤ sales < to`.
+
+**App change:** "My plan" reads `my_plan` (not `plans` by `my_cohort`). Show a fixed plan as
+one "8 % on every order" line; show `min_order_value` as "Orders under ₹2,000 earn
+5–10 %" from `below_min_order`. `inherits: "partner_type"` = HO has not priced the cohort
+yet — the slabs shown are the partner type's. "Compare cohorts" (`plans`) now shows rates
+that apply only to orders placed before earning cohorts: hide it, or label it so.
 
 ## Wallet
 

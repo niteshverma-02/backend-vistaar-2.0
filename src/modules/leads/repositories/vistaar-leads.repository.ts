@@ -532,6 +532,34 @@ export class VistaarLeadsRepository {
     };
   }
 
+  /**
+   * What each partner holds now — open leads (not won, not lost) and
+   * customers (won) — for these partners, or every partner in one pass
+   * (`null`). A lapsed hold still counts: the farmer stays the partner's
+   * until another partner takes them over.
+   */
+  holdings(
+    agentIds: readonly string[] | null,
+  ): Promise<{ agent_id: string; open_leads: number; customers: number }[]> {
+    return this.model
+      .aggregate<{ agent_id: string; open_leads: number; customers: number }>([
+        ...(agentIds ? [{ $match: { agent_id: { $in: [...agentIds] } } }] : []),
+        {
+          $group: {
+            _id: '$agent_id',
+            open_leads: {
+              $sum: { $cond: [{ $in: ['$stage', CLOSED_STAGES] }, 0, 1] },
+            },
+            customers: {
+              $sum: { $cond: [{ $eq: ['$stage', 'won'] }, 1, 0] },
+            },
+          },
+        },
+        { $project: { _id: 0, agent_id: '$_id', open_leads: 1, customers: 1 } },
+      ])
+      .exec();
+  }
+
   /** HO's customer cards: won leads, ordered lately, won this month, top states. */
   /** Farmers and customers each partner holds — HO's board, in one pass. */
   async countsByPartner(): Promise<

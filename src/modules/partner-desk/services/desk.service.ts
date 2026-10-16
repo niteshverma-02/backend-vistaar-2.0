@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 
 import { badRequest } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
@@ -8,6 +8,8 @@ import {
   AgentsService,
   type AgentRecord,
 } from '@modules/agents/services/agents.service';
+import { EarningCohortsService } from '@modules/earning/services/earning-cohorts.service';
+import type { AssignmentReason } from '@modules/earning/earning.domain';
 import {
   OnboardingService,
   type DeskOnboardingView,
@@ -78,12 +80,15 @@ export interface DeskDetail {
  */
 @Injectable()
 export class DeskService {
+  private readonly logger = new Logger(DeskService.name);
+
   constructor(
     private readonly agents: AgentsService,
     private readonly onboarding: OnboardingService,
     private readonly access: AccessService,
     private readonly settings: SettingsService,
     private readonly network: NetworkRepository,
+    private readonly earning: EarningCohortsService,
   ) {}
 
   summary() {
@@ -279,8 +284,13 @@ export class DeskService {
     );
   }
 
-  approve(agentId: string, by: string) {
-    return this.withAgent(agentId, (a) => this.onboarding.approve(a, by));
+  /** The profile is mapped here, so the earning cohort is worked out here. */
+  async approve(agentId: string, by: string) {
+    const approved = await this.withAgent(agentId, (a) =>
+      this.onboarding.approve(a, by),
+    );
+    await this.placeInCohort(approved, 'partner_approved');
+    return approved;
   }
 
   reject(agentId: string, reason: string, by: string) {
@@ -295,8 +305,12 @@ export class DeskService {
     );
   }
 
-  unblock(agentId: string, reason: string | undefined, by: string) {
-    return this.withAgent(agentId, (a) => this.agents.unblock(a, by, reason));
+  async unblock(agentId: string, reason: string | undefined, by: string) {
+    const back = await this.withAgent(agentId, (a) =>
+      this.agents.unblock(a, by, reason),
+    );
+    await this.placeInCohort(back, 'partner_unblocked');
+    return back;
   }
 
   reopen(agentId: string, reason: string | undefined, by: string) {
@@ -320,6 +334,24 @@ export class DeskService {
     return this.withAgent(agentId, (a) =>
       this.agents.setOwner(a, ownerAgentId, by),
     );
+  }
+
+  /**
+   * Awaited so the partner's first order already finds a cohort; a failure
+   * does not undo the decision — the next lead or HO change places them.
+   */
+  private async placeInCohort(
+    agent: AgentRecord,
+    reason: AssignmentReason,
+  ): Promise<void> {
+    if (!agent.agent_id) return;
+    try {
+      await this.earning.recompute(agent.agent_id, reason);
+    } catch (error) {
+      this.logger.warn(
+        `Earning cohort of ${agent.agent_id} not set (${reason}): ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   private async withAgent<T>(

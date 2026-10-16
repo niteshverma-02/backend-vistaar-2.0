@@ -1,7 +1,9 @@
 import { addMonths, istMonthKey } from '@common/utils/ist-day.util';
+import type { EarningCohortsService } from '@modules/earning/services/earning-cohorts.service';
 import type { CohortsService } from '@modules/onboarding/services/cohorts.service';
 
 import { defaultPlan } from '../commission.domain';
+import type { CreatePlanDto } from '../dto/commission-plan.dto';
 import type {
   CommissionPlanRepository,
   PlanRecord,
@@ -21,6 +23,7 @@ function plan(cohort: string, month: string, rate = 6): PlanRecord {
     _id: `${cohort}@${month}`,
     cohort,
     effective_from: month,
+    // Saved before plan kinds: no `kind`, no `min_order_value`.
     slabs: [{ from: 0, to: null, rate }],
     notes: [],
     draft: false,
@@ -65,7 +68,12 @@ describe('CommissionPlansService', () => {
         { _id: 'consultant', label: { en: 'Consultant' } },
       ]),
     } as unknown as CohortsService;
-    service = new CommissionPlansService(repo, cohorts);
+    // Partner-type plans only here: the earning cohorts are never read.
+    service = new CommissionPlansService(
+      repo,
+      cohorts,
+      {} as EarningCohortsService,
+    );
   });
 
   it('uses the latest plan started by the month, else the PRD’s draft rates', async () => {
@@ -77,6 +85,8 @@ describe('CommissionPlansService', () => {
     });
     expect(consultant(THIS)).toMatchObject({
       plan_id: `consultant@${LAST}`,
+      kind: 'slabs',
+      min_order_value: null,
       slabs: [{ from: 0, to: null, rate: 4 }],
     });
     expect(consultant(addMonths(THIS, 5)).plan_id).toBe(`consultant@${NEXT}`);
@@ -166,6 +176,149 @@ describe('CommissionPlansService', () => {
     ).rejects.toMatchObject({
       status: 409,
       response: { error: 'VERSION_CONFLICT' },
+    });
+  });
+});
+
+describe('CommissionPlansService — earning cohorts', () => {
+  let rows: PlanRecord[];
+  let repo: jest.Mocked<CommissionPlanRepository>;
+  let service: CommissionPlansService;
+
+  beforeEach(() => {
+    rows = [];
+    repo = {
+      all: jest.fn(() => Promise.resolve(rows)),
+      findById: jest.fn((id: string) =>
+        Promise.resolve(rows.find((r) => r._id === id) ?? null),
+      ),
+      insert: jest.fn((row: PlanRecord) => {
+        rows.push({
+          ...row,
+          history: [],
+          created_at: new Date(),
+          updated_at: new Date(),
+        });
+        return Promise.resolve(true);
+      }),
+      update: jest.fn((id: string) =>
+        Promise.resolve(rows.find((r) => r._id === id) ?? null),
+      ),
+    } as unknown as jest.Mocked<CommissionPlanRepository>;
+    const earning = {
+      find: jest.fn((id: string) =>
+        Promise.resolve(
+          id === 'ec_missing'
+            ? null
+            : { _id: id, status: id === 'ec_gone' ? 'archived' : 'active' },
+        ),
+      ),
+      all: jest.fn().mockResolvedValue([
+        { _id: 'ec_paddy', name: 'Paddy belt', status: 'active' },
+        { _id: 'ec_cotton', name: 'Cotton', status: 'active' },
+        { _id: 'ec_gone', name: 'Old', status: 'archived' },
+        { _id: 'ec_default', name: 'Everyone else', status: 'active' },
+      ]),
+    } as unknown as EarningCohortsService;
+    service = new CommissionPlansService(
+      repo,
+      { require: jest.fn() } as unknown as CohortsService,
+      earning,
+    );
+  });
+
+  const create = (body: Partial<CreatePlanDto>) =>
+    service.create(
+      { cohort: 'ec_paddy', effective_from: NEXT, ...body },
+      'ho@k.com',
+    );
+
+  it('stores a fixed plan as one slab, with a minimum order value', async () => {
+    await create({ kind: 'fixed', rate: 8, min_order_value: 2_000 });
+    expect(repo.insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        _id: `ec_paddy@${NEXT}`,
+        kind: 'fixed',
+        slabs: [{ from: 0, to: null, rate: 8 }],
+        min_order_value: 2_000,
+      }),
+    );
+  });
+
+  it('refuses terms that do not fit the kind, and a minimum where it cannot apply', async () => {
+    const code = (p: Promise<unknown>) =>
+      p.then(
+        () => null,
+        (e: { response: { error: string } }) => e.response.error,
+      );
+    expect(await code(create({ kind: 'fixed', slabs: SLABS }))).toBe(
+      'VALIDATION_FAILED',
+    );
+    expect(await code(create({ rate: 8 }))).toBe('VALIDATION_FAILED');
+    expect(
+      await code(
+        create({
+          cohort: 'ec_default',
+          kind: 'fixed',
+          rate: 5,
+          min_order_value: 500,
+        }),
+      ),
+    ).toBe('VALIDATION_FAILED');
+    expect(
+      await code(
+        create({ cohort: 'consultant', slabs: SLABS, min_order_value: 500 }),
+      ),
+    ).toBe('VALIDATION_FAILED');
+    expect(await code(create({ cohort: 'ec_missing', slabs: SLABS }))).toBe(
+      'COHORT_NOT_FOUND',
+    );
+    expect(await code(create({ cohort: 'ec_gone', slabs: SLABS }))).toBe(
+      'EARNING_ARCHIVED',
+    );
+    expect(repo.insert).not.toHaveBeenCalled();
+  });
+
+  it('switches a plan to fixed only with its rate', async () => {
+    await create({ slabs: SLABS });
+    await expect(
+      service.update(`ec_paddy@${NEXT}`, { kind: 'fixed' }, 'ho@k.com'),
+    ).rejects.toMatchObject({ response: { error: 'VALIDATION_FAILED' } });
+    await service.update(
+      `ec_paddy@${NEXT}`,
+      { kind: 'fixed', rate: 9, min_order_value: null },
+      'ho@k.com',
+    );
+    const [, , set, before] = repo.update.mock.calls[0];
+    expect(set).toMatchObject({
+      kind: 'fixed',
+      slabs: [{ from: 0, to: null, rate: 9 }],
+      min_order_value: null,
+    });
+    expect(before).toMatchObject({ kind: 'slabs', slabs: SLABS });
+  });
+
+  it('shows each earning cohort’s rates and whose they inherit', async () => {
+    rows.push(
+      plan('ec_paddy', LAST, 8),
+      plan('ec_cotton', NEXT, 9), // not in effect yet
+    );
+    const none = await service.inEffect(THIS, 'earning');
+    expect(none.map((p) => [p.cohort, p.plan_id, p.inherits])).toEqual([
+      ['ec_paddy', `ec_paddy@${LAST}`, null],
+      ['ec_cotton', null, 'partner_type'],
+      ['ec_default', null, 'partner_type'],
+    ]);
+
+    rows.push(plan('ec_default', LAST, 5));
+    (service as unknown as { cached: null }).cached = null;
+    const withDefault = await service.inEffect(THIS, 'earning');
+    expect(withDefault[1]).toMatchObject({
+      cohort: 'ec_cotton',
+      label: 'Cotton',
+      plan_id: `ec_default@${LAST}`,
+      inherits: 'ec_default',
+      slabs: [{ from: 0, to: null, rate: 5 }],
     });
   });
 });

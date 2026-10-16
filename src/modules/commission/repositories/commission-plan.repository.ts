@@ -51,7 +51,9 @@ export class CommissionPlanRepository {
   update(
     id: string,
     seen: Date,
-    set: Partial<Pick<PlanRecord, 'slabs' | 'notes' | 'draft'>> & {
+    set: Partial<
+      Pick<PlanRecord, 'kind' | 'slabs' | 'min_order_value' | 'notes' | 'draft'>
+    > & {
       updated_by: string;
     },
     before: PlanChange,

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 
 import type { PartnerRef } from '@common/auth/current-partner.decorator';
 import {
@@ -21,6 +21,11 @@ import {
   type AgentRecord,
   type PartnerCard,
 } from '@modules/agents/services/agents.service';
+import {
+  EarningCohortsService,
+  type Holdings,
+} from '@modules/earning/services/earning-cohorts.service';
+import { RewardsService } from '@modules/rewards/services/rewards.service';
 import {
   SettingsService,
   type FarmerConsent,
@@ -81,6 +86,7 @@ import {
   type LeadView,
 } from '../lead-views';
 import type { HolderMove, LeadActivity } from '../schemas/vistaar-lead.schema';
+import { LeadOtpService } from './lead-otp.service';
 
 export type { LeadDetail, LeadView };
 
@@ -129,6 +135,8 @@ export type CheckStatus =
   | 'self';
 
 const COUNTRY_CODE = '+91';
+/** As sign-in: the app shows "resend" after this. */
+const RESEND_AFTER_SECONDS = 30;
 /** Tries before giving up on ids the shared counter hands out already taken. */
 const ID_TRIES = 3;
 
@@ -171,7 +179,7 @@ export interface FarmerCard {
  * directly as prasar does; the partner's side lives in `vistaar_v2_leads`.
  */
 @Injectable()
-export class LeadsService {
+export class LeadsService implements OnModuleInit {
   private readonly logger = new Logger(LeadsService.name);
 
   constructor(
@@ -182,7 +190,28 @@ export class LeadsService {
     private readonly pincodes: PincodeService,
     private readonly settings: SettingsService,
     private readonly access: AccessService,
+    private readonly earning: EarningCohortsService,
+    private readonly leadOtp: LeadOtpService,
+    private readonly rewards: RewardsService,
   ) {}
+
+  /** Earning cohorts match on what a partner holds; they read it through here. */
+  onModuleInit(): void {
+    this.earning.useHoldings((agentIds) => this.holdings(agentIds));
+  }
+
+  /** Open leads and customers per partner (`VST-` id), now. */
+  async holdings(
+    agentIds: readonly string[] | null,
+  ): Promise<Map<string, Holdings>> {
+    const rows = await this.rows.holdings(agentIds);
+    return new Map(
+      rows.map((r) => [
+        r.agent_id,
+        { open_leads: r.open_leads, customers: r.customers },
+      ]),
+    );
+  }
 
   /** Before saving: what adding this number would do. Writes nothing. */
   async check(
@@ -199,6 +228,27 @@ export class LeadsService {
 
   async consent(): Promise<FarmerConsent> {
     return (await this.settings.get()).farmer_consent;
+  }
+
+  /** The farmer's OTP, before adding them (mandatory, TL 2026-10-16). */
+  async sendFarmerOtp(
+    partner: PartnerRef,
+    rawPhone: string,
+    resend: boolean,
+  ): Promise<{ sent: true; resend_after_seconds: number }> {
+    await this.requireWorkingPartner(partner.agent_id);
+    await this.leadOtp.send(this.phoneOf(rawPhone), resend);
+    return { sent: true, resend_after_seconds: RESEND_AFTER_SECONDS };
+  }
+
+  /** A right OTP → the token `POST /leads` takes for this mobile, for 15 minutes. */
+  async verifyFarmerOtp(
+    partner: PartnerRef,
+    rawPhone: string,
+    otp: string,
+  ): Promise<{ otp_token: string; expires_at: Date }> {
+    await this.requireWorkingPartner(partner.agent_id);
+    return this.leadOtp.verify(partner.agent_id, this.phoneOf(rawPhone), otp);
   }
 
   /**
@@ -231,6 +281,8 @@ export class LeadsService {
       : null;
     const phone = this.phoneOf(dto.phone);
     const by = partner.agent_id;
+    // Before anything is looked up or written: the farmer's own OTP said yes.
+    const otpVerifiedAt = this.leadOtp.check(by, phone, dto.otp_token, now);
 
     const known = await this.piis.findIdByPhone(phone);
     if (known === partner.pii_id) throw selfLead();
@@ -279,6 +331,7 @@ export class LeadsService {
           activities: note,
           consent: { version: consent.version, at: now },
           ex_employee_declared_at: dto.ex_employee_declared ? now : null,
+          otp_verified_at: otpVerifiedAt,
         },
         $push: {
           holder_history: {
@@ -302,6 +355,7 @@ export class LeadsService {
         followUp,
         note,
         consentVersion: consent.version,
+        otpVerifiedAt,
         now,
       });
     }
@@ -325,6 +379,23 @@ export class LeadsService {
     if (row.agent_id === by && (await this.applySpot(piiId, by, spot))) {
       Object.assign(row, spot);
     }
+    // A farmer new to this partner (and gone from the one who let them go).
+    if (result !== 'updated') {
+      // First, so the reward is the cohort's at the moment of the event —
+      // the recompute below may move the partner on this very lead.
+      await this.rewards.leadCreated(by, {
+        pii_id: row.pii_id,
+        name: row.name,
+        crops: row.crops,
+        acreage: row.acreage,
+        district: row.district,
+        state: row.state,
+      });
+      this.earning.recomputeLater(
+        released ? [by, released.agent_id] : [by],
+        'holdings_changed',
+      );
+    }
     return { ...detailOf(row, await this.window()), result };
   }
 
@@ -340,6 +411,7 @@ export class LeadsService {
     followUp: Date | null;
     note: LeadActivity[];
     consentVersion: number;
+    otpVerifiedAt: Date;
     now: Date;
   }): Promise<SavedLead['result']> {
     const { found, piiId, by, origin, copy, dto, followUp, note, now } = input;
@@ -362,6 +434,7 @@ export class LeadsService {
           activities: note,
           consent,
           ex_employee_declared_at: dto.ex_employee_declared ? now : null,
+          otp_verified_at: input.otpVerifiedAt,
           customer_at: null,
           last_order_at: null,
           held_since: now,
@@ -383,6 +456,7 @@ export class LeadsService {
         ...(followUp && { next_follow_up: followUp }),
         consent,
         ...(dto.ex_employee_declared && { ex_employee_declared_at: now }),
+        otp_verified_at: input.otpVerifiedAt,
         last_worked_at: now,
       },
       ...(note.length && {
@@ -623,6 +697,10 @@ export class LeadsService {
         'This lead changed meanwhile — reload it.',
       );
     }
+    // Lost is not an open lead: moving in or out of it changes the count.
+    if (moving && (stage === 'lost' || row.stage === 'lost')) {
+      this.earning.recomputeLater([by], 'holdings_changed');
+    }
     // A farmer Vistaar created: the org's lead, contact and address follow.
     if (edit && saved.origin === 'created') {
       await this.writeOrgRecords(
@@ -661,6 +739,9 @@ export class LeadsService {
         'This lead changed meanwhile — reload it.',
       );
     }
+    // Its lead-added rewards still waiting for HO go with it.
+    await this.rewards.leadRemoved(row.agent_id, row.pii_id);
+    this.earning.recomputeLater([row.agent_id], 'holdings_changed');
     return { removed: true };
   }
 
@@ -724,6 +805,15 @@ export class LeadsService {
       },
     );
     if (!saved) throw notFound('Farmer not found.');
+    // Logging an activity never moves `next_follow_up`, so the row still
+    // holds the follow-up as it was due when the partner did this.
+    await this.rewards.followUpDone(
+      partner.agent_id,
+      { pii_id: saved.pii_id, name: saved.name },
+      saved.next_follow_up,
+      dto.type,
+      now,
+    );
     // At a farm visit the partner stands at the farm: the best fix there is.
     if (dto.type === 'visit' && dto.location) {
       const spot = await this.spotFrom(
@@ -973,6 +1063,7 @@ export class LeadsService {
         'This lead changed meanwhile — reload it and try again.',
       );
     }
+    this.earning.recomputeLater([row.agent_id, target], 'holdings_changed');
     return this.adminDetailOf(saved);
   }
 

@@ -10,7 +10,13 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBadRequestResponse,
+  ApiBearerAuth,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 
 import {
   CurrentPartner,
@@ -24,6 +30,8 @@ import {
   AddFarmerDto,
   CheckPhoneQueryDto,
   FarmerLeadQueryDto,
+  LeadOtpSendDto,
+  LeadOtpVerifyDto,
   PiiParamDto,
   UpdateLeadDto,
 } from '../dto/lead.dto';
@@ -34,6 +42,13 @@ import {
   type LeadView,
   type SavedLead,
 } from '../services/leads.service';
+
+/**
+ * Per partner (the tracker keys on the token), as sign-in's OTP routes: far
+ * above adding farmers by hand, low enough that no account becomes an SMS
+ * cannon. The OTP service adds its per-number limit on top.
+ */
+const OTP_LIMIT = { default: { limit: 20, ttl: 60_000 } };
 
 /** The partner's own farmers. Whose they are comes from the token only. */
 @ApiTags('app · leads')
@@ -71,11 +86,43 @@ export class LeadsController {
     return this.leads.summaryMine(partner);
   }
 
+  @Post('otp/send')
+  @HttpCode(HttpStatus.OK)
+  @Throttle(OTP_LIMIT)
+  @ApiOperation({
+    summary:
+      'Send the farmer an OTP before adding them (approved partners; 3 per mobile per 10 min, `resend` included)',
+  })
+  sendOtp(
+    @CurrentPartner() partner: PartnerRef,
+    @Body() dto: LeadOtpSendDto,
+  ): Promise<{ sent: true; resend_after_seconds: number }> {
+    return this.leads.sendFarmerOtp(partner, dto.phone, dto.resend ?? false);
+  }
+
+  @Post('otp/verify')
+  @HttpCode(HttpStatus.OK)
+  @Throttle(OTP_LIMIT)
+  @ApiOperation({
+    summary:
+      'Check the farmer’s OTP → `otp_token` for `POST /leads`, valid 15 minutes for this mobile and you only',
+  })
+  verifyOtp(
+    @CurrentPartner() partner: PartnerRef,
+    @Body() dto: LeadOtpVerifyDto,
+  ): Promise<{ otp_token: string; expires_at: Date }> {
+    return this.leads.verifyFarmerOtp(partner, dto.phone, dto.otp);
+  }
+
   @Post()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      'Add a farmer, or update one you hold (same mobile) — safe to retry',
+      'Add a farmer, or update one you hold (same mobile) — needs `otp_token`; safe to retry within its 15 minutes',
+  })
+  @ApiBadRequestResponse({
+    description:
+      '`LEAD_OTP_REQUIRED` (no otp_token) / `LEAD_OTP_INVALID` (not this mobile’s or yours, or expired — verify again)',
   })
   upsert(
     @CurrentPartner() partner: PartnerRef,
