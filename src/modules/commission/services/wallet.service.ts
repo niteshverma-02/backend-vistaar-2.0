@@ -169,9 +169,13 @@ export class WalletService {
   // ── the partner ──────────────────────────────────────────────────────
 
   async wallet(agentId: string): Promise<WalletView> {
-    const { partner, book, settings, withdrawals } =
-      await this.commission.bookOf(agentId, new Date(), true);
-    const facts = await this.payoutFactsOf(partner);
+    // The KYC facts need only the partner (cached), so they load beside the book.
+    const [{ partner, book, settings, withdrawals }, facts] = await Promise.all(
+      [
+        this.commission.bookOf(agentId, new Date(), true),
+        this.commission.partner(agentId).then((p) => this.payoutFactsOf(p)),
+      ],
+    );
     const open = withdrawals.find((w) => OPEN_STATUSES.includes(w.status));
     const blocked: WalletBlock | null =
       partner.stage !== 'approved' || !partner.is_active
@@ -329,7 +333,12 @@ export class WalletService {
   }
 
   async get(id: string): Promise<AdminWithdrawalView> {
-    const [view] = await this.adminViews([await this.require(id)]);
+    return this.viewOf(await this.require(id));
+  }
+
+  /** A row just written is already in hand: no second read of it. */
+  private async viewOf(w: WithdrawalRecord): Promise<AdminWithdrawalView> {
+    const [view] = await this.adminViews([w]);
     return view;
   }
 
@@ -374,7 +383,7 @@ export class WalletService {
     );
     if (!done) throw changed();
     this.moved(done);
-    return this.get(id);
+    return this.viewOf(done);
   }
 
   async reject(
@@ -393,7 +402,7 @@ export class WalletService {
       throw notInStatus('rejected', w.status);
     }
     this.moved(done);
-    return this.get(id);
+    return this.viewOf(done);
   }
 
   async pay(
@@ -412,7 +421,7 @@ export class WalletService {
       throw notInStatus('paid', w.status);
     }
     this.moved(done);
-    return this.get(id);
+    return this.viewOf(done);
   }
 
   /** The bank file's results, one UTR each; each line succeeds or fails on its own. */

@@ -206,7 +206,8 @@ describe('StoriesService.save', () => {
     const view = await service.save(AGENT, dto());
     expect(repo.upsert).toHaveBeenCalled();
     expect(stats.bump).toHaveBeenCalledWith(AGENT, expect.any(String), {
-      kind: 'saved',
+      saved: true,
+      share: undefined,
     });
     expect(view.image.url).toBe(`https://signed/${RENDER}`);
   });
@@ -215,10 +216,11 @@ describe('StoriesService.save', () => {
     const { service, stats, repo } = setup();
     const view = await service.save(AGENT, dto({ channel: 'status' }));
     expect(repo.recordShare).toHaveBeenCalled();
+    // Saved and shared in one call: one write on the day row.
+    expect(stats.bump).toHaveBeenCalledTimes(1);
     expect(stats.bump).toHaveBeenCalledWith(AGENT, expect.any(String), {
-      kind: 'share',
-      template: 'product',
-      channel: 'status',
+      saved: true,
+      share: { template: 'product', channel: 'status' },
     });
     expect(view.share_count).toBe(1);
   });

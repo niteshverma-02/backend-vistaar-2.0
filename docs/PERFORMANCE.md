@@ -89,6 +89,14 @@ examined). Cold first call for a partner: ~190 ms (beta, 28 ms away).
 | 14 | A partner's withdrawals cached 60 s for display, read fresh before money moves (wallet, request, approval), dropped on this server when one moves | `CommissionService.bookOf(…, fresh)` | Orders, commission, performance: one call fewer |
 | 15 | HO carts: ids of verified partners only, the page from `carts` on `_id`, full records for that page's partners only | `AdminCartService` | Was up to 5,000 full partner records per call, unverified first |
 | 16 | Paid batch: the UTR updates go out together, each still conditional | `WalletService.payBatch` | 200 lines ≈ one round trip, not 200 |
+| 17 | The 60 s list caches (banners, FAQs, T&C, info pages, story festivals / samples / designs / templates, `/stories/content`) moved to `TtlCache`: callers share one load in flight, and an HO edit made during a load is no longer overwritten by the stale rows | `TtlCache` in each service | No burst of identical reads when a cache expires under load |
+| 18 | HO story summary sums sharers, templates and channels inside Mongo (`$facet`) | `StoryStatRepository.totals` | Was one array of every sharer and day row in one document — past 16 MB it would fail |
+| 19 | A story saved and shared in one call counts both in one `$inc`; old files deleted in parallel | `StoriesService.save / dropFiles` | One write fewer per shared save |
+| 20 | Index tie-breaks: meetings and gigs sort `_id` the same way as `starts_at`; the library's newest sort ends `_id: -1`; matching indexes | meetings, gigs, testimonials schemas | Pages walk the index instead of sorting every match in memory |
+| 21 | `{ stage, created_at }` on `vistaar_v2_leads`; attendance `{ date }` listed for production | `VistaarLeadSchema`, `PROD-CHECKLIST.md` | HO customers count / summary no longer scan every lead |
+| 22 | Customer detail reads only that farmer's orders | `CustomersService.get` | Was the partner's whole order book |
+| 23 | Independent reads run together: wallet book + KYC facts, onboarding save's agent + form, refresh's login stamp + session, cart's partner + customer check (partner's refusal still wins) | `WalletService.wallet`, `OnboardingService.save`, `AuthService.refresh`, `CartService.canOrderFor` | One round trip fewer each |
+| 24 | Approve / reject / pay build the answer from the row just written | `WalletService.viewOf` | One read fewer each |
 
 ## 4. 🚧 Still to do (outside this code)
 

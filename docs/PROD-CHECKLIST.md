@@ -58,23 +58,25 @@ db.vistaar_v2_faqs.createIndex({ category: 1, order: 1 })
 db.vistaar_v2_faq_sections.createIndex({ is_active: 1, order: 1 })
 db.vistaar_v2_events.createIndex({ is_active: 1, starts_at: 1 })
 db.vistaar_v2_event_registrations.createIndex({ event_id: 1, created_at: 1 })
-db.vistaar_v2_meetings.createIndex({ agent_id: 1, starts_at: -1 })
-db.vistaar_v2_meetings.createIndex({ starts_at: -1 })
+db.vistaar_v2_meetings.createIndex({ agent_id: 1, starts_at: -1, _id: -1 })
+db.vistaar_v2_meetings.createIndex({ starts_at: -1, _id: -1 })
 db.vistaar_v2_gigs.createIndex({ status: 1, starts_at: 1 })
-db.vistaar_v2_gigs.createIndex({ agent_id: 1, starts_at: -1 })
+db.vistaar_v2_gigs.createIndex({ agent_id: 1, starts_at: -1, _id: -1 })
+db.vistaar_v2_gigs.createIndex({ starts_at: -1, _id: -1 })
 db.vistaar_v2_gigs.createIndex({ 'attendees.phone': 1, starts_at: -1 })
 db.vistaar_v2_leads.createIndex({ pii_id: 1 }, { unique: true })
 db.vistaar_v2_leads.createIndex({ agent_id: 1, created_at: -1 })
 db.vistaar_v2_leads.createIndex({ agent_id: 1, stage: 1 })
 db.vistaar_v2_leads.createIndex({ agent_id: 1, next_follow_up: 1 })
 db.vistaar_v2_leads.createIndex({ created_at: -1 })
+db.vistaar_v2_leads.createIndex({ stage: 1, created_at: -1 })
 db.vistaar_v2_leads.createIndex({ phone: 1 })
 db.vistaar_v2_testimonials.createIndex({ agent_id: 1, created_at: -1 })
-db.vistaar_v2_testimonials.createIndex({ status: 1, created_at: -1 })
-db.vistaar_v2_testimonials.createIndex({ status: 1, shares: -1 })
-db.vistaar_v2_testimonials.createIndex({ status: 1, bulk: 1, created_at: -1 })
-db.vistaar_v2_testimonials.createIndex({ status: 1, crop: 1, created_at: -1 })
-db.vistaar_v2_testimonials.createIndex({ status: 1, state: 1, district: 1, created_at: -1 })
+db.vistaar_v2_testimonials.createIndex({ status: 1, created_at: -1, _id: -1 })
+db.vistaar_v2_testimonials.createIndex({ status: 1, shares: -1, created_at: -1 })
+db.vistaar_v2_testimonials.createIndex({ status: 1, bulk: 1, created_at: -1, _id: -1 })
+db.vistaar_v2_testimonials.createIndex({ status: 1, crop: 1, created_at: -1, _id: -1 })
+db.vistaar_v2_testimonials.createIndex({ status: 1, state: 1, district: 1, created_at: -1, _id: -1 })
 db.vistaar_v2_testimonials.createIndex({ testimonial_id: 1 }, { partialFilterExpression: { testimonial_id: { $type: 'objectId' } } })
 db.vistaar_v2_testimonials.createIndex({ pii_id: 1 })
 db.vistaar_v2_testimonial_consents.createIndex({ pii_id: 1, given_at: -1 })
@@ -208,7 +210,7 @@ few thousand orders per partner; past that, ask Stockship for
 
 ## Attendance — before switching on
 
-- [ ] No index to build: `vistaar_v2_attendance` is read only by `_id`.
+- [ ] `db.vistaar_v2_attendance.createIndex({ date: 1 })` built — the partner's own day is read by `_id`, but HO's board and range views filter on `date`; without it they scan every partner × every day.
 - [ ] App build that calls `/attendance/*` (and sends GPS from `geolocator`) shipped.
 - [ ] Decided with product: auto-close of a missed punch-out, absent days, regularisation (not built — see `ATTENDANCE-APP.md`).
 

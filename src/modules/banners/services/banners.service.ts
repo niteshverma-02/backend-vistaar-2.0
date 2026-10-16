@@ -5,6 +5,7 @@ import { Injectable } from '@nestjs/common';
 import { badRequest, conflict, notFound } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
 import { imageInfo } from '@common/utils/image-size.util';
+import { TtlCache } from '@common/utils/ttl-cache';
 import { AgentsService } from '@modules/agents/services/agents.service';
 import type { Localized } from '@modules/onboarding/form.domain';
 import { CohortsService } from '@modules/onboarding/services/cohorts.service';
@@ -70,7 +71,7 @@ export class BannersService {
    * week. Each instance re-reads at most once a minute, so an HO edit shows
    * on other instances within that minute.
    */
-  private active: { at: number; rows: Banner[] } | null = null;
+  private readonly active = new TtlCache<Banner[]>(ACTIVE_TTL_MS, 1);
 
   constructor(
     private readonly banners: BannerRepository,
@@ -173,7 +174,7 @@ export class BannersService {
       created_by: by,
       updated_by: by,
     });
-    this.active = null;
+    this.active.delete('active');
     return toAdminView(saved, new Date());
   }
 
@@ -212,7 +213,7 @@ export class BannersService {
 
     const updated = await this.banners.update(id, set);
     if (!updated) throw notFound(BANNER_NOT_FOUND);
-    this.active = null;
+    this.active.delete('active');
     if (updated.image_path !== current.image_path) {
       await this.dropImage(current.image_path);
     }
@@ -234,25 +235,20 @@ export class BannersService {
       );
     }
     await this.banners.reorder(ids, by);
-    this.active = null;
+    this.active.delete('active');
     return { ids };
   }
 
   async remove(id: string): Promise<{ deleted: true }> {
     const current = await this.require(id);
     if (!(await this.banners.remove(id))) throw notFound(BANNER_NOT_FOUND);
-    this.active = null;
+    this.active.delete('active');
     await this.dropImage(current.image_path);
     return { deleted: true };
   }
 
   private async activeRows(): Promise<Banner[]> {
-    if (this.active && Date.now() - this.active.at < ACTIVE_TTL_MS) {
-      return this.active.rows;
-    }
-    const rows = await this.banners.listActive(new Date());
-    this.active = { at: Date.now(), rows };
-    return rows;
+    return this.active.get('active', () => this.banners.listActive(new Date()));
   }
 
   private async require(id: string): Promise<Banner> {

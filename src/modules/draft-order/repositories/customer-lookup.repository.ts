@@ -152,9 +152,11 @@ export class CustomerLookupRepository {
     }
 
     if (phone) {
-      const pii = await this.connection
-        .collection<PiiRow>('piis')
-        .findOne({ phone_number: phone }, { projection: { pii_id: 1 } });
+      const pii = await this.connection.collection<PiiRow>('piis').findOne(
+        { phone_number: phone },
+        // Oldest person first, as `piiIdsFor` and everywhere else.
+        { projection: { pii_id: 1 }, sort: { _id: 1 } },
+      );
       if (pii) return pii.pii_id;
     }
 

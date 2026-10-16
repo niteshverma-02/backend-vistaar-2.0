@@ -89,16 +89,28 @@ export const TestimonialSubmissionSchema = SchemaFactory.createForClass(
 // "My submissions", newest first.
 TestimonialSubmissionSchema.index({ agent_id: 1, created_at: -1 });
 // The library and the HO trays: by status, newest or most shared first.
-TestimonialSubmissionSchema.index({ status: 1, created_at: -1 });
-TestimonialSubmissionSchema.index({ status: 1, shares: -1 });
+// Each ends with the library's own tie-break, so a page never sorts in memory.
+TestimonialSubmissionSchema.index({ status: 1, created_at: -1, _id: -1 });
+TestimonialSubmissionSchema.index({ status: 1, shares: -1, created_at: -1 });
 // Library filters on an approved story's product, crop and place.
-TestimonialSubmissionSchema.index({ status: 1, bulk: 1, created_at: -1 });
-TestimonialSubmissionSchema.index({ status: 1, crop: 1, created_at: -1 });
+TestimonialSubmissionSchema.index({
+  status: 1,
+  bulk: 1,
+  created_at: -1,
+  _id: -1,
+});
+TestimonialSubmissionSchema.index({
+  status: 1,
+  crop: 1,
+  created_at: -1,
+  _id: -1,
+});
 TestimonialSubmissionSchema.index({
   status: 1,
   state: 1,
   district: 1,
   created_at: -1,
+  _id: -1,
 });
 // The HO desk's "is this shared row a partner's?" check.
 TestimonialSubmissionSchema.index(

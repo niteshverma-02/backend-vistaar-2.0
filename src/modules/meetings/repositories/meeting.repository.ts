@@ -74,7 +74,8 @@ export class MeetingRepository {
       this.model
         .find(query)
         .select(BRIEF)
-        .sort({ ...sort, _id: 1 })
+        // The tie-break runs the same way as the sort, so one index serves both.
+        .sort({ ...sort, _id: sort.starts_at ?? 1 })
         .skip(skip)
         .limit(limit)
         .lean<MeetingBrief[]>()

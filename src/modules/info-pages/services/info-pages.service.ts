@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { badRequest, conflict, notFound } from '@common/errors/api-error';
+import { TtlCache } from '@common/utils/ttl-cache';
 import { CohortsService } from '@modules/onboarding/services/cohorts.service';
 
 import {
@@ -34,10 +35,7 @@ const notPublished = (page: InfoPageKey) =>
 
 @Injectable()
 export class InfoPagesService {
-  private readonly cache = new Map<
-    InfoPageKey,
-    { at: number; value: InfoPage | null }
-  >();
+  private readonly cache = new TtlCache<InfoPage | null>(TTL_MS, 10);
 
   constructor(
     private readonly pages: InfoPageRepository,
@@ -133,12 +131,8 @@ export class InfoPagesService {
     }
   }
 
-  private async cached(page: InfoPageKey): Promise<InfoPage | null> {
-    const hit = this.cache.get(page);
-    if (hit && Date.now() - hit.at < TTL_MS) return hit.value;
-    const value = await this.pages.find(page);
-    this.cache.set(page, { at: Date.now(), value });
-    return value;
+  private cached(page: InfoPageKey): Promise<InfoPage | null> {
+    return this.cache.get(page, () => this.pages.find(page));
   }
 
   /** A switched-off cohort is fine: its partners still read the page. */

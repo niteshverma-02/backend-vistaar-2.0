@@ -5,6 +5,7 @@ import { mongo } from 'mongoose';
 
 import { conflict, notFound } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
+import { TtlCache } from '@common/utils/ttl-cache';
 
 import type {
   CreateStorySampleDto,
@@ -26,17 +27,12 @@ const isDuplicateKey = (error: unknown): boolean =>
 @Injectable()
 export class StorySamplesService {
   /** Each instance re-reads at most once a minute; an HO edit shows within that minute. */
-  private active: { at: number; rows: StorySample[] } | null = null;
+  private readonly active = new TtlCache<StorySample[]>(ACTIVE_TTL_MS, 1);
 
   constructor(private readonly samples: StorySampleRepository) {}
 
-  async live(): Promise<StorySample[]> {
-    if (this.active && Date.now() - this.active.at < ACTIVE_TTL_MS) {
-      return this.active.rows;
-    }
-    const rows = await this.samples.listActive();
-    this.active = { at: Date.now(), rows };
-    return rows;
+  live(): Promise<StorySample[]> {
+    return this.active.get('active', () => this.samples.listActive());
   }
 
   async list(query: StorySampleListQueryDto): Promise<PageResult<StorySample>> {
@@ -73,7 +69,7 @@ export class StorySamplesService {
         created_by: by,
         updated_by: by,
       });
-      this.active = null;
+      this.active.delete('active');
       return saved;
     } catch (error) {
       if (isDuplicateKey(error)) {
@@ -98,7 +94,7 @@ export class StorySamplesService {
       updated_by: by,
     });
     if (!updated) throw notFound(SAMPLE_NOT_FOUND);
-    this.active = null;
+    this.active.delete('active');
     return updated;
   }
 
@@ -106,7 +102,7 @@ export class StorySamplesService {
     if (!(await this.samples.remove(id))) {
       throw notFound(SAMPLE_NOT_FOUND);
     }
-    this.active = null;
+    this.active.delete('active');
     return { deleted: true };
   }
 }
