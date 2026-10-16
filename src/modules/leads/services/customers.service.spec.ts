@@ -4,6 +4,7 @@ import type {
   CustomerBusiness,
   OrderService,
 } from '@modules/orders/services/order.service';
+import type { EarningCohortsService } from '@modules/earning/services/earning-cohorts.service';
 import type { SettingsService } from '@modules/settings/services/settings.service';
 
 import {
@@ -111,13 +112,15 @@ function setup(opts: {
       customer_release_days: 45,
     }),
   };
+  const earning = { recomputeLater: jest.fn() };
   const service = new CustomersService(
     repo as unknown as VistaarLeadsRepository,
     orders as unknown as OrderService,
     settings as unknown as SettingsService,
     {} as LeadsService,
+    earning as unknown as EarningCohortsService,
   );
-  return { service, repo, orders };
+  return { service, repo, orders, earning };
 }
 
 async function codeOf(promise: Promise<unknown>): Promise<string> {
@@ -319,6 +322,7 @@ describe('CustomersService — HO', () => {
     orders as unknown as OrderService,
     {} as SettingsService,
     leads as unknown as LeadsService,
+    {} as EarningCohortsService,
   );
 
   it('lists won leads only, latest order first, with one business read for the page', async () => {

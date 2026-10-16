@@ -2,6 +2,7 @@ import type { HttpException } from '@nestjs/common';
 
 import type { AgentsService } from '@modules/agents/services/agents.service';
 import type { CountersService } from '@modules/counters/services/counters.service';
+import type { EarningCohortsService } from '@modules/earning/services/earning-cohorts.service';
 import type { SettingsService } from '@modules/settings/services/settings.service';
 import type { StorageService } from '@modules/uploads/services/storage.service';
 
@@ -91,15 +92,23 @@ function setup(row: Gig = gig(), agent: Record<string, unknown> = {}) {
     {
       sign: jest.fn().mockResolvedValue(new Map()),
     } as unknown as StorageService,
+    {
+      current: jest.fn().mockResolvedValue({
+        cohort: { _id: 'ec_paddy', meeting_gig_payout: 350 },
+        since: new Date(),
+      }),
+    } as unknown as EarningCohortsService,
   );
   return { service, repo };
 }
+
+type Transition = [string, Record<string, unknown>, { $set: Partial<Gig> }];
 
 const codeOf = (e: unknown) =>
   ((e as HttpException).getResponse() as { error: string }).error;
 
 describe('AdminGigsService', () => {
-  it('create takes payout, min farmers and photos from settings when not sent', async () => {
+  it('create takes min farmers and photos from settings when not sent', async () => {
     const { service, repo } = setup();
     const dto = {
       title: 'Paddy demo',
@@ -114,6 +123,7 @@ describe('AdminGigsService', () => {
     expect(repo.create).toHaveBeenCalledWith(
       expect.objectContaining({
         payout: 300,
+        payout_source: 'gig',
         min_farmers: 20,
         photos_required: 4,
         status: 'open',
@@ -171,5 +181,63 @@ describe('AdminGigsService', () => {
 
     expect(codeOf(error)).toBe('VALIDATION_FAILED');
     expect(repo.transition).not.toHaveBeenCalled();
+  });
+
+  it('create without a payout leaves it to the taker’s cohort', async () => {
+    const { service, repo } = setup();
+    await service.create(
+      {
+        title: 'Paddy demo',
+        village: 'Rampur',
+        starts_at: new Date(FUTURE).toISOString(),
+        ends_at: new Date(FUTURE + 3_600_000).toISOString(),
+      },
+      HO,
+    );
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ payout: null, payout_source: 'cohort' }),
+    );
+  });
+
+  it('an edit to `payout: null` hands the pay to the cohort', async () => {
+    const { service, repo } = setup();
+    repo.transition.mockResolvedValue(gig());
+    await service.update(ID, { payout: null }, HO);
+    const [, , update] = repo.transition.mock.calls[0] as Transition;
+    expect(update.$set).toMatchObject({
+      payout: null,
+      payout_source: 'cohort',
+    });
+  });
+
+  it('assign fixes the partner’s cohort rate on a cohort-paid gig', async () => {
+    const { service, repo } = setup(
+      gig({ payout: null, payout_source: 'cohort' }),
+    );
+    repo.transition.mockResolvedValue(
+      gig({ status: 'accepted', agent_id: 'VST-000006', payout: 350 }),
+    );
+    await service.assign(ID, { agent_id: 'VST-000006' }, HO);
+    const [, when, update] = repo.transition.mock.calls[0] as Transition;
+    expect(when).toMatchObject({ status: 'open', payout: null });
+    expect(update.$set).toMatchObject({ status: 'accepted', payout: 350 });
+  });
+
+  it('reopen clears a cohort rate, keeps a payout HO set', async () => {
+    const holder = { status: 'accepted' as const, agent_id: 'VST-000006' };
+    const cohortPaid = setup(
+      gig({ ...holder, payout: 350, payout_source: 'cohort' }),
+    );
+    cohortPaid.repo.transition.mockResolvedValue(gig());
+    await cohortPaid.service.reopen(ID, HO);
+    const [, , cleared] = cohortPaid.repo.transition.mock
+      .calls[0] as Transition;
+    expect(cleared.$set).toMatchObject({ status: 'open', payout: null });
+
+    const hoPaid = setup(gig(holder));
+    hoPaid.repo.transition.mockResolvedValue(gig());
+    await hoPaid.service.reopen(ID, HO);
+    const [, , kept] = hoPaid.repo.transition.mock.calls[0] as Transition;
+    expect(kept.$set).not.toHaveProperty('payout');
   });
 });

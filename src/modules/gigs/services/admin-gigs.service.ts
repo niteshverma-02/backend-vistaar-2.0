@@ -13,6 +13,7 @@ import {
 import { istDate } from '@modules/attendance/attendance.domain';
 import { AgentsService } from '@modules/agents/services/agents.service';
 import { CountersService } from '@modules/counters/services/counters.service';
+import { EarningCohortsService } from '@modules/earning/services/earning-cohorts.service';
 import { SettingsService } from '@modules/settings/services/settings.service';
 import { StorageService } from '@modules/uploads/services/storage.service';
 
@@ -22,7 +23,16 @@ import type {
   CreateGigDto,
   UpdateGigDto,
 } from '../dto/gig.dto';
-import { FINAL, HELD, REPEAT_PHONE_DAYS, isMissed } from '../gigs.domain';
+import {
+  FINAL,
+  HELD,
+  REPEAT_PHONE_DAYS,
+  cohortPayout,
+  isMissed,
+  payoutOnRelease,
+  payoutOnTake,
+  payoutSourceOf,
+} from '../gigs.domain';
 import {
   GigRepository,
   type GigFilter,
@@ -66,6 +76,7 @@ export class AdminGigsService {
     private readonly counters: CountersService,
     private readonly settings: SettingsService,
     private readonly storage: StorageService,
+    private readonly earning: EarningCohortsService,
   ) {}
 
   async list(query: AdminGigsQueryDto): Promise<PageResult<AdminGigRow>> {
@@ -83,6 +94,7 @@ export class AdminGigsService {
       rows.map(({ _id, ...r }) => ({
         id: _id,
         ...r,
+        payout_source: payoutSourceOf(r),
         partner_name: r.agent_id ? (names.get(r.agent_id)?.name ?? null) : null,
         missed: isMissed(r, now),
       })),
@@ -127,7 +139,10 @@ export class AdminGigsService {
       expected_farmers: dto.expected_farmers ?? 0,
       min_farmers: dto.min_farmers ?? rules.gig_min_farmers,
       photos_required: dto.photos_required ?? rules.gig_photos_required,
-      payout: dto.payout ?? rules.gig_payout,
+      // Left empty: the taker's earning-cohort rate, fixed when they take it.
+      payout: dto.payout ?? null,
+      payout_source:
+        dto.payout === undefined || dto.payout === null ? 'cohort' : 'gig',
       products: dto.products ?? [],
       requirements: dto.requirements ?? [],
       cohorts: [...new Set(dto.cohorts ?? [])],
@@ -164,7 +179,7 @@ export class AdminGigsService {
         'A partner holds this gig, or it is closed, so it can no longer be edited.',
       );
     }
-    const { starts_at, ends_at, venue_point, cohorts, ...rest } = dto;
+    const { starts_at, ends_at, venue_point, cohorts, payout, ...rest } = dto;
     // A validated DTO carries every declared field, `undefined` when not sent.
     const set: Partial<Gig> = {
       ...(Object.fromEntries(
@@ -189,6 +204,10 @@ export class AdminGigsService {
         : null;
     }
     if (cohorts !== undefined) set.cohorts = [...new Set(cohorts)];
+    if (payout !== undefined) {
+      set.payout = payout;
+      set.payout_source = payout === null ? 'cohort' : 'gig';
+    }
     return this.view(
       await this.move(id, { status: 'open', agent_id: null }, { $set: set }),
     );
@@ -231,15 +250,21 @@ export class AdminGigsService {
       );
     }
     const now = new Date();
+    const pay =
+      payoutSourceOf(gig) === 'cohort'
+        ? payoutOnTake(gig, await this.takerRate(dto.agent_id))
+        : {};
     const moved = await this.gigs.transition(
       id,
-      { status: 'open', agent_id: null },
+      // The pay as read: an edit meanwhile must not be overwritten.
+      { status: 'open', agent_id: null, payout: gig.payout },
       {
         $set: {
           status: 'accepted',
           agent_id: dto.agent_id,
           accepted_at: now,
           assigned_by: by,
+          ...pay,
           updated_by: by,
         },
       },
@@ -270,6 +295,7 @@ export class AdminGigsService {
             check_in: null,
             attendees: [],
             photos: [],
+            ...payoutOnRelease(gig),
             updated_by: by,
           },
           $push: {
@@ -326,6 +352,15 @@ export class AdminGigsService {
     );
   }
 
+  /** What a cohort-paid gig pays this partner: their cohort's rate, else settings. */
+  private async takerRate(agentId: string): Promise<number> {
+    const [{ cohort }, settings] = await Promise.all([
+      this.earning.current(agentId),
+      this.settings.get(),
+    ]);
+    return cohortPayout(cohort.meeting_gig_payout, settings.gig_payout);
+  }
+
   /** A transition that tells "gone" (404) from "moved meanwhile" (409). */
   private async move(
     id: string,
@@ -372,6 +407,7 @@ export class AdminGigsService {
     return {
       id: _id,
       ...rest,
+      payout_source: payoutSourceOf(gig),
       missed: isMissed(gig, new Date()),
       partner:
         agent && gig.agent_id

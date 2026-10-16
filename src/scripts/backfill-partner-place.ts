@@ -2,8 +2,9 @@
  * One-off: partners saved or approved before the onboarding form took state
  * and district from the pincode keep what was typed ("MADHYA", "madh"). This
  * puts the pincode's state and district (`pincode_map_v2`) on their `preview`
- * and, once approved, `profile`. Only `vistaar_v2_agents`; an unknown pincode
- * is left alone; running it again changes nothing.
+ * and, once approved, `profile`. Only `vistaar_v2_agents` (and, when it
+ * corrected anyone, the earning-cohort assignments that follow from the
+ * profile); an unknown pincode is left alone; running it again changes nothing.
  *
  *   node dist/scripts/backfill-partner-place.js            # dry run — writes nothing
  *   node dist/scripts/backfill-partner-place.js --apply    # corrects them
@@ -15,6 +16,7 @@ import {
   AgentsService,
   type AgentRecord,
 } from '../modules/agents/services/agents.service';
+import { EarningCohortsService } from '../modules/earning/services/earning-cohorts.service';
 import { PincodeService } from '../modules/spine/services/pincode.service';
 
 const PAGE = 200;
@@ -48,6 +50,13 @@ async function main(): Promise<void> {
       `${changed} partner(s) ${apply ? 'corrected' : 'to correct'}.` +
         (apply ? '' : ' Dry run — nothing written. Re-run with --apply.'),
     );
+    if (apply && changed > 0) {
+      // A corrected state / district can move partners to another earning cohort.
+      const moved = await app
+        .get(EarningCohortsService)
+        .recomputeAll('profile_changed');
+      log(`Earning cohorts: ${moved.changed} partner(s) moved.`);
+    }
   } finally {
     await app.close();
   }

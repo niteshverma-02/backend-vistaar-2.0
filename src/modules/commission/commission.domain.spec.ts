@@ -3,6 +3,7 @@ import {
   defaultPlan,
   lineBases,
   nextSlab,
+  planSlabs,
   quarterMonths,
   quarterOf,
   slabFor,
@@ -10,6 +11,8 @@ import {
   tdsOf,
   type BookContext,
   type OrderFact,
+  type PlanInEffect,
+  type SavedPlans,
 } from './commission.domain';
 
 const DAY = 24 * 3600 * 1000;
@@ -368,5 +371,160 @@ describe('TDS and quarters', () => {
     expect(quarterOf('2026-04')).toBe('FY2026-Q1');
     expect(quarterOf('2026-12')).toBe('FY2026-Q3');
     expect(quarterOf('2027-03')).toBe('FY2026-Q4');
+  });
+});
+
+describe('earning cohorts', () => {
+  // In ec_paddy from 10 Oct; OLD was placed before that, NEW after.
+  const stretches = [
+    { cohort_id: 'ec_paddy', from: new Date('2026-10-10T00:00:00Z') },
+  ];
+  const OLD = fact({ order_id: 'OLD', ...delivered(3) });
+  const NEW = fact({
+    order_id: 'NEW',
+    placed_at: new Date('2026-10-12T06:30:00Z'),
+    ...delivered(2),
+  });
+
+  const plan = (
+    cohort: string,
+    from: string,
+    terms: Partial<PlanInEffect> = {},
+  ): PlanInEffect => ({
+    cohort,
+    plan_id: `${cohort}@${from}`,
+    effective_from: from,
+    kind: 'slabs',
+    slabs: SLABS,
+    min_order_value: null,
+    notes: [],
+    draft: false,
+    ...terms,
+  });
+  const fixed = (rate: number) => ({
+    kind: 'fixed' as const,
+    slabs: [{ from: 0, to: null, rate }],
+  });
+  /** The latest saved plan of the cohort started by the month. */
+  const savedOf =
+    (...rows: PlanInEffect[]): SavedPlans =>
+    (cohort, month) =>
+      rows
+        .filter((r) => r.cohort === cohort && r.effective_from! <= month)
+        .sort((a, b) =>
+          b.effective_from!.localeCompare(a.effective_from!),
+        )[0] ?? null;
+  const book = (...saved: PlanInEffect[]) =>
+    buildBook(
+      [OLD, NEW],
+      ctx({ earning: { stretches, saved: savedOf(...saved) } }),
+    );
+  const row = (b: ReturnType<typeof book>, id: string) =>
+    b.rows.find((r) => r.order_id === id)!;
+
+  it('keeps the partner-type plan before the first earning cohort, and while no earning plan is saved', () => {
+    const b = book();
+    expect(row(b, 'OLD')).toMatchObject({
+      rate: 5,
+      cohort_id: null,
+      plan_id: null,
+    });
+    expect(row(b, 'NEW')).toMatchObject({
+      rate: 5,
+      cohort_id: 'ec_paddy',
+      plan_id: null,
+      below_min_order: false,
+    });
+    // No earning context at all: exactly the old book.
+    expect(buildBook([OLD, NEW], ctx()).rows.map((r) => r.amount)).toEqual(
+      b.rows.map((r) => r.amount),
+    );
+  });
+
+  it('earns the cohort’s plan of the month placed — fixed or slabs', () => {
+    const f = book(plan('ec_paddy', '2026-10', fixed(8)));
+    expect(row(f, 'NEW')).toMatchObject({
+      rate: 8,
+      amount: 800,
+      plan_id: 'ec_paddy@2026-10',
+    });
+    expect(row(f, 'OLD').rate).toBe(5);
+
+    // Slabs: 20,000 delivered in October → the first slab.
+    const slabs = book(
+      plan('ec_paddy', '2026-10', {
+        slabs: [
+          { from: 0, to: 75_000, rate: 6 },
+          { from: 75_000, to: null, rate: 9 },
+        ],
+      }),
+    );
+    expect(row(slabs, 'NEW').rate).toBe(6);
+
+    // A plan from November does not reach an order placed in October.
+    expect(row(book(plan('ec_paddy', '2026-11', fixed(12))), 'NEW').rate).toBe(
+      5,
+    );
+  });
+
+  it('pays an order below the minimum at the default cohort’s plan', () => {
+    const paddy = plan('ec_paddy', '2026-10', {
+      ...fixed(8),
+      min_order_value: 20_000,
+    });
+    expect(
+      row(book(paddy, plan('ec_default', '2026-10', fixed(4))), 'NEW'),
+    ).toMatchObject({
+      rate: 4,
+      cohort_id: 'ec_paddy',
+      plan_id: 'ec_default@2026-10',
+      below_min_order: true,
+    });
+    // No default plan saved: the partner-type plan.
+    expect(row(book(paddy), 'NEW')).toMatchObject({
+      rate: 5,
+      plan_id: null,
+      below_min_order: true,
+    });
+    // At the minimum: the cohort's own plan.
+    expect(
+      row(book({ ...paddy, min_order_value: 10_000 }), 'NEW'),
+    ).toMatchObject({ rate: 8, below_min_order: false });
+  });
+
+  it('gives a cohort with no plan of its own the default cohort’s', () => {
+    expect(
+      row(book(plan('ec_default', '2026-10', fixed(6))), 'NEW'),
+    ).toMatchObject({ rate: 6, plan_id: 'ec_default@2026-10' });
+  });
+
+  it('heads the month with the cohort now, and sums each order at its own rate', () => {
+    const b = book(plan('ec_paddy', '2026-10', fixed(8)));
+    expect(b.current).toMatchObject({
+      rate: 8,
+      sales: 20_000,
+      next_slab: null,
+      commission: 500 + 800,
+    });
+    // September ended before the first cohort: the partner-type plan.
+    expect(b.month('2026-09').rate).toBe(5);
+  });
+
+  it('builds a plan’s slabs from its kind', () => {
+    expect(planSlabs('fixed', { rate: 7.5 })).toEqual({
+      slabs: [{ from: 0, to: null, rate: 7.5 }],
+    });
+    expect(planSlabs('fixed', {})).toEqual({
+      error: expect.stringMatching(/needs its `rate`/) as unknown,
+    });
+    expect(planSlabs('fixed', { rate: 5, slabs: SLABS })).toHaveProperty(
+      'error',
+    );
+    expect(planSlabs('fixed', { rate: 7.555 })).toEqual({
+      error: expect.stringMatching(/^Use at most two decimals/) as unknown,
+    });
+    expect(planSlabs('slabs', { rate: 5 })).toHaveProperty('error');
+    expect(planSlabs('slabs', {})).toHaveProperty('error');
+    expect(planSlabs('slabs', { slabs: SLABS })).toEqual({ slabs: SLABS });
   });
 });

@@ -12,6 +12,10 @@
  * make — a follow-up already passed, a lead nobody worked for 16 days — are
  * then set on `vistaar_v2_leads`, only on a row this run created.
  *
+ * The farmer's OTP (mandatory on lead add) cannot be answered by a test
+ * farmer, so the run signs the token `POST /leads/otp/verify` would give —
+ * with this server's own secret, and never in production.
+ *
  * New farmers need an owner: one active Offline Head (USR-1037), or
  * `settings.lead_owner_agent_id`. Without one the run stops at the first new
  * farmer with LEADS_NOT_CONFIGURED.
@@ -31,6 +35,7 @@ import type {
   AddFarmerDto,
 } from '../modules/leads/dto/lead.dto';
 import type { LeadStage } from '../modules/leads/leads.domain';
+import { leadOtpKey, signLeadOtp } from '../modules/leads/lead-otp.domain';
 import { LeadsService } from '../modules/leads/services/leads.service';
 
 const BY = 'seed:test-leads';
@@ -346,6 +351,7 @@ async function main(): Promise<void> {
       partners.set(id, { agent_id: id, pii_id: agent.pii_id });
     }
     const { version } = await leads.consent();
+    const otpKey = leadOtpKey(env.get('VISTAAR_JWT_SECRET', { infer: true }));
 
     for (const f of FARMERS) {
       const partner = partners.get(f.partner) as PartnerRef;
@@ -362,6 +368,11 @@ async function main(): Promise<void> {
       const saved = await leads.upsert(partner, {
         ...f.farmer,
         consent_version: version,
+        otp_token: signLeadOtp(otpKey, {
+          agent_id: f.partner,
+          phone: f.farmer.phone,
+          verified_at: new Date(),
+        }).otp_token,
       });
       for (const move of f.moves ?? []) {
         await leads.update(

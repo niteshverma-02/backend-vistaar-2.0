@@ -4,6 +4,15 @@
 Only an **approved** partner can add farmers. Screens: Add lead, Leads (list / board), Lead
 detail, Home "follow-ups due" (PRD C2, C4, C9, H5).
 
+> ⚠️ **BREAKING — Updated 2026-10-16: the farmer's OTP is mandatory on every
+> `POST /leads`.** Add Lead gets a new step: `POST /leads/otp/send` → the farmer reads the
+> code → `POST /leads/otp/verify` → `otp_token`, sent with `POST /leads`. Without it the
+> save is `400 LEAD_OTP_REQUIRED`; a wrong / expired / other mobile's token is
+> `400 LEAD_OTP_INVALID`. An app build without this step **cannot add farmers** against
+> this backend. See *Farmer OTP* below. Also new: adding a farmer and logging a call /
+> visit / WhatsApp on a due follow-up can earn coin / gig rewards (EARNINGS-APP.md) —
+> the server makes them; nothing extra to send.
+>
 > **Updated 2026-10-14 (3) — where the farmer is.** `POST /leads`, `PATCH /leads/:piiId` and
 > `POST /leads/:piiId/activities` (a `visit`) take an optional `location` — the phone's GPS
 > then; every lead now has `location { lat, lng, exact, source, at }` (or `null`). It feeds
@@ -76,7 +85,9 @@ call or visit before <date> or another partner can take this farmer."
 |---|---|---|
 | GET | `/leads/consent` | `{ version, text: { en, hi } }` — show beside the consent tick, send `version` back |
 | GET | `/leads/check?phone=` | before saving: `{ status, pii_id }` (table below) — writes nothing |
-| POST | `/leads` | add a farmer, or update one you hold (same mobile) → the lead + `result` |
+| POST | `/leads/otp/send` | **new** — SMS the farmer an OTP `{ phone, resend? }` → `{ sent, resend_after_seconds }` |
+| POST | `/leads/otp/verify` | **new** — `{ phone, otp }` → `{ otp_token, expires_at }` (15 minutes) |
+| POST | `/leads` | add a farmer, or update one you hold (same mobile) → the lead + `result`; **needs `otp_token`** |
 | GET | `/leads?stage&due&q&page&limit` | my leads, **most urgent first** |
 | GET | `/leads/summary` | the Leads cards and Home "follow-ups due" |
 | GET | `/leads/:piiId` | one lead with `stage_history` and `activities` |
@@ -127,10 +138,44 @@ The Flutter `Lead` (`features/customers/domain/entities/lead.dart`) maps like th
 | `not_farmer` | registered as a retailer / business — save is refused |
 | `self` | your own number |
 
+## Farmer OTP — ⚠️ new mandatory step (2026-10-16)
+
+Every `POST /leads` needs proof that the farmer's mobile answered an OTP **just now, for
+you**. The Add Lead flow becomes:
+
+1. `GET /leads/check?phone=` — stop here on `other_partner`, `not_farmer` or `self`
+   (no SMS for a farmer you cannot add).
+2. `POST /leads/otp/send`
+
+   ```jsonc
+   { "phone": "9876543210", "resend": false }   // resend: true for "send again"
+   ```
+   → `200 { "sent": true, "resend_after_seconds": 30 }`. Approved partners only (`403
+   PARTNER_NOT_APPROVED` / `ACCOUNT_BLOCKED`). 3 sends (resends included) per mobile per
+   10 minutes → `429 OTP_LIMIT` (`details: ["retry_after_seconds=…"]`). `503
+   OTP_UNAVAILABLE`: the SMS service is down — try again.
+3. The farmer reads out the code. `POST /leads/otp/verify`
+
+   ```jsonc
+   { "phone": "9876543210", "otp": "6942" }
+   ```
+   → `200 { "otp_token": "eyJ2Ijox….Qm9…", "expires_at": "2026-10-16T05:45:00.000Z" }`.
+   Wrong / expired code → `401 OTP_INVALID`; 5 tries per mobile per 10 minutes → `429
+   OTP_LIMIT`.
+4. `POST /leads` with `"otp_token"` (below). The token is good for **15 minutes**, for
+   **this mobile** and **this partner** only; within that time a retry of the same save
+   (offline sync, a timeout) reuses it. After it, verify again.
+
+The farmer's OTP has its own limits — it never uses up the partner's sign-in tries. On
+beta, test farmer mobiles listed in `OTP_TEST_NUMBERS` take `OTP_TEST_CODE` and get no
+SMS, exactly as sign-in. The lead keeps when the mobile was verified
+(`otp_verified_at`, server side).
+
 ## `POST /leads`
 
 ```jsonc
 {
+  "otp_token": "eyJ2Ijox….Qm9…",     // required — from POST /leads/otp/verify, ≤ 15 min old
   "phone": "9876543210",            // required (+91 / spaces / dashes fine)
   "name": "Ramesh Patel",           // required
   "village": "Rampur",              // required
@@ -225,6 +270,10 @@ Only what is sent changes; `null` clears.
 With a `visit`, send `location` (the phone's GPS at the farm) — the best place for the
 farmer. `PATCH` takes `location` too ("set the farm here").
 Activities are a log: added and read, never edited or deleted.
+A call / visit / WhatsApp logged on a lead whose `next_follow_up` is due today (IST) or
+overdue completes that follow-up and can earn a reward (coin or gig ₹, by the
+partner's earning-cohort rules), once per due day (EARNINGS-APP.md). Logging does not move `next_follow_up` — set the next one with
+`PATCH`.
 
 ## `DELETE /leads/:piiId`
 
@@ -237,6 +286,11 @@ stay. A customer (`won`) cannot be removed — `409 STAGE_NOT_ALLOWED`.
 | Code | HTTP | Show |
 |---|---|---|
 | `VALIDATION_FAILED` | 400 | `details[0]` / `message` (missing crop, past follow-up, lost without reason, missing ex-employee declaration…) |
+| `LEAD_OTP_REQUIRED` | 400 | `POST /leads` without `otp_token` — run the farmer OTP step |
+| `LEAD_OTP_INVALID` | 400 | the token is expired, or for another mobile / partner — verify the farmer's OTP again (`details: ["reason=expired" \| "reason=mismatch" \| …]`) |
+| `OTP_INVALID` | 401 | `POST /leads/otp/verify`: wrong or expired code |
+| `OTP_LIMIT` | 429 | farmer OTP send / verify limit — wait `retry_after_seconds` |
+| `OTP_UNAVAILABLE` | 503 | the SMS service did not answer — try again |
 | `INVALID_PHONE` | 400 | not a 10-digit Indian mobile |
 | `SELF_LEAD` | 400 | your own number |
 | `FARMER_TAKEN` | 409 | another partner's farmer |

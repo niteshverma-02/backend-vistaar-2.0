@@ -86,7 +86,10 @@ export interface WalletView {
   withdrawable: number;
   /** Confirmed and paid commission, all time, with `gig_earned`. */
   earned: number;
-  /** Approved meeting gigs' pay inside `earned` (0 while gig pay is off). */
+  /**
+   * Approved gig pay inside `earned` — meeting gigs and follow-up gig
+   * rewards (0 while gig pay is off). Coins never enter the wallet.
+   */
   gig_earned: number;
   paid: number;
   /** Asked for, not yet paid. */

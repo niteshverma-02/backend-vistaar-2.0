@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { AccessModule } from '@modules/access/access.module';
 import { AgentsModule } from '@modules/agents/agents.module';
+import { EarningModule } from '@modules/earning/earning.module';
 import { OnboardingModule } from '@modules/onboarding/onboarding.module';
 import { SettingsModule } from '@modules/settings/settings.module';
 
@@ -11,7 +12,13 @@ import { DeskService } from './services/desk.service';
 
 /** HO portal's partner pipeline. Owns no collection; reads other apps' maps read-only. */
 @Module({
-  imports: [AccessModule, AgentsModule, OnboardingModule, SettingsModule],
+  imports: [
+    AccessModule,
+    AgentsModule,
+    EarningModule,
+    OnboardingModule,
+    SettingsModule,
+  ],
   controllers: [AdminAgentsController],
   providers: [DeskService, NetworkRepository],
 })

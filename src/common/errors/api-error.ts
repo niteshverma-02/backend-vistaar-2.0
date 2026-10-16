@@ -146,6 +146,18 @@ export const API_ERROR_CODES = [
   'WITHDRAWAL_OPEN',
   'BANK_NOT_VERIFIED',
   'WITHDRAWAL_CHANGED',
+  // Earning cohorts and rules. The built-in default cannot be archived or
+  // filtered (400); an archived cohort / rule cannot change (409); a reorder
+  // named a different set than now stands (409).
+  'EARNING_COHORT_LOCKED',
+  'EARNING_ARCHIVED',
+  'EARNING_ORDER_CHANGED',
+  // Farmer OTP on lead add (400): no token sent, or one that is not this
+  // partner's, not this phone's, or past its 15 minutes.
+  'LEAD_OTP_REQUIRED',
+  'LEAD_OTP_INVALID',
+  // Rewards: HO approves or rejects a pending reward only (409).
+  'REWARD_NOT_PENDING',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

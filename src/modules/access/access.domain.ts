@@ -97,6 +97,14 @@ export const CAPABILITIES = {
   'gigs.write': ['head'],
   /** Approve or reject a submitted gig — approval is what pays the partner. */
   'gigs.review': ['head'],
+  /** See earning cohorts, their coin / gig rules, and any partner's cohort and history. */
+  'earning.read': ['head'],
+  /** Add, edit, reorder and archive earning cohorts and rules — partners move at once. */
+  'earning.write': ['head'],
+  /** See every partner's coin and gig rewards and their totals. */
+  'rewards.read': ['head'],
+  /** Approve or reject rewards — approving a gig reward is what pays it. */
+  'rewards.review': ['head'],
 } as const satisfies Record<string, readonly Role[]>;
 
 export type Capability = keyof typeof CAPABILITIES;

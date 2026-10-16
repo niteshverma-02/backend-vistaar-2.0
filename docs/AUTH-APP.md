@@ -80,6 +80,7 @@ On `401` from any route: call `/auth/refresh` once; if that also fails, show the
   "onboarding": { "onboarding_id": "ffb3…", "cohort": "vistaar_agent", "completion_pct": 100,
                   "submitted_at": "2026-10-09T07:20:47.059Z", "fields_to_fix": 0 },
   "profile": null,                  // filled when approved
+  "earning_cohort": null,           // when approved: the earning cohort and its coin / gig rules (EARNINGS-APP.md)
   "member_since": "2026-10-09T07:20:45.600Z"
 }
 ```

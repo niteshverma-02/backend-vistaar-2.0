@@ -4,6 +4,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AccessModule } from '@modules/access/access.module';
 import { AgentsModule } from '@modules/agents/agents.module';
 import { CountersModule } from '@modules/counters/counters.module';
+import { EarningModule } from '@modules/earning/earning.module';
 import { SettingsModule } from '@modules/settings/settings.module';
 import { UploadsModule } from '@modules/uploads/uploads.module';
 
@@ -18,6 +19,7 @@ import { GigsService } from './services/gigs.service';
 /**
  * A leaf: it imports no leads, orders or commission module, so commission,
  * Today and My Story can import it (through `GigReadsService`) without a cycle.
+ * Earning is a leaf too (a cohort-paid gig reads the taker's earning cohort).
  */
 @Module({
   imports: [
@@ -25,6 +27,7 @@ import { GigsService } from './services/gigs.service';
     AccessModule,
     AgentsModule,
     CountersModule,
+    EarningModule,
     SettingsModule,
     UploadsModule,
   ],

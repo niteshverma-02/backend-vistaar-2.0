@@ -18,6 +18,7 @@ export interface GigBrief {
   venue: string | null;
   starts_at: Date;
   ends_at: Date;
+  /** Fixed: briefs are of gigs the partner holds. */
   payout: number;
   status: Gig['status'];
 }
@@ -47,7 +48,8 @@ const briefOf = (g: Gig): GigBrief => ({
   venue: g.venue,
   starts_at: g.starts_at,
   ends_at: g.ends_at,
-  payout: g.payout,
+  // A held gig always has its pay fixed (cohort pay is fixed at accept / assign).
+  payout: g.payout ?? 0,
   status: g.status,
 });
 
@@ -88,7 +90,8 @@ export class GigReadsService {
     const rows = await this.gigs.approvedFor(agentId);
     return rows.map((r) => ({
       id: r._id,
-      amount: r.payout,
+      // Approved means it was held, so its pay was fixed.
+      amount: r.payout ?? 0,
       approved_at: r.reviewed_at ?? new Date(0),
     }));
   }

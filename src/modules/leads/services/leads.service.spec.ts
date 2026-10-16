@@ -1,17 +1,25 @@
 import type { HttpException } from '@nestjs/common';
+import type { ConfigService } from '@nestjs/config';
+
+import type { Env } from '@config/env.schema';
 
 import type { AccessService } from '@modules/access/services/access.service';
 import type { AgentsService } from '@modules/agents/services/agents.service';
+import type { OtpService } from '@modules/auth/services/otp.service';
+import type { EarningCohortsService } from '@modules/earning/services/earning-cohorts.service';
 import type { SettingsService } from '@modules/settings/services/settings.service';
 import type { PiiService } from '@modules/spine/services/pii.service';
+import type { RewardsService } from '@modules/rewards/services/rewards.service';
 import type { PincodeService } from '@modules/spine/services/pincode.service';
 
 import { AdminLeadQueryDto, type AddFarmerDto } from '../dto/lead.dto';
+import { leadOtpKey, signLeadOtp } from '../lead-otp.domain';
 import type {
   InsertResult,
   OrgLeadsRepository,
 } from '../repositories/org-leads.repository';
 import type { VistaarLeadsRepository } from '../repositories/vistaar-leads.repository';
+import { LeadOtpService } from './lead-otp.service';
 import { LeadsService } from './leads.service';
 
 type Row = Record<string, unknown> & {
@@ -25,6 +33,14 @@ type Update = {
 };
 
 const ME = { agent_id: 'VST-000001', pii_id: 'PII-1' };
+const SECRET = 'a-test-secret-of-at-least-32-characters';
+/** The farmer's OTP checked for ME a moment ago, as `POST /leads/otp/verify` answers. */
+const otpTokenFor = (agentId: string, phone = '9876543210') =>
+  signLeadOtp(leadOtpKey(SECRET), {
+    agent_id: agentId,
+    phone,
+    verified_at: new Date(),
+  }).otp_token;
 const dto: AddFarmerDto = {
   phone: '+91 98765 43210',
   name: 'Ramesh Patel',
@@ -33,6 +49,7 @@ const dto: AddFarmerDto = {
   crops: ['Wheat'],
   acreage: 5,
   consent_version: 1,
+  otp_token: otpTokenFor(ME.agent_id),
 };
 
 const DAY = 86_400_000;
@@ -211,6 +228,22 @@ function setup(
     updateContact: jest.fn().mockResolvedValue(undefined),
   };
   const rows = fakeRows(opts.seed);
+  const earning = { recomputeLater: jest.fn(), useHoldings: jest.fn() };
+  const otp = {
+    send: jest.fn().mockResolvedValue(undefined),
+    verify: jest.fn().mockResolvedValue(undefined),
+  };
+  const leadOtp = new LeadOtpService(
+    otp as unknown as OtpService,
+    {
+      get: () => SECRET,
+    } as unknown as ConfigService<Env, true>,
+  );
+  const rewards = {
+    leadCreated: jest.fn().mockResolvedValue([]),
+    followUpDone: jest.fn().mockResolvedValue([]),
+    leadRemoved: jest.fn().mockResolvedValue(0),
+  };
   const service = new LeadsService(
     org as unknown as OrgLeadsRepository,
     rows as unknown as VistaarLeadsRepository,
@@ -219,8 +252,11 @@ function setup(
     pincodes as unknown as PincodeService,
     settings as unknown as SettingsService,
     access as unknown as AccessService,
+    earning as unknown as EarningCohortsService,
+    leadOtp,
+    rewards as unknown as RewardsService,
   );
-  return { service, org, rows, piis, pincodes };
+  return { service, org, rows, piis, pincodes, earning, otp, rewards, agents };
 }
 
 async function codeOf(promise: Promise<unknown>): Promise<string> {
@@ -255,8 +291,13 @@ const myRow = (extra: Partial<Row> = {}): Row => ({
 
 describe('LeadsService.upsert', () => {
   it('creates a new farmer: our row first, then the org lead, contact and address', async () => {
-    const { service, org, rows, piis } = setup();
+    const { service, org, rows, piis, earning } = setup();
     const saved = await service.upsert(ME, { ...dto, note: 'Needs fungicide' });
+    // One more open lead: the partner's earning cohort is looked at again.
+    expect(earning.recomputeLater).toHaveBeenCalledWith(
+      ['VST-000001'],
+      'holdings_changed',
+    );
 
     expect(piis.resolve).toHaveBeenCalledWith('9876543210', '+91');
     expect(rows.insert.mock.invocationCallOrder[0]).toBeLessThan(
@@ -309,7 +350,7 @@ describe('LeadsService.upsert', () => {
   });
 
   it("updates the partner's own farmer, and the org records Vistaar wrote", async () => {
-    const { service, org } = setup({
+    const { service, org, earning } = setup({
       known: 'PII-9',
       seed: [myRow()],
       lead: { lead_id: 'L-5', source: 'vistaar', created_by: ME.agent_id },
@@ -318,6 +359,7 @@ describe('LeadsService.upsert', () => {
     const saved = await service.upsert(ME, { ...dto, name: 'Ramesh Kumar' });
 
     expect(saved.result).toBe('updated');
+    expect(earning.recomputeLater).not.toHaveBeenCalled();
     expect(saved.name).toBe('Ramesh Kumar');
     expect(org.insertLead).not.toHaveBeenCalled();
     expect(org.updateLead).toHaveBeenCalledWith(
@@ -384,7 +426,7 @@ describe('LeadsService.update', () => {
   });
 
   it('needs a reason to lose a lead, then clears its follow-up', async () => {
-    const { service, rows } = setup({
+    const { service, rows, earning } = setup({
       seed: [myRow({ next_follow_up: new Date(future) })],
     });
     expect(await codeOf(service.update(ME, 'PII-9', { stage: 'lost' }))).toBe(
@@ -408,6 +450,11 @@ describe('LeadsService.update', () => {
       text: 'Marked lost — Price too high',
     });
     expect(rows.update.mock.calls.at(-1)?.[3]).toEqual({ stage: 'prospect' });
+    // A lost lead is no longer open.
+    expect(earning.recomputeLater).toHaveBeenCalledWith(
+      [ME.agent_id],
+      'holdings_changed',
+    );
   });
 
   it('reopens a lost lead and clears the reason', async () => {
@@ -478,7 +525,7 @@ describe('LeadsService — release and transfer', () => {
   const theirLead = { lead_id: 'L-5', source: 'vistaar', created_by: OTHER };
 
   it('takes over a farmer the other partner left unworked for 15 days', async () => {
-    const { service, org, rows } = setup({
+    const { service, org, rows, earning } = setup({
       known: 'PII-9',
       seed: [theirs({ last_worked_at: daysAgo(16), updated_at: daysAgo(16) })],
       lead: theirLead,
@@ -505,6 +552,11 @@ describe('LeadsService — release and transfer', () => {
     expect(org.insertLead).not.toHaveBeenCalled();
     expect(org.updateLead).not.toHaveBeenCalled();
     expect(org.updateContact).not.toHaveBeenCalled();
+    // Both partners' holdings changed.
+    expect(earning.recomputeLater).toHaveBeenCalledWith(
+      [ME.agent_id, OTHER],
+      'holdings_changed',
+    );
   });
 
   it('keeps a farmer worked within 15 days with their partner', async () => {
@@ -889,5 +941,122 @@ describe('LeadsService — HO list and map', () => {
       at: new Date('2026-10-01T00:00:00Z'),
     });
     expect((places.mock.calls[0] as [unknown, number])[1]).toBe(5_001);
+  });
+});
+
+describe('LeadsService — farmer OTP on lead add', () => {
+  it('refuses a save without the farmer’s OTP token, before anything is written', async () => {
+    const { service, rows, piis } = setup();
+    const { otp_token: _unused, ...bare } = dto;
+    expect(await codeOf(service.upsert(ME, bare))).toBe('LEAD_OTP_REQUIRED');
+    expect(piis.findIdByPhone).not.toHaveBeenCalled();
+    expect(piis.resolve).not.toHaveBeenCalled();
+    expect(rows.insert).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['another partner’s', otpTokenFor('VST-000002')],
+    ['another mobile’s', otpTokenFor(ME.agent_id, '9876500000')],
+    ['a forged', `${otpTokenFor(ME.agent_id).split('.')[0]}.AAAA`],
+  ])('refuses %s token', async (_label, token) => {
+    const { service, rows } = setup();
+    expect(await codeOf(service.upsert(ME, { ...dto, otp_token: token }))).toBe(
+      'LEAD_OTP_INVALID',
+    );
+    expect(rows.insert).not.toHaveBeenCalled();
+  });
+
+  it('refuses a token older than 15 minutes', async () => {
+    const { service } = setup();
+    const stale = signLeadOtp(leadOtpKey(SECRET), {
+      agent_id: ME.agent_id,
+      phone: '9876543210',
+      verified_at: new Date(Date.now() - 16 * 60_000),
+    }).otp_token;
+    expect(await codeOf(service.upsert(ME, { ...dto, otp_token: stale }))).toBe(
+      'LEAD_OTP_INVALID',
+    );
+  });
+
+  it('verifies through the lead scope and hands back a token the save takes; stores when', async () => {
+    const { service, otp, rows } = setup();
+    const { otp_token } = await service.verifyFarmerOtp(
+      ME,
+      '+91 98765 43210',
+      '1234',
+    );
+    expect(otp.verify).toHaveBeenCalledWith(
+      '9876543210',
+      '+91',
+      '1234',
+      'lead',
+    );
+    await service.upsert(ME, { ...dto, otp_token });
+    expect(rows.rows.get('PII-9')?.otp_verified_at).toBeInstanceOf(Date);
+  });
+
+  it('sends the farmer’s OTP for approved partners only', async () => {
+    const { service, otp } = setup();
+    expect(await service.sendFarmerOtp(ME, '9876543210', false)).toEqual({
+      sent: true,
+      resend_after_seconds: 30,
+    });
+    expect(otp.send).toHaveBeenCalledWith('9876543210', '+91', false, 'lead');
+
+    const pending = setup({ stage: 'kyc_pending' });
+    expect(
+      await codeOf(pending.service.sendFarmerOtp(ME, '9876543210', false)),
+    ).toBe('PARTNER_NOT_APPROVED');
+    expect(pending.otp.send).not.toHaveBeenCalled();
+  });
+});
+
+describe('LeadsService — rewards', () => {
+  it('rewards a new farmer with its facts, before the cohort is looked at again', async () => {
+    const { service, rewards, earning } = setup();
+    await service.upsert(ME, { ...dto, district: 'Sehore' });
+    expect(rewards.leadCreated).toHaveBeenCalledWith(ME.agent_id, {
+      pii_id: 'PII-9',
+      name: 'Ramesh Patel',
+      crops: ['Wheat'],
+      acreage: 5,
+      district: 'Sehore',
+      state: 'MADHYA PRADESH',
+    });
+    expect(rewards.leadCreated.mock.invocationCallOrder[0]).toBeLessThan(
+      earning.recomputeLater.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('does not reward the partner’s own farmer saved again', async () => {
+    const { service, rewards } = setup({
+      known: 'PII-9',
+      seed: [myRow()],
+      lead: { lead_id: 'L-5', source: 'vistaar', created_by: ME.agent_id },
+      contact: { profile: 'farmer', source: 'vistaar' },
+    });
+    expect((await service.upsert(ME, dto)).result).toBe('updated');
+    expect(rewards.leadCreated).not.toHaveBeenCalled();
+  });
+
+  it('passes the follow-up as it was due to the follow-up reward', async () => {
+    const due = daysAgo(2);
+    const { service, rewards } = setup({
+      seed: [myRow({ next_follow_up: due })],
+    });
+    await service.addActivity(ME, 'PII-9', { type: 'visit', text: 'At farm' });
+    expect(rewards.followUpDone).toHaveBeenCalledWith(
+      ME.agent_id,
+      expect.objectContaining({ pii_id: 'PII-9' }),
+      due,
+      'visit',
+      expect.any(Date),
+    );
+  });
+
+  it('closes the pending lead-added rewards of a removed lead', async () => {
+    const { service, rewards } = setup({ seed: [myRow()] });
+    await service.remove(ME, 'PII-9');
+    expect(rewards.leadRemoved).toHaveBeenCalledWith(ME.agent_id, 'PII-9');
   });
 });

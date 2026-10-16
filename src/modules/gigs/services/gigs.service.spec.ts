@@ -1,9 +1,11 @@
 import type { HttpException } from '@nestjs/common';
 
 import type { AgentsService } from '@modules/agents/services/agents.service';
+import type { EarningCohortsService } from '@modules/earning/services/earning-cohorts.service';
 import type { SettingsService } from '@modules/settings/services/settings.service';
 import type { StorageService } from '@modules/uploads/services/storage.service';
 
+import type { GigsQueryDto } from '../dto/gig.dto';
 import type { GigRepository } from '../repositories/gig.repository';
 import type { Gig, GigCheckin } from '../schemas/gig.schema';
 import type { GigReadsService } from './gig-reads.service';
@@ -54,11 +56,16 @@ function gig(overrides: Partial<Gig> = {}): Gig {
   };
 }
 
-function setup(row: Gig, moved: Gig | null = row) {
+function setup(
+  row: Gig,
+  moved: Gig | null = row,
+  cohortPayout: number | null = 300,
+) {
   const gigs = {
     find: jest.fn().mockResolvedValue(row),
     transition: jest.fn().mockResolvedValue(moved),
     heldBetween: jest.fn().mockResolvedValue(0),
+    openFrom: jest.fn().mockResolvedValue([row]),
   };
   const agents = {
     requireByAgentId: jest.fn().mockResolvedValue({
@@ -70,7 +77,15 @@ function setup(row: Gig, moved: Gig | null = row) {
     }),
   };
   const settings = {
-    get: jest.fn().mockResolvedValue({ gig_checkin_radius_m: 500 }),
+    get: jest
+      .fn()
+      .mockResolvedValue({ gig_checkin_radius_m: 500, gig_payout: 250 }),
+  };
+  const earning = {
+    current: jest.fn().mockResolvedValue({
+      cohort: { _id: 'ec_paddy', meeting_gig_payout: cohortPayout },
+      since: new Date(),
+    }),
   };
   const storage = {
     sign: jest.fn().mockResolvedValue(new Map()),
@@ -84,9 +99,12 @@ function setup(row: Gig, moved: Gig | null = row) {
     agents as unknown as AgentsService,
     settings as unknown as SettingsService,
     storage as unknown as StorageService,
+    earning as unknown as EarningCohortsService,
   );
-  return { service, gigs, storage };
+  return { service, gigs, storage, earning };
 }
+
+type Transition = [string, Record<string, unknown>, { $set: Partial<Gig> }];
 
 async function failure(
   call: Promise<unknown>,
@@ -166,5 +184,59 @@ describe('GigsService', () => {
       code: 'MEDIA_NOT_FOUND',
     });
     expect(storage.stat).not.toHaveBeenCalled();
+  });
+
+  describe('cohort pay (HO left the payout empty)', () => {
+    const open = () => gig({ payout: null, payout_source: 'cohort' });
+
+    it('accept fixes the taker’s cohort rate, only if the pay is still as read', async () => {
+      const { service, gigs } = setup(open(), held({ payout: 300 }));
+      await service.accept(AGENT, ID);
+      const [, when, update] = gigs.transition.mock.calls[0] as Transition;
+      expect(when).toMatchObject({ status: 'open', payout: null });
+      expect(update.$set).toMatchObject({ status: 'accepted', payout: 300 });
+    });
+
+    it('a cohort with no rate pays the settings payout', async () => {
+      const { service, gigs } = setup(open(), held(), null);
+      await service.accept(AGENT, ID);
+      const [, , update] = gigs.transition.mock.calls[0] as Transition;
+      expect(update.$set.payout).toBe(250);
+    });
+
+    it('a payout HO set wins: the cohort is not read', async () => {
+      const { service, gigs, earning } = setup(gig({ payout: 500 }), held());
+      await service.accept(AGENT, ID);
+      const [, when, update] = gigs.transition.mock.calls[0] as Transition;
+      expect(when).toMatchObject({ payout: 500 });
+      expect(update.$set).not.toHaveProperty('payout');
+      expect(earning.current).not.toHaveBeenCalled();
+    });
+
+    it('giving it back clears the fixed pay for the next taker', async () => {
+      const cohortHeld = held({ payout: 300, payout_source: 'cohort' });
+      const { service, gigs } = setup(cohortHeld);
+      await service.release(AGENT, ID);
+      const [, , update] = gigs.transition.mock.calls[0] as Transition;
+      expect(update.$set).toMatchObject({ status: 'open', payout: null });
+
+      const other = setup(held());
+      await other.service.release(AGENT, ID);
+      const [, , kept] = other.gigs.transition.mock.calls[0] as Transition;
+      expect(kept.$set).not.toHaveProperty('payout');
+    });
+
+    it('the Available tab shows each viewer their own pay', async () => {
+      const { service } = setup(open());
+      const page = await service.list(AGENT, {
+        tab: 'available',
+        skip: 0,
+        limit: 50,
+      } as GigsQueryDto);
+      expect(page.items[0]).toMatchObject({
+        payout: 300,
+        payout_source: 'cohort',
+      });
+    });
   });
 });

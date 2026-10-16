@@ -3,7 +3,10 @@ import { MongooseModule } from '@nestjs/mongoose';
 
 import { AccessModule } from '@modules/access/access.module';
 import { AgentsModule } from '@modules/agents/agents.module';
+import { AuthModule } from '@modules/auth/auth.module';
+import { EarningModule } from '@modules/earning/earning.module';
 import { OrdersModule } from '@modules/orders/orders.module';
+import { RewardsModule } from '@modules/rewards/rewards.module';
 import { SettingsModule } from '@modules/settings/settings.module';
 import { SpineModule } from '@modules/spine/spine.module';
 
@@ -25,6 +28,7 @@ import {
 } from './schemas/org-lead.schemas';
 import { VistaarLead, VistaarLeadSchema } from './schemas/vistaar-lead.schema';
 import { CustomersService } from './services/customers.service';
+import { LeadOtpService } from './services/lead-otp.service';
 import { LeadsService } from './services/leads.service';
 import { RadarService } from './services/radar.service';
 
@@ -43,7 +47,10 @@ import { RadarService } from './services/radar.service';
     ]),
     AccessModule,
     AgentsModule,
+    AuthModule,
+    EarningModule,
     OrdersModule,
+    RewardsModule,
     SettingsModule,
     SpineModule,
   ],
@@ -59,6 +66,7 @@ import { RadarService } from './services/radar.service';
     OrgLeadsRepository,
     VistaarLeadsRepository,
     LeadsService,
+    LeadOtpService,
     CustomersService,
     RadarService,
     KkdStoreRepository,

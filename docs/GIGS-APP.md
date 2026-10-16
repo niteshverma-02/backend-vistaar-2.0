@@ -31,9 +31,11 @@ No create, edit or delete: gigs are HO's.
 open → accepted → checked_in → submitted → approved | rejected
 ```
 
-- `open` → `accepted`: you accept it, or HO gives it to you.
+- `open` → `accepted`: you accept it, or HO gives it to you (a cohort-paid gig's pay is
+  fixed to your cohort's rate then).
 - `accepted` → `open`: you give it back (`release`), or HO reopens it (also from
-  `checked_in` — your check-in, farmers and photos are cleared).
+  `checked_in` — your check-in, farmers and photos are cleared; a cohort-paid gig's pay is
+  unfixed again).
 - `cancelled`: HO cancels any gig not yet approved or rejected; `cancel_reason` says why.
 - `approved`, `rejected` (with `reject_reason`) and `cancelled` are final. A rejected
   gig cannot be sent again.
@@ -155,11 +157,19 @@ submit nothing on the gig changes until HO decides.
 ## Pay
 
 - `payout` (₹) is per gig, fixed once you hold it, and **earned when HO approves**.
+- `payout_source: "cohort"` (new) = HO left the pay to your **earning cohort**: an open
+  gig shows **your** cohort's meeting-gig rate (another partner may see another amount),
+  fixed when you accept or HO gives it to you; give it back and it is no longer yours to
+  keep. `"gig"` = HO set the ₹ on the gig, the same for everyone. Show "Your rate" next to
+  a `cohort` payout on the Available tab.
 - It reaches the **wallet only when HO switches gig pay on** (`pay_enabled` in
   `GET /gigs/summary`). It is off until Finance confirms the TDS on gig pay. When on,
   approved gigs show in the wallet as `gig_earned` (`COMMISSION-APP.md`).
 - While `pay_enabled` is `false`, do not promise wallet money — show the payout as
   approved pay that will be added once gig pay starts.
+- Follow-up **gig rewards** (₹ for a call / visit / WhatsApp on a due follow-up) are not
+  gigs: they are listed in `GET /rewards` (`EARNINGS-APP.md`), and only add to the same
+  wallet `gig_earned`. `earned_this_month` here counts meeting gigs only.
 
 ## Shapes
 
@@ -179,7 +189,8 @@ submit nothing on the gig changes until HO decides.
   "expected_farmers": 25,
   "min_farmers": 15,
   "photos_required": 3,
-  "payout": 250,
+  "payout": 250,                  // on an open cohort-paid gig: what it pays you
+  "payout_source": "gig",         // gig · cohort (see Pay)
   "products": ["Humic acid 98%"],
   "requirements": ["2 testimonials"],
   "status": "accepted",
@@ -222,6 +233,8 @@ be signed) — reload the gig for fresh ones. Empty on a gig that is not yours.
 - **Read gigs from the API** — drop the mock / phone data. Tabs = `GET /gigs?tab=`;
   counts and pay = `GET /gigs/summary`.
 - Show accept's `warning` when it is not `null`.
+- **`payout_source`** (2026-10-16): on `cohort`, label the payout "Your rate" — it can
+  differ between partners until someone takes the gig (see *Pay*).
 - **Send the GPS fix at check-in** (`location`, `accuracy_m`); with no fix, check in
   without it. Never block check-in in the app either.
 - Farmers screen: `PUT …/attendees` with the whole list (name + mobile, village optional).

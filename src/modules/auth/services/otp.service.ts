@@ -14,6 +14,21 @@ const VERIFY_LIMIT = 5;
 const SUCCESS_MESSAGE = 'OTP verified successfully';
 
 /**
+ * Whose OTP it is: a partner signing in (`login`) or a farmer a partner adds
+ * (`lead`). Each keeps its own attempt counts, so a partner verifying farmers
+ * never uses up their own sign-in tries — the limits are the same.
+ */
+export type OtpScope = 'login' | 'lead';
+
+/** `send:<phone>` for sign-in, as it always was; `lead-send:<phone>` for a farmer. */
+export const attemptKey = (
+  scope: OtpScope,
+  kind: 'send' | 'verify',
+  phone: string,
+): string =>
+  scope === 'login' ? `${kind}:${phone}` : `${scope}-${kind}:${phone}`;
+
+/**
  * The OTP round trip through the company utilities service
  * (`utils.ko-tech.in`, MSG91 behind it). This service — never the app —
  * calls it, so "the phone is verified" is something we saw ourselves.
@@ -51,9 +66,10 @@ export class OtpService {
     phone: string,
     countryCode: string,
     resend: boolean,
+    scope: OtpScope = 'login',
   ): Promise<void> {
     const wait = await this.attempts.take(
-      `send:${phone}`,
+      attemptKey(scope, 'send', phone),
       SEND_LIMIT,
       TEN_MINUTES,
       new Date(),
@@ -83,9 +99,15 @@ export class OtpService {
   }
 
   /** Resolves on a correct OTP; throws `OTP_INVALID` (401) or `OTP_UNAVAILABLE` (503). */
-  async verify(phone: string, countryCode: string, otp: string): Promise<void> {
+  async verify(
+    phone: string,
+    countryCode: string,
+    otp: string,
+    scope: OtpScope = 'login',
+  ): Promise<void> {
+    const key = attemptKey(scope, 'verify', phone);
     const wait = await this.attempts.take(
-      `verify:${phone}`,
+      key,
       VERIFY_LIMIT,
       TEN_MINUTES,
       new Date(),
@@ -100,7 +122,7 @@ export class OtpService {
 
     if (this.isTestNumber(phone)) {
       if (this.testCode && otp === this.testCode)
-        return this.attempts.reset(`verify:${phone}`);
+        return this.attempts.reset(key);
       throw unauthorized(
         'OTP_INVALID',
         'The OTP is wrong. Please check it and try again.',
@@ -125,7 +147,7 @@ export class OtpService {
           `OTP verify passed on HTTP ${res.status} without an otp_verified flag: ${shapeOf(res.body)}`,
         );
       }
-      await this.attempts.reset(`verify:${phone}`);
+      await this.attempts.reset(key);
       return;
     }
     throw unauthorized(

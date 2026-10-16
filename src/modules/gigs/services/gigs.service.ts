@@ -11,6 +11,7 @@ import {
 import { PageResult } from '@common/http/page-result';
 import { normalizeMobile } from '@common/utils/phone.util';
 import { AgentsService } from '@modules/agents/services/agents.service';
+import { EarningCohortsService } from '@modules/earning/services/earning-cohorts.service';
 import { SettingsService } from '@modules/settings/services/settings.service';
 import { StorageService } from '@modules/uploads/services/storage.service';
 
@@ -26,13 +27,18 @@ import {
   FINAL,
   MAX_GIG_PHOTOS,
   checkinFlags,
+  cohortPayout,
   distanceKm,
   isMissed,
   istDayOf,
+  payoutOnRelease,
+  payoutOnTake,
+  payoutSourceOf,
   releaseError,
   submitProblems,
   type GigPoint,
   type GigStatus,
+  type PayoutSource,
 } from '../gigs.domain';
 import { GigRepository, type GigListRow } from '../repositories/gig.repository';
 import type { Gig, GigAttendee, GigCheckin } from '../schemas/gig.schema';
@@ -58,7 +64,10 @@ export interface GigView {
   expected_farmers: number;
   min_farmers: number;
   photos_required: number;
+  /** ₹ — on an open cohort-paid gig, what it would pay the viewer (their cohort's rate). */
   payout: number;
+  /** `cohort` = the pay is the taker's earning-cohort rate, fixed when they take it. */
+  payout_source: PayoutSource;
   products: string[];
   requirements: string[];
   status: GigStatus;
@@ -143,6 +152,7 @@ export class GigsService {
     private readonly agents: AgentsService,
     private readonly settings: SettingsService,
     private readonly storage: StorageService,
+    private readonly earning: EarningCohortsService,
   ) {}
 
   async list(
@@ -154,10 +164,13 @@ export class GigsService {
     const at = pointOf(agent);
     if (query.tab === 'available') {
       const rows = await this.available(agent, now);
+      const page = rows.slice(query.skip, query.skip + query.limit);
+      // Read the cohort only when a gig on this page pays by it.
+      const rate = page.some((g) => g.payout === null)
+        ? await this.takerRate(agentId)
+        : null;
       return new PageResult(
-        rows
-          .slice(query.skip, query.skip + query.limit)
-          .map((g) => viewOf(g, agentId, at, now)),
+        page.map((g) => viewOf(g, agentId, at, now, rate)),
         rows.length,
         query,
       );
@@ -205,7 +218,8 @@ export class GigsService {
     ) {
       throw notFound(NOT_FOUND);
     }
-    return this.detail(row, agentId, pointOf(agent));
+    const rate = row.payout === null ? await this.takerRate(agentId) : null;
+    return this.detail(row, agentId, pointOf(agent), rate);
   }
 
   async accept(
@@ -251,6 +265,7 @@ export class GigsService {
           agent_id: null,
           accepted_at: null,
           assigned_by: null,
+          ...payoutOnRelease(row),
           updated_by: agentId,
         },
         $push: { releases: { agent_id: agentId, at: now, by: 'partner' } },
@@ -472,15 +487,26 @@ export class GigsService {
   private async take(agentId: string, row: Gig, now: Date): Promise<Gig> {
     if (row.status !== 'open') throw taken(row);
     if (row.starts_at <= now) throw closed('This gig has already started.');
+    const pay =
+      payoutSourceOf(row) === 'cohort'
+        ? payoutOnTake(row, await this.takerRate(agentId))
+        : {};
     const saved = await this.gigs.transition(
       row._id,
-      { status: 'open', agent_id: null, starts_at: { $gt: now } },
+      // The pay as read: HO changing it meanwhile must not be overwritten.
+      {
+        status: 'open',
+        agent_id: null,
+        starts_at: { $gt: now },
+        payout: row.payout,
+      },
       {
         $set: {
           status: 'accepted',
           agent_id: agentId,
           accepted_at: now,
           assigned_by: null,
+          ...pay,
           updated_by: agentId,
         },
       },
@@ -512,12 +538,13 @@ export class GigsService {
     row: Gig,
     agentId: string,
     at: GigPoint | null,
+    rate: number | null = null,
   ): Promise<GigDetail> {
     const own = row.agent_id === agentId;
     const photos = own ? row.photos : [];
     const urls = await this.storage.sign(photos.map((p) => p.path));
     return {
-      ...viewOf(row, agentId, at, new Date()),
+      ...viewOf(row, agentId, at, new Date(), rate),
       attendees: own ? row.attendees : [],
       photos: photos.map((p) => ({
         id: p.id,
@@ -525,6 +552,15 @@ export class GigsService {
         at: p.at,
       })),
     };
+  }
+
+  /** What a cohort-paid gig pays this partner if they take it now. */
+  private async takerRate(agentId: string): Promise<number> {
+    const [{ cohort }, settings] = await Promise.all([
+      this.earning.current(agentId),
+      this.settings.get(),
+    ]);
+    return cohortPayout(cohort.meeting_gig_payout, settings.gig_payout);
   }
 
   /** Approved partners only, as for meetings. */
@@ -568,12 +604,16 @@ function pointOf(agent: AgentRecord): GigPoint | null {
   return c ? { lat: c[1], lng: c[0] } : null;
 }
 
-/** Proof and review fields only on the caller's own gig — never another partner's. */
+/**
+ * Proof and review fields only on the caller's own gig — never another
+ * partner's. `rate` = the viewer's cohort pay, shown on an open cohort-paid gig.
+ */
 function viewOf(
   g: ListedGig,
   agentId: string,
   at: GigPoint | null,
   now: Date,
+  rate: number | null = null,
 ): GigView {
   const own = g.agent_id === agentId;
   return {
@@ -589,7 +629,8 @@ function viewOf(
     expected_farmers: g.expected_farmers,
     min_farmers: g.min_farmers,
     photos_required: g.photos_required,
-    payout: g.payout,
+    payout: g.payout ?? rate ?? 0,
+    payout_source: payoutSourceOf(g),
     products: g.products,
     requirements: g.requirements,
     status: g.status,

@@ -23,5 +23,7 @@ import { OtpService } from './services/otp.service';
   ],
   controllers: [AuthController],
   providers: [AuthService, OtpService, SessionRepository, OtpAttemptRepository],
+  // Farmer OTP on lead add (leads module): the same SMS service and limits.
+  exports: [OtpService],
 })
 export class AuthModule {}

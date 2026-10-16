@@ -12,11 +12,17 @@ import {
   AgentsService,
   type AgentRecord,
 } from '@modules/agents/services/agents.service';
+import { DEFAULT_COHORT_ID } from '@modules/earning/earning.domain';
+import {
+  EarningCohortsService,
+  type EarningAssignmentRow,
+} from '@modules/earning/services/earning-cohorts.service';
 import {
   GigReadsService,
   type GigCredit,
 } from '@modules/gigs/services/gig-reads.service';
 import { OnboardingService } from '@modules/onboarding/services/onboarding.service';
+import { RewardsService } from '@modules/rewards/services/rewards.service';
 import {
   SettingsService,
   type SettingsRecord,
@@ -26,12 +32,15 @@ import { StorageService } from '@modules/uploads/services/storage.service';
 
 import {
   buildBook,
+  earningPlanIn,
   quarterMonths,
   UNKNOWN_GST_RATE,
   type Book,
   type CommissionStatus,
   type LedgerRow,
   type OrderFact,
+  type PlanInherit,
+  type PlanKind,
   type Slab,
   type StatusTotals,
 } from '../commission.domain';
@@ -91,6 +100,12 @@ export interface OrderCommission {
 export interface LedgerItem extends OrderCommission {
   id: string;
   order_id: string;
+  /** The earning cohort the partner was in when the order was placed; `null` = before their first (partner-type plan). */
+  cohort_id: string | null;
+  /** The saved plan the rate came from (`<cohort>@<YYYY-MM>`); `null` = the PRD's built-in rates. */
+  plan_id: string | null;
+  /** Below its cohort plan's minimum order value: earned the default cohort's plan. */
+  below_min_order: boolean;
   customer_id: string | null;
   customer_name: string;
   order_value: number;
@@ -117,12 +132,34 @@ export interface CommissionSummary {
   plan_draft: boolean;
 }
 
+/** The plan the partner's new orders earn on now. */
+export interface MyPlan {
+  /** `null` = not approved yet: the partner-type plan. */
+  earning_cohort: { id: string; name: string; since: Date } | null;
+  /** The cohort has no plan of its own: whose rates apply (`null` = its own). */
+  inherits: PlanInherit | null;
+  plan_id: string | null;
+  kind: PlanKind;
+  draft: boolean;
+  effective_from: string | null;
+  slabs: Slab[];
+  /** ₹ of base an order needs to earn on this plan; `null` = no minimum. */
+  min_order_value: number | null;
+  /** What an order below `min_order_value` earns on; `null` = no minimum. */
+  below_min_order: { kind: PlanKind; slabs: Slab[] } | null;
+  notes: string[];
+}
+
 export interface MyPlans {
+  /** The partner type picked at signup. */
   my_cohort: string;
   month: string;
+  my_plan: MyPlan;
+  /** Every partner type's plan (Compare); they set only orders placed before the partner's first earning cohort. */
   plans: {
     cohort: string;
     label: string;
+    kind: PlanKind;
     draft: boolean;
     effective_from: string | null;
     slabs: Slab[];
@@ -199,6 +236,15 @@ export class CommissionService {
     FACTS_TTL_MS,
     FACTS_MAX,
   );
+  /**
+   * The partner's earning-cohort stretches (a few rows), kept like the
+   * withdrawals: an order placed in the minute after a move may show the
+   * old cohort's rate until then; fresh before money moves.
+   */
+  private readonly stretchesOf = new TtlCache<EarningAssignmentRow[]>(
+    FACTS_TTL_MS,
+    FACTS_MAX,
+  );
 
   constructor(
     private readonly orders: CommissionOrderRepository,
@@ -211,6 +257,8 @@ export class CommissionService {
     private readonly products: ProductFactsService,
     private readonly storage: StorageService,
     private readonly gigs: GigReadsService,
+    private readonly earning: EarningCohortsService,
+    private readonly rewards: RewardsService,
   ) {}
 
   /**
@@ -237,36 +285,57 @@ export class CommissionService {
     if (fresh) {
       this.withdrawalsOf.delete(partner.agent_id);
       this.gigCreditsOf.delete(partner.agent_id);
+      this.stretchesOf.delete(partner.agent_id);
     }
     const id = partner.agent_id;
     const settingsRead = this.settings.get();
-    const [facts, withdrawals, terms, settings, catalogue, gigCredits] =
-      await Promise.all([
-        store
-          ? this.facts.get(id, () => this.orders.factsFor(id))
-          : (this.facts.peek(id) ?? this.orders.factsFor(id)),
-        store
-          ? this.withdrawalsOf.get(id, () => this.withdrawals.forAgent(id))
-          : (this.withdrawalsOf.peek(id) ?? this.withdrawals.forAgent(id)),
-        this.plans.termsFor(partner.cohort),
-        settingsRead,
-        this.products.facts(),
-        // Off until finance confirms the TDS section (user, 2026-10-15).
-        settingsRead.then(async (s): Promise<GigCredit[]> => {
-          if (!s.gig_pay_enabled) return [];
-          const credits = await (store
-            ? this.gigCreditsOf.get(id, () => this.gigs.creditsFor(id))
-            : (this.gigCreditsOf.peek(id) ?? this.gigs.creditsFor(id)));
-          // Counted from when pay was switched on at the earliest, so a
-          // payout made while it was off never moves off the orders it paid.
-          const since = s.gig_pay_enabled_at?.getTime() ?? 0;
-          return credits.map((c) =>
-            c.approved_at.getTime() >= since
-              ? c
-              : { ...c, approved_at: new Date(since) },
-          );
-        }),
-      ]);
+    const [
+      facts,
+      withdrawals,
+      terms,
+      settings,
+      catalogue,
+      gigCredits,
+      stretches,
+      saved,
+    ] = await Promise.all([
+      store
+        ? this.facts.get(id, () => this.orders.factsFor(id))
+        : (this.facts.peek(id) ?? this.orders.factsFor(id)),
+      store
+        ? this.withdrawalsOf.get(id, () => this.withdrawals.forAgent(id))
+        : (this.withdrawalsOf.peek(id) ?? this.withdrawals.forAgent(id)),
+      this.plans.termsFor(partner.cohort),
+      settingsRead,
+      this.products.facts(),
+      // Off until finance confirms the TDS section (user, 2026-10-15).
+      settingsRead.then(async (s): Promise<GigCredit[]> => {
+        if (!s.gig_pay_enabled) return [];
+        // Meeting gigs and approved follow-up gig rewards are paid alike; coins never are.
+        const load = async (): Promise<GigCredit[]> => {
+          const [meetings, rewards] = await Promise.all([
+            this.gigs.creditsFor(id),
+            this.rewards.gigCreditsFor(id),
+          ]);
+          return [...meetings, ...rewards];
+        };
+        const credits = await (store
+          ? this.gigCreditsOf.get(id, load)
+          : (this.gigCreditsOf.peek(id) ?? load()));
+        // Counted from when pay was switched on at the earliest, so a
+        // payout made while it was off never moves off the orders it paid.
+        const since = s.gig_pay_enabled_at?.getTime() ?? 0;
+        return credits.map((c) =>
+          c.approved_at.getTime() >= since
+            ? c
+            : { ...c, approved_at: new Date(since) },
+        );
+      }),
+      store
+        ? this.stretchesOf.get(id, () => this.earning.assignmentsOf([id]))
+        : (this.stretchesOf.peek(id) ?? this.earning.assignmentsOf([id])),
+      this.plans.saved(),
+    ]);
     const payouts = withdrawals
       .filter((w) => w.status === 'paid' && w.paid_at)
       .map((w) => ({ id: w._id, amount: w.amount, paid_at: w.paid_at! }))
@@ -280,6 +349,7 @@ export class CommissionService {
       selfPiiId: partner.pii_id,
       returnWindowDays: settings.return_window_days,
       planFor: terms,
+      earning: { stretches, saved },
       gstOf: (sku) => catalogue.get(sku)?.gst_rate ?? UNKNOWN_GST_RATE,
       payouts,
       open,
@@ -309,6 +379,7 @@ export class CommissionService {
     this.partners.delete(id);
     this.withdrawalsOf.delete(id);
     this.gigCreditsOf.delete(id);
+    this.stretchesOf.delete(id);
   }
 
   /** A withdrawal of theirs moved: their screens show it at once on this server. */
@@ -325,7 +396,8 @@ export class CommissionService {
       monthly_target: partner.monthly_target,
       current_rate: c.rate,
       next_slab: c.next_slab,
-      month_commission_estimate: Math.round((c.sales * c.rate) / 100),
+      // Each delivered order at its own rate: orders may earn on different plans.
+      month_commission_estimate: c.commission,
       totals: book.totals,
       earned: book.earned,
       gig_earned: book.gig_earned,
@@ -347,24 +419,61 @@ export class CommissionService {
     return Object.assign(page, { totals: book.totals });
   }
 
-  /** Every cohort's plan this month (the "Compare cohorts" section), and the partner's own. */
+  /**
+   * The plan the partner's new orders earn on now (their earning cohort's),
+   * and every partner type's plan this month (the "Compare cohorts" section).
+   */
   async plansFor(agentId: string): Promise<MyPlans> {
     const partner = await this.partner(agentId);
     const month = istMonthKey(new Date());
-    const [plans, settings] = await Promise.all([
+    const [plans, settings, current, saved, own] = await Promise.all([
       this.plans.inEffect(month),
       this.settings.get(),
+      // Places an approved partner never placed yet, as GET /me does.
+      this.earning.current(partner.agent_id),
+      this.plans.saved(),
+      this.plans.termsFor(partner.cohort),
     ]);
     if (!plans.some((p) => p.cohort === partner.cohort)) {
-      const own = (await this.plans.termsFor(partner.cohort))(month);
-      plans.unshift({ ...own, label: partner.cohort });
+      plans.unshift({ ...own(month), label: partner.cohort, inherits: null });
     }
+    const cohort = current.since ? current.cohort : null;
+    const plan = cohort ? earningPlanIn(cohort._id, month, saved) : null;
+    const terms = plan ?? own(month);
+    const below =
+      terms.min_order_value !== null
+        ? (earningPlanIn(DEFAULT_COHORT_ID, month, saved) ?? own(month))
+        : null;
     return {
       my_cohort: partner.cohort,
       month,
+      my_plan: {
+        earning_cohort:
+          cohort && current.since
+            ? { id: cohort._id, name: cohort.name, since: current.since }
+            : null,
+        inherits: !cohort
+          ? null
+          : !plan
+            ? 'partner_type'
+            : plan.cohort === cohort._id
+              ? null
+              : 'ec_default',
+        plan_id: terms.plan_id,
+        kind: terms.kind,
+        draft: terms.draft,
+        effective_from: terms.effective_from,
+        slabs: terms.slabs,
+        min_order_value: terms.min_order_value,
+        below_min_order: below
+          ? { kind: below.kind, slabs: below.slabs }
+          : null,
+        notes: terms.notes,
+      },
       plans: plans.map((p) => ({
         cohort: p.cohort,
         label: p.label,
+        kind: p.kind,
         draft: p.draft,
         effective_from: p.effective_from,
         slabs: p.slabs,
@@ -520,6 +629,9 @@ function itemOf(r: LedgerRow): LedgerItem {
   return {
     id: `cm-${r.order_id}`,
     order_id: r.order_id,
+    cohort_id: r.cohort_id,
+    plan_id: r.plan_id,
+    below_min_order: r.below_min_order,
     customer_id: r.pii_id,
     customer_name: r.customer_name,
     order_value: r.order_value,

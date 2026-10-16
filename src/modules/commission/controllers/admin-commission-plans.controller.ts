@@ -25,11 +25,15 @@ import {
 } from '../dto/commission-plan.dto';
 import {
   CommissionPlansService,
-  type PlanInEffect,
+  type PlanInEffectRow,
   type PlanView,
 } from '../services/commission-plans.service';
 
-/** Commission slabs per cohort, from a month on. Past months are locked: they have been paid on. */
+/**
+ * Commission slabs per cohort, from a month on — an earning cohort (`ec_…`)
+ * or a partner type (orders before the partner's first earning cohort).
+ * Past months are locked: they have been paid on.
+ */
 @ApiTags('admin · commission plans')
 @Controller('admin/commission-plans')
 export class AdminCommissionPlansController {
@@ -39,7 +43,7 @@ export class AdminCommissionPlansController {
   @Can('commission.read')
   @ApiOperation({
     summary:
-      'Every saved plan, by cohort, latest month first (cohorts without one earn at the PRD’s draft rates)',
+      'Every saved plan, by cohort, latest month first (an earning cohort without one earns the default cohort’s; a partner type, the PRD’s draft rates)',
   })
   list(@Query() query: PlanListQueryDto): Promise<PageResult<PlanView>> {
     return this.plans.list(query);
@@ -49,12 +53,13 @@ export class AdminCommissionPlansController {
   @Can('commission.read')
   @ApiOperation({
     summary:
-      'Each active cohort’s slabs in a month (default this month), and the plan they come from',
+      'Each active partner type’s — or with scope=earning, earning cohort’s — slabs in a month (default this month), the plan they come from, and whose rates an earning cohort without a plan inherits',
   })
-  inEffect(
-    @Query() query: PlanInEffectQueryDto,
-  ): Promise<(PlanInEffect & { label: string })[]> {
-    return this.plans.inEffect(query.month ?? istMonthKey(new Date()));
+  inEffect(@Query() query: PlanInEffectQueryDto): Promise<PlanInEffectRow[]> {
+    return this.plans.inEffect(
+      query.month ?? istMonthKey(new Date()),
+      query.scope,
+    );
   }
 
   @Get(':id')
@@ -68,7 +73,7 @@ export class AdminCommissionPlansController {
   @Can('commission.plans')
   @ApiOperation({
     summary:
-      'Add a cohort’s plan from a month (this month or later); 409 PLAN_EXISTS for the same cohort and month',
+      'Add a cohort’s plan (fixed % or slabs, optional minimum order value) from a month (this month or later); 409 PLAN_EXISTS for the same cohort and month',
   })
   create(
     @Body() dto: CreatePlanDto,
@@ -81,7 +86,7 @@ export class AdminCommissionPlansController {
   @Can('commission.plans')
   @ApiOperation({
     summary:
-      'Change slabs or notes (this month or later, else 409 PLAN_LOCKED); `draft` alone signs off any plan',
+      'Change kind, slabs / rate, minimum order value or notes (this month or later, else 409 PLAN_LOCKED); `draft` alone signs off any plan',
   })
   update(
     @Param() { id }: PlanParamDto,

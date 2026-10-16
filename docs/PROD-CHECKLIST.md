@@ -103,6 +103,12 @@ db.vistaar_v2_withdrawals.createIndex({ status: 1, requested_at: 1 })
 db.vistaar_v2_withdrawals.createIndex({ status: 1, paid_at: 1 })
 db.vistaar_v2_withdrawals.createIndex({ agent_id: 1 }, { unique: true, partialFilterExpression: { open: true } })
 db.vistaar_v2_tds_certificates.createIndex({ quarter: 1, agent_id: 1 })
+db.vistaar_v2_earning_cohorts.createIndex({ status: 1, priority: 1 })
+db.vistaar_v2_earning_rules.createIndex({ cohort_id: 1, trigger: 1, status: 1, order: 1 })
+db.vistaar_v2_earning_assignments.createIndex({ agent_id: 1, from: -1 })
+db.vistaar_v2_earning_assignments.createIndex({ agent_id: 1 }, { unique: true, partialFilterExpression: { open: true } })
+db.vistaar_v2_rewards.createIndex({ status: 1, created_at: -1, _id: 1 })
+db.vistaar_v2_rewards.createIndex({ agent_id: 1, created_at: -1, _id: 1 })
 ```
 
 ⚠️ **Beta (2026-10-09): none of these exist** — the beta Mongo host is out of disk and every
@@ -184,7 +190,7 @@ few thousand orders per partner; past that, ask Stockship for
 ## Commission, wallet, My Performance — before switching on
 
 - [ ] **The withdrawals indexes above, the unique partial `{ agent_id }` (`open: true`) first** — it is what stops two open withdrawals from one partner across server processes (one process also serialises a partner's requests in memory)
-- [ ] Finance signs off the slabs (COMMISSION-LOGIC.md); HO saves them as plans with `draft: false` — until then every cohort earns the PRD's rates and the app shows "Draft"
+- [ ] Finance signs off the slabs (COMMISSION-LOGIC.md); HO saves them as plans with `draft: false` — until then every partner type earns the PRD's rates and the app shows "Draft". Earning-cohort plans: see *Earning cohorts* below
 - [ ] Settings checked in `GET /admin/settings`: `return_window_days` 7, `min_withdrawal` 500, `tds_rate_with_pan` 2, `tds_rate_without_pan` 20, `monthly_target` 1,00,000 (defaults apply while unset)
 - [ ] Finance has an `agents_v2` role code for payouts → add it to `payouts.manage` / `commission.read` in `access.domain.ts` (heads only until then)
 - [ ] The bank's upload template, if it is not the generic CSV (`GET /admin/withdrawals/payout-file`)
@@ -256,6 +262,26 @@ few thousand orders per partner; past that, ask Stockship for
 - [ ] `PAYMENTS_ONLINE_ENABLED` stays `false` until real payment (gateway order, signature verify, webhook) is live — until then the app must not offer online payment in production. The boot refuses `true` without `PAYMENTS_CREDENTIALS_KEY`.
 - [ ] HO roles that may switch options get `payments.write` (today: the head roles); keys are `payments.credentials` (company admins only).
 - [ ] App build that reads `GET /payment-options` (instead of `payment_gateways_seed.dart`) shipped (see `PAYMENTS-APP.md`).
+
+## Earning cohorts — before switching on
+
+- [ ] The four `vistaar_v2_earning_*` indexes built (above) — the unique partial `{ agent_id }` (`open: true`) on assignments first: it keeps one current cohort per partner when two processes recompute at once
+- [ ] After deploy, `POST /api/v2/admin/earning-cohorts/recompute` once (any head): places every approved partner (the default cohort until HO adds others). Orders placed before a partner's first placing keep the onboarding-cohort commission plans
+- [ ] HO grants itself nothing new: `earning.read` / `earning.write` go to heads and admins like `gigs.*`
+- [ ] Nothing in shared collections: only `vistaar_v2_earning_cohorts`, `vistaar_v2_earning_rules`, `vistaar_v2_earning_assignments` and `vistaar_v2_agents.earning_cohort` are written
+- [ ] ⚠️ **Agree the `ec_default` commission plan with Finance before saving it.** Saving an `ec_default` plan (`POST /admin/commission-plans { cohort: "ec_default", … }`) moves every approved partner's **new** orders (placed after their first assignment) onto it, and every earning cohort without its own plan inherits it. Until an earning plan is saved, commission is exactly as before (partner-type plans)
+- [ ] No new index for commission by cohort or cohort-paid gigs: commission reads stretches on `{ agent_id, from }` (above); `vistaar_v2_commission_plans` (new `kind`, `min_order_value`, `ec_…` ids) and `vistaar_v2_gigs` (`payout: null`, `payout_source`) need none
+- [ ] Gigs posted without a payout now pay the taker's cohort `meeting_gig_payout` (else settings `gig_payout`) — HO told before it posts gigs with the payout left empty
+
+## Rewards (coins, follow-up gigs) and farmer OTP — before switching on
+
+- [ ] ⚠️ **Breaking for the app:** `POST /leads` refuses a save without the farmer's `otp_token` (`400 LEAD_OTP_REQUIRED`). Release the app build with the farmer-OTP step (`LEADS-APP.md` *Farmer OTP*) **together with** this backend, or partners cannot add farmers
+- [ ] The two `vistaar_v2_rewards` indexes built (above)
+- [ ] The SMS budget knows farmer OTPs are new traffic: one OTP (up to 3 sends) per farmer added
+- [ ] `OTP_TEST_NUMBERS` empty in production (already enforced at boot) — test farmers skip the SMS only on beta
+- [ ] HO grants itself nothing new: `rewards.read` / `rewards.review` go to heads and admins like `gigs.*`
+- [ ] Gig rewards reach the wallet only with settings `gig_pay_enabled` (same switch as meeting gigs; Finance confirms TDS first). Coins are never money
+- [ ] Nothing in shared collections: rewards write only `vistaar_v2_rewards` (and `vistaar_v2_leads.otp_verified_at`, `vistaar_v2_otp_attempts` `lead-*` rows)
 
 ## Testimonials (partner submissions) — before switching on
 
