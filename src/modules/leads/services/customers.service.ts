@@ -228,7 +228,14 @@ export class CustomersService {
         },
         { stage: row.stage, customer_at: null },
       );
-      if (won) return { result: 'won', pii_id: row.pii_id };
+      if (won) {
+        await this.leads.mirrorFollowUp(
+          won.lead_id,
+          row.next_follow_up,
+          won.next_follow_up,
+        );
+        return { result: 'won', pii_id: row.pii_id };
+      }
       // The partner moved the lead meanwhile: read it again.
     }
     throw serviceUnavailable(

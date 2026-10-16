@@ -105,6 +105,17 @@ export class OrgLeadsRepository {
     );
   }
 
+  /**
+   * Only `follow_up_date` — not even `updated_at` (user, 2026-10-16). A lead
+   * another channel wrote fails the `source` filter, so it keeps its own date.
+   */
+  async setFollowUp(leadId: string, at: Date | null): Promise<void> {
+    await this.leads.collection.updateOne(
+      { lead_id: leadId, source: LEAD_SOURCE },
+      { $set: { follow_up_date: at } },
+    );
+  }
+
   async updateContact(
     piiId: string,
     set: Record<string, unknown>,

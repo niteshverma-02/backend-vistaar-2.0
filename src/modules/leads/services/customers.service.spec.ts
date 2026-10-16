@@ -111,11 +111,12 @@ function setup(opts: {
       customer_release_days: 45,
     }),
   };
+  const leads = { mirrorFollowUp: jest.fn().mockResolvedValue(undefined) };
   const service = new CustomersService(
     repo as unknown as VistaarLeadsRepository,
     orders as unknown as OrderService,
     settings as unknown as SettingsService,
-    {} as LeadsService,
+    leads as unknown as LeadsService,
   );
   return { service, repo, orders };
 }

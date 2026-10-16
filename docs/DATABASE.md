@@ -209,10 +209,21 @@ is replaced by that centre.
 (`POST /hooks/orders/confirmed`, ORDER-EVENTS.md — trusted as sent, the order is not read
 again) on the first confirmed order the holding partner placed sets `stage: won`,
 `customer_at`, `last_order_at` (by `system`), once; later orders move `last_order_at`. `customers` (written by ko-sales from Stockship) and
-`leads_v2` are not touched — as across the org, a customer is a person with an order. The hold lapses after
+`leads_v2` are not touched (only its `follow_up_date` is cleared, below) — as across the org, a customer is a person with an order. The hold lapses after
 `lead_release_days` without work (or `customer_release_days` without an order, or at once
 when the partner is blocked); the next partner to add the farmer takes the row over
-(guarded on `updated_at`), and HO can transfer it. `leads_v2` is not touched by either.
+(guarded on `updated_at`), and HO can transfer it. `leads_v2` is not touched by either,
+except `follow_up_date` (the earlier partner's date is dropped).
+
+**Follow-up mirrored to `leads_v2.follow_up_date`** (user, 2026-10-16), so the org's own
+screens see when the farmer is next due. Every save that sets, changes or clears
+`vistaar_v2_leads.next_follow_up` — add / re-submit, `PATCH` (incl. lost), takeover after a
+release, HO transfer, the first order (won), and removing the lead (cleared) — writes the
+partner's row first, then `updateOne({ lead_id, source: 'vistaar' }, { $set: { follow_up_date } })`
+(`null` when cleared; nothing else, not even `updated_at`). A farmer from another channel
+fails the `source` filter, so their lead keeps its own date; a row with no `lead_id` is
+skipped. A `leads_v2` failure is logged, never answered to the partner. Follow-ups set
+before 2026-10-16 reach `leads_v2` only on their next change.
 
 ### `leads_v2` — one per person (unique `pii_id`)
 
@@ -227,6 +238,7 @@ when the partner is blocked); the next partner to add the farmer takes the row o
 | `status` / `is_profiled` | `contact_created` / `true`; `contact_profile: 'farmer'`, `agent_category: 'vistaar'`. **No `profiled_at`** — with it the lead matches sales-operation's "Profiled Farmer" cohort and would be routed to telecallers (prasar's leads carry none either) |
 | everything else | ko-sales' schema defaults (`call_count` zeros, `pipeline_id: null`, `lqs: {}`, `tags: []`, `__v: 0`, …) |
 | re-submit | `$set` names, `state`, `pin_code`, `updated_by` / `last_updated_by` = `VST-…`, `updated_at` — filter `lead_id` + `source` |
+| `follow_up_date` | `null` at insert; then the holding partner's `next_follow_up` (`null` when cleared) — `$set` of that field only, filter `lead_id` + `source` (above) |
 
 ### `contacts_v2` — one per person (unique `pii_id`)
 

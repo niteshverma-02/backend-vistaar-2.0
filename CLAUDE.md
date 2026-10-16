@@ -129,7 +129,11 @@ ko-sales' `/leads/upsert` as the reference shape — `leads_v2` +
 contact yet (a farmer from another channel is only linked, in
 `vistaar_v2_leads`), and later updates filter on `source`, so another
 channel's records are never changed. A GPS fix of the farm goes on that
-`addresses` row as `geo {lat, lng}` (Vistaar's rows only). Owner = the one active Offline Head
+`addresses` row as `geo {lat, lng}` (Vistaar's rows only). The partner's
+follow-up (`vistaar_v2_leads.next_follow_up`) is mirrored to
+`leads_v2.follow_up_date` on Vistaar's own lead rows only (filter `lead_id` +
+`source`, that one field), after the partner's row, a failure only logged
+(user's decision, 2026-10-16). Owner = the one active Offline Head
 (USR-1037) as `{agent_id, agent_ref}`, unless `settings.lead_owner_agent_id`
 names another. Never `profiled_at` (keeps the offline lead out of telecaller
 cohorts). No pipeline, LQS or webhook. See `docs/DATABASE.md`.

@@ -226,6 +226,12 @@ export function stageMoveError(from: LeadStage, to: LeadStage): string | null {
 export const isOpenStage = (stage: LeadStage): boolean =>
   !CLOSED_STAGES.includes(stage);
 
+/** Set, changed or cleared — compared as instants, since each read builds new `Date`s. */
+export const followUpMoved = (
+  before: Date | null | undefined,
+  after: Date | null | undefined,
+): boolean => (before?.getTime() ?? null) !== (after?.getTime() ?? null);
+
 /** ko-sales' bands (`farmer_sub_profile_from_acres`). */
 export function farmerBand(acres: number): string {
   if (acres <= 5) return 'small_farmer';

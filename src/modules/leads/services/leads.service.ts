@@ -49,6 +49,7 @@ import {
   contactUpdateOf,
   farmerCopyOf,
   fixFits,
+  followUpMoved,
   holderOf,
   isOpenStage,
   leadDocOf,
@@ -308,6 +309,8 @@ export class LeadsService {
 
     const row = await this.rows.findByPii(piiId);
     if (!row) throw notFound('Farmer not found.');
+    // What the org lead's follow-up was before this save.
+    let mirrored = found?.link?.next_follow_up ?? null;
     if (row.origin === 'created' && row.agent_id === by) {
       const leadId = await this.writeOrgRecords(
         farmer,
@@ -320,7 +323,12 @@ export class LeadsService {
       if (leadId !== row.lead_id) {
         await this.rows.update(piiId, by, { $set: { lead_id: leadId } });
         row.lead_id = leadId;
+        // A lead just inserted has no follow-up yet.
+        mirrored = null;
       }
+    }
+    if (row.agent_id === by) {
+      await this.mirrorFollowUp(row.lead_id, mirrored, row.next_follow_up);
     }
     if (row.agent_id === by && (await this.applySpot(piiId, by, spot))) {
       Object.assign(row, spot);
@@ -623,6 +631,11 @@ export class LeadsService {
         'This lead changed meanwhile — reload it.',
       );
     }
+    await this.mirrorFollowUp(
+      saved.lead_id,
+      row.next_follow_up,
+      saved.next_follow_up,
+    );
     // A farmer Vistaar created: the org's lead, contact and address follow.
     if (edit && saved.origin === 'created') {
       await this.writeOrgRecords(
@@ -661,7 +674,31 @@ export class LeadsService {
         'This lead changed meanwhile — reload it.',
       );
     }
+    // No partner follows the farmer up any more.
+    await this.mirrorFollowUp(row.lead_id, row.next_follow_up, null);
     return { removed: true };
+  }
+
+  /**
+   * The org lead's `follow_up_date` mirrors the partner's follow-up (user,
+   * 2026-10-16), so the org's own screens see when the farmer is next due.
+   * Called after the partner's row is saved: that row is the truth, so a
+   * failure here is logged and the save stands. Another channel's lead is
+   * left alone by the repository's `source` filter.
+   */
+  async mirrorFollowUp(
+    leadId: string | null,
+    before: Date | null | undefined,
+    after: Date | null | undefined,
+  ): Promise<void> {
+    if (!leadId || !followUpMoved(before, after)) return;
+    try {
+      await this.org.setFollowUp(leadId, after ?? null);
+    } catch (error) {
+      this.logger.error(
+        `leads_v2 ${leadId}: follow_up_date not mirrored: ${String(error)}`,
+      );
+    }
   }
 
   /** The farmer as edited, and where they are; `null` when no detail was sent. */
@@ -973,6 +1010,11 @@ export class LeadsService {
         'This lead changed meanwhile — reload it and try again.',
       );
     }
+    await this.mirrorFollowUp(
+      saved.lead_id,
+      row.next_follow_up,
+      saved.next_follow_up,
+    );
     return this.adminDetailOf(saved);
   }
 

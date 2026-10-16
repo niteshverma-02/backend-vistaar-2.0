@@ -209,6 +209,7 @@ function setup(
     insertContact: jest.fn().mockResolvedValue('ok'),
     updateLead: jest.fn().mockResolvedValue(undefined),
     updateContact: jest.fn().mockResolvedValue(undefined),
+    setFollowUp: jest.fn().mockResolvedValue(undefined),
   };
   const rows = fakeRows(opts.seed);
   const service = new LeadsService(
