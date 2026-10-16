@@ -140,16 +140,21 @@ export class OnboardingService {
     agentRef: string,
     input: { cohort?: string; step_id?: string; data: Record<string, unknown> },
   ): Promise<OnboardingView> {
-    let agent = await this.agents.require(agentRef);
-    this.assertPartnerCanEdit(agent);
     if (Object.keys(input.data).length > MAX_KEYS_PER_SAVE) {
       throw badRequest(
         'VALIDATION_FAILED',
         'Too many answers were sent at once. Please save one step at a time.',
       );
     }
+    // Both are keyed by the partner's `_id`, so they load together.
+    const [found, existing] = await Promise.all([
+      this.agents.require(agentRef),
+      this.onboarding.findByAgent(agentRef),
+    ]);
+    let agent = found;
+    this.assertPartnerCanEdit(agent);
 
-    let doc = await this.onboarding.findByAgent(agent._id);
+    let doc = existing;
     let config: OnboardingConfig;
     if (!doc) {
       if (!input.cohort)

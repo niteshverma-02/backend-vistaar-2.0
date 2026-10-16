@@ -297,8 +297,9 @@ export class CustomersService {
     if (!row || row.agent_id !== partner.agent_id || row.stage !== 'won') {
       throw notFound('Customer not found.');
     }
+    // Only this farmer's orders, not the partner's whole book.
     const [business, window] = await Promise.all([
-      this.orders.businessByCustomer(partner.agent_id),
+      this.orders.businessByCustomer(partner.agent_id, [row.pii_id]),
       this.window(),
     ]);
     const mine = business.get(row.pii_id);

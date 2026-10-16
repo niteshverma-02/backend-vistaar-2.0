@@ -116,8 +116,11 @@ export class AuthService {
       );
     }
     this.refuseBlocked(agent);
-    await this.agents.touchLogin(agent._id);
-    return this.openSession(agent, userAgent ?? session.user_agent);
+    const [, opened] = await Promise.all([
+      this.agents.touchLogin(agent._id),
+      this.openSession(agent, userAgent ?? session.user_agent),
+    ]);
+    return opened;
   }
 
   async logout(

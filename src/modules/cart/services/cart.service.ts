@@ -67,6 +67,20 @@ export class CartService {
     return this.agents.requireWorkingPartner(partner.agent_id, 'place orders');
   }
 
+  /**
+   * Both checks read the database, so they run together; the partner's own
+   * refusal is still the one answered when both fail.
+   */
+  private async canOrderFor(
+    partner: PartnerRef,
+    piiId: string | null | undefined,
+  ): Promise<void> {
+    const customer = this.requireCustomer(partner, piiId);
+    customer.catch(() => undefined); // awaited below
+    await this.canOrder(partner);
+    await customer;
+  }
+
   async get(partner: PartnerRef, token: string): Promise<CartView> {
     return this.view(
       await this.carts.findActive(partner.agent_id),
@@ -124,8 +138,7 @@ export class CartService {
     token: string,
     dto: SetCartCustomerDto,
   ): Promise<CartView> {
-    await this.canOrder(partner);
-    await this.requireCustomer(partner, dto.pii_id);
+    await this.canOrderFor(partner, dto.pii_id);
 
     const view = await this.mutate(partner, token, (current) =>
       writeOf(current?.items ?? [], dto.pii_id),
@@ -167,8 +180,7 @@ export class CartService {
     lines: readonly { sku: string; quantity: number }[],
     piiId: string | null,
   ): Promise<CartView> {
-    await this.canOrder(partner);
-    await this.requireCustomer(partner, piiId);
+    await this.canOrderFor(partner, piiId);
 
     const catalog = await this.catalog.variants(
       lines.map((l) => l.sku),

@@ -6,6 +6,7 @@ import {
   serviceUnavailable,
 } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
+import { TtlCache } from '@common/utils/ttl-cache';
 import { StorageService } from '@modules/uploads/services/storage.service';
 
 import type {
@@ -43,7 +44,7 @@ const NOT_FOUND = 'This T&C could not be found. It may have been deleted.';
 
 @Injectable()
 export class TermsService {
-  private cache: { at: number; value: TermsView | null } | null = null;
+  private readonly cache = new TtlCache<TermsView | null>(TTL_MS, 1);
 
   constructor(
     private readonly terms: TermsRepository,
@@ -51,14 +52,12 @@ export class TermsService {
   ) {}
 
   async live(): Promise<TermsView> {
-    if (!this.cache || Date.now() - this.cache.at >= TTL_MS) {
+    const view = await this.cache.get('live', async () => {
       const row = await this.terms.live();
-      this.cache = { at: Date.now(), value: row && toView(row) };
-    }
-    if (!this.cache.value) {
-      throw notFound('The Vistaar T&C has not been added yet.');
-    }
-    return this.cache.value;
+      return row && toView(row);
+    });
+    if (!view) throw notFound('The Vistaar T&C has not been added yet.');
+    return view;
   }
 
   async list(
@@ -108,7 +107,7 @@ export class TermsService {
     const updated = await this.terms.update(id, set);
     if (!updated) throw notFound(NOT_FOUND);
     if (set.is_active === true) await this.activated(id);
-    this.cache = null;
+    this.cache.delete('live');
     return updated;
   }
 
@@ -176,7 +175,7 @@ export class TermsService {
       if (path) await this.storage.remove(path);
       throw versionConflict();
     }
-    this.cache = null;
+    this.cache.delete('live');
     return saved;
   }
 
@@ -191,7 +190,7 @@ export class TermsService {
 
   private async activated(id: string): Promise<void> {
     await this.terms.deactivateOthers(id);
-    this.cache = null;
+    this.cache.delete('live');
   }
 }
 

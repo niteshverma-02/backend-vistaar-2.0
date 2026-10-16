@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { mongo } from 'mongoose';
 
 import { badRequest, conflict, notFound } from '@common/errors/api-error';
+import { TtlCache } from '@common/utils/ttl-cache';
 import type { Localized } from '@modules/onboarding/form.domain';
 
 import type {
@@ -57,7 +58,7 @@ const isDuplicateKey = (error: unknown): boolean =>
 @Injectable()
 export class StoryTemplatesService {
   /** Each instance re-reads at most once a minute; an HO edit shows within that minute. */
-  private cache: { at: number; rows: StoryTemplateRow[] } | null = null;
+  private readonly cache = new TtlCache<StoryTemplateRow[]>(ACTIVE_TTL_MS, 1);
 
   constructor(
     private readonly templates: StoryTemplateRepository,
@@ -130,7 +131,7 @@ export class StoryTemplatesService {
         created_by: by,
         updated_by: by,
       });
-      this.cache = null;
+      this.cache.delete('all');
       return this.toAdminView(saved, new Date());
     } catch (error) {
       if (isDuplicateKey(error)) {
@@ -175,7 +176,7 @@ export class StoryTemplatesService {
 
     const updated = await this.templates.update(current._id, set);
     if (!updated) throw notFound(CARD_NOT_FOUND);
-    this.cache = null;
+    this.cache.delete('all');
     return this.toAdminView(updated, new Date());
   }
 
@@ -194,7 +195,7 @@ export class StoryTemplatesService {
       throw invalid('At least one card must stay shown.');
     }
     if (!(await this.templates.remove(key))) throw notFound(CARD_NOT_FOUND);
-    this.cache = null;
+    this.cache.delete('all');
     return { deleted: true };
   }
 
@@ -207,7 +208,7 @@ export class StoryTemplatesService {
     for (const row of rows) {
       if (await this.templates.insertIfMissing(row)) added.push(row._id);
     }
-    this.cache = null;
+    this.cache.delete('all');
     return added;
   }
 
@@ -241,12 +242,7 @@ export class StoryTemplatesService {
   }
 
   private async rows(): Promise<StoryTemplateRow[]> {
-    if (this.cache && Date.now() - this.cache.at < ACTIVE_TTL_MS) {
-      return this.cache.rows;
-    }
-    const rows = await this.templates.all();
-    this.cache = { at: Date.now(), rows };
-    return rows;
+    return this.cache.get('all', () => this.templates.all());
   }
 
   private async require(key: string): Promise<StoryTemplateRow> {

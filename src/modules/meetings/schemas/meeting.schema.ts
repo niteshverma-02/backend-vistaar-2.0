@@ -72,5 +72,6 @@ export type MeetingDocument = HydratedDocument<Meeting>;
 export const MeetingSchema = SchemaFactory.createForClass(Meeting);
 
 // The partner's list (newest first) and Today's tasks; HO's date-sorted list.
-MeetingSchema.index({ agent_id: 1, starts_at: -1 });
-MeetingSchema.index({ starts_at: -1 });
+// `_id` closes the sort, so a page never sorts in memory.
+MeetingSchema.index({ agent_id: 1, starts_at: -1, _id: -1 });
+MeetingSchema.index({ starts_at: -1, _id: -1 });

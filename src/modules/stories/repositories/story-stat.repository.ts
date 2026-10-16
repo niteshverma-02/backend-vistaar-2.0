@@ -36,22 +36,26 @@ export class StoryStatRepository {
     private readonly model: Model<StoryStatDocument>,
   ) {}
 
-  /** One `$inc` upsert on the partner's day row — no read, no race. */
+  /**
+   * One `$inc` upsert on the partner's day row — no read, no race. A save
+   * that is also shared counts both in the same write.
+   */
   async bump(
     agentId: string,
     date: string,
-    event:
-      | { kind: 'saved' }
-      | { kind: 'share'; template: StoryTemplate; channel: ShareChannel },
+    event: {
+      saved?: boolean;
+      share?: { template: StoryTemplate; channel: ShareChannel };
+    },
   ): Promise<void> {
-    const inc: Record<string, number> =
-      event.kind === 'saved'
-        ? { saved: 1 }
-        : {
-            shares: 1,
-            [`templates.${event.template}`]: 1,
-            [`channels.${event.channel}`]: 1,
-          };
+    const inc: Record<string, number> = {};
+    if (event.saved) inc.saved = 1;
+    if (event.share) {
+      inc.shares = 1;
+      inc[`templates.${event.share.template}`] = 1;
+      inc[`channels.${event.share.channel}`] = 1;
+    }
+    if (!Object.keys(inc).length) return;
     await this.model
       .updateOne(
         { _id: `${agentId}:${date}` },
@@ -87,42 +91,60 @@ export class StoryStatRepository {
       .exec();
   }
 
-  /** Range totals, and the template / channel split, in one pass. */
+  /**
+   * Range totals, and the template / channel split, in one pass. Sharers and
+   * the splits are summed inside Mongo: pushing every partner id or day row
+   * into one result would pass the 16 MB document limit at scale.
+   */
   async totals(
     from: string,
     to: string,
   ): Promise<StatTotals & { templates: Counts; channels: Counts }> {
+    const split = (
+      field: 'templates' | 'channels',
+    ): PipelineStage.FacetPipelineStage[] => [
+      { $project: { kv: { $objectToArray: { $ifNull: [`$${field}`, {}] } } } },
+      { $unwind: '$kv' },
+      { $group: { _id: '$kv.k', n: { $sum: '$kv.v' } } },
+    ];
     const [row] = await this.model
       .aggregate<{
-        saved: number;
-        shares: number;
-        sharers: string[];
-        templates: Counts[];
-        channels: Counts[];
+        sums: { saved: number; shares: number }[];
+        sharers: { n: number }[];
+        templates: { _id: string; n: number }[];
+        channels: { _id: string; n: number }[];
       }>([
         { $match: { date: { $gte: from, $lte: to } } },
         {
-          $group: {
-            _id: null,
-            saved: { $sum: '$saved' },
-            shares: { $sum: '$shares' },
-            sharers: {
-              $addToSet: {
-                $cond: [{ $gt: ['$shares', 0] }, '$agent_id', '$$REMOVE'],
+          $facet: {
+            sums: [
+              {
+                $group: {
+                  _id: null,
+                  saved: { $sum: '$saved' },
+                  shares: { $sum: '$shares' },
+                },
               },
-            },
-            templates: { $push: '$templates' },
-            channels: { $push: '$channels' },
+            ],
+            sharers: [
+              { $match: { shares: { $gt: 0 } } },
+              { $group: { _id: '$agent_id' } },
+              { $count: 'n' },
+            ],
+            templates: split('templates'),
+            channels: split('channels'),
           },
         },
       ])
       .exec();
+    const counts = (list: { _id: string; n: number }[] = []): Counts =>
+      Object.fromEntries(list.map((c) => [c._id, c.n]));
     return {
-      saved: row?.saved ?? 0,
-      shares: row?.shares ?? 0,
-      partners: row?.sharers.length ?? 0,
-      templates: sumCounts(row?.templates ?? []),
-      channels: sumCounts(row?.channels ?? []),
+      saved: row?.sums[0]?.saved ?? 0,
+      shares: row?.sums[0]?.shares ?? 0,
+      partners: row?.sharers[0]?.n ?? 0,
+      templates: counts(row?.templates),
+      channels: counts(row?.channels),
     };
   }
 

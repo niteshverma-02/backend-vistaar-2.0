@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 
 import { badRequest, notFound } from '@common/errors/api-error';
 import { imageInfo } from '@common/utils/image-size.util';
+import { TtlCache } from '@common/utils/ttl-cache';
 import type { Env } from '@config/env.schema';
 import { EventsService } from '@modules/events/services/events.service';
 import {
@@ -143,11 +144,11 @@ export class StoriesService {
    * Every partner opens My Story; HO changes festivals and approves quotes a
    * few times a week. Each instance re-reads at most once a minute.
    */
-  private content: { at: number; farmer: FarmerStoryView[] } | null = null;
-  private shared: {
-    at: number;
-    value: Omit<StoryContentView, 'meetings'>;
-  } | null = null;
+  private readonly content = new TtlCache<FarmerStoryView[]>(CONTENT_TTL_MS, 1);
+  private readonly shared = new TtlCache<Omit<StoryContentView, 'meetings'>>(
+    SHARED_TTL_MS,
+    1,
+  );
 
   constructor(
     private readonly stories: StoryRepository,
@@ -261,16 +262,14 @@ export class StoriesService {
     const saved = dto.channel
       ? ((await this.stories.recordShare(agentId, story._id, now)) ?? story)
       : story;
-    await Promise.all([
-      created ? this.stats.bump(agentId, date, { kind: 'saved' }) : null,
-      dto.channel
-        ? this.stats.bump(agentId, date, {
-            kind: 'share',
-            template: story.template,
-            channel: dto.channel,
-          })
-        : null,
-    ]);
+    if (created || dto.channel) {
+      await this.stats.bump(agentId, date, {
+        saved: created,
+        share: dto.channel
+          ? { template: story.template, channel: dto.channel }
+          : undefined,
+      });
+    }
 
     // A re-save keeps the newest render; the one it replaces is not used any more.
     if (previous && previous.image_path !== dto.image) {
@@ -292,9 +291,7 @@ export class StoriesService {
     const story = await this.stories.recordShare(agentId, id, now);
     if (!story) throw notFound(STORY_NOT_FOUND);
     await this.stats.bump(agentId, istDate(now), {
-      kind: 'share',
-      template: story.template,
-      channel,
+      share: { template: story.template, channel },
     });
     const [view] = await this.views([story]);
     return view;
@@ -357,10 +354,11 @@ export class StoriesService {
   }
 
   /** Rebuilt at most every 15 s from the lists' own caches. */
-  private async sharedContent(): Promise<Omit<StoryContentView, 'meetings'>> {
-    if (this.shared && Date.now() - this.shared.at < SHARED_TTL_MS) {
-      return this.shared.value;
-    }
+  private sharedContent(): Promise<Omit<StoryContentView, 'meetings'>> {
+    return this.shared.get('shared', () => this.buildShared());
+  }
+
+  private async buildShared(): Promise<Omit<StoryContentView, 'meetings'>> {
     const [templates, designs, festivals, real, samples] = await Promise.all([
       this.templates.live(),
       this.designs.live(),
@@ -368,7 +366,7 @@ export class StoriesService {
       this.farmerStories(),
       this.samples.live(),
     ]);
-    const value = {
+    return {
       templates,
       designs,
       festivals,
@@ -388,8 +386,6 @@ export class StoriesService {
         })),
       ],
     };
-    this.shared = { at: Date.now(), value };
-    return value;
   }
 
   /** Signs every image of the page in one go. */
@@ -402,26 +398,25 @@ export class StoriesService {
     return rows.map((s) => toView(s, urls));
   }
 
-  private async farmerStories(): Promise<FarmerStoryView[]> {
-    if (this.content && Date.now() - this.content.at < CONTENT_TTL_MS) {
-      return this.content.farmer;
-    }
-    const farmer = (
-      await this.testimonials.forStories(FARMER_STORIES_LIMIT)
-    ).map((t): FarmerStoryView => ({
-      id: t.id,
-      source: 'testimonial',
-      name: t.name,
-      quote: t.quote,
-      product: t.product,
-      crop: t.crop,
-      village: t.village,
-      district: t.district,
-      stars: t.stars,
-      media: t.media,
-    }));
-    this.content = { at: Date.now(), farmer };
-    return farmer;
+  private farmerStories(): Promise<FarmerStoryView[]> {
+    return this.content.get('farmer', () => this.loadFarmerStories());
+  }
+
+  private async loadFarmerStories(): Promise<FarmerStoryView[]> {
+    return (await this.testimonials.forStories(FARMER_STORIES_LIMIT)).map(
+      (t): FarmerStoryView => ({
+        id: t.id,
+        source: 'testimonial',
+        name: t.name,
+        quote: t.quote,
+        product: t.product,
+        crop: t.crop,
+        village: t.village,
+        district: t.district,
+        stars: t.stars,
+        media: t.media,
+      }),
+    );
   }
 
   private async requireMine(agentId: string, id: string): Promise<Story> {
@@ -474,7 +469,7 @@ export class StoriesService {
         s.photo_path ? [s.image_path, s.photo_path] : [s.image_path],
       ),
     );
-    for (const path of paths) await this.dropFile(agentId, path);
+    await Promise.all([...paths].map((path) => this.dropFile(agentId, path)));
   }
 
   /** One photo can back several stories, so its file goes only with the last one. */

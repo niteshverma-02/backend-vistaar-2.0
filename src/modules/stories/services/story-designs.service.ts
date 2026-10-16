@@ -6,6 +6,7 @@ import { mongo } from 'mongoose';
 import { badRequest, conflict, notFound } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
 import { imageInfo } from '@common/utils/image-size.util';
+import { TtlCache } from '@common/utils/ttl-cache';
 import type { Localized } from '@modules/onboarding/form.domain';
 import { StorageService } from '@modules/uploads/services/storage.service';
 
@@ -75,7 +76,7 @@ const isDuplicateKey = (error: unknown): boolean =>
 @Injectable()
 export class StoryDesignsService {
   /** Each instance re-reads at most once a minute; an HO edit shows within that minute. */
-  private active: { at: number; rows: StoryDesign[] } | null = null;
+  private readonly active = new TtlCache<StoryDesign[]>(ACTIVE_TTL_MS, 1);
 
   constructor(
     private readonly designs: StoryDesignRepository,
@@ -172,7 +173,7 @@ export class StoryDesignsService {
         created_by: by,
         updated_by: by,
       });
-      this.active = null;
+      this.active.delete('active');
       return toAdminView(saved, new Date());
     } catch (error) {
       if (isDuplicateKey(error)) {
@@ -218,7 +219,7 @@ export class StoryDesignsService {
 
     const updated = await this.designs.update(id, set);
     if (!updated) throw notFound(DESIGN_NOT_FOUND);
-    this.active = null;
+    this.active.delete('active');
     if (imageChanged) await this.dropImage(current.image_path);
     return toAdminView(updated, new Date());
   }
@@ -230,18 +231,13 @@ export class StoryDesignsService {
   async remove(id: string): Promise<{ deleted: true }> {
     const current = await this.require(id);
     if (!(await this.designs.remove(id))) throw notFound(DESIGN_NOT_FOUND);
-    this.active = null;
+    this.active.delete('active');
     await this.dropImage(current.image_path);
     return { deleted: true };
   }
 
   private async activeRows(): Promise<StoryDesign[]> {
-    if (this.active && Date.now() - this.active.at < ACTIVE_TTL_MS) {
-      return this.active.rows;
-    }
-    const rows = await this.designs.listActive(new Date());
-    this.active = { at: Date.now(), rows };
-    return rows;
+    return this.active.get('active', () => this.designs.listActive(new Date()));
   }
 
   private async require(id: string): Promise<StoryDesign> {

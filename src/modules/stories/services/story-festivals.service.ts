@@ -5,6 +5,7 @@ import { mongo } from 'mongoose';
 
 import { badRequest, conflict, notFound } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
+import { TtlCache } from '@common/utils/ttl-cache';
 import type { Localized } from '@modules/onboarding/form.domain';
 
 import type {
@@ -44,7 +45,7 @@ const isDuplicateKey = (error: unknown): boolean =>
 @Injectable()
 export class StoryFestivalsService {
   /** Each instance re-reads at most once a minute; an HO edit shows within that minute. */
-  private active: { at: number; rows: StoryFestival[] } | null = null;
+  private readonly active = new TtlCache<StoryFestival[]>(ACTIVE_TTL_MS, 1);
 
   constructor(private readonly festivals: StoryFestivalRepository) {}
 
@@ -105,7 +106,7 @@ export class StoryFestivalsService {
         created_by: by,
         updated_by: by,
       });
-      this.active = null;
+      this.active.delete('active');
       return toAdminView(saved, new Date());
     } catch (error) {
       if (isDuplicateKey(error)) {
@@ -140,7 +141,7 @@ export class StoryFestivalsService {
 
     const updated = await this.festivals.update(id, set);
     if (!updated) throw notFound(FESTIVAL_NOT_FOUND);
-    this.active = null;
+    this.active.delete('active');
     return toAdminView(updated, new Date());
   }
 
@@ -150,17 +151,14 @@ export class StoryFestivalsService {
    */
   async remove(id: string): Promise<{ deleted: true }> {
     if (!(await this.festivals.remove(id))) throw notFound(FESTIVAL_NOT_FOUND);
-    this.active = null;
+    this.active.delete('active');
     return { deleted: true };
   }
 
   private async activeRows(): Promise<StoryFestival[]> {
-    if (this.active && Date.now() - this.active.at < ACTIVE_TTL_MS) {
-      return this.active.rows;
-    }
-    const rows = await this.festivals.listActive(new Date());
-    this.active = { at: Date.now(), rows };
-    return rows;
+    return this.active.get('active', () =>
+      this.festivals.listActive(new Date()),
+    );
   }
 
   private async require(id: string): Promise<StoryFestival> {

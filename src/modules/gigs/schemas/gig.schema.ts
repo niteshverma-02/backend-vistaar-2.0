@@ -98,6 +98,8 @@ export const GigSchema = SchemaFactory.createForClass(Gig);
 // Open gigs by date (the app's Available tab, HO's calendar).
 GigSchema.index({ status: 1, starts_at: 1 });
 // A partner's gigs: My gigs, history, earnings, Today's tasks.
-GigSchema.index({ agent_id: 1, starts_at: -1 });
+GigSchema.index({ agent_id: 1, starts_at: -1, _id: -1 });
+// HO's gig list, newest first; `_id` closes the sort.
+GigSchema.index({ starts_at: -1, _id: -1 });
 // HO review: has this farmer's phone been at another gig lately?
 GigSchema.index({ 'attendees.phone': 1, starts_at: -1 });

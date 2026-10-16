@@ -5,6 +5,7 @@ import { mongo } from 'mongoose';
 
 import { badRequest, conflict, notFound } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
+import { TtlCache } from '@common/utils/ttl-cache';
 
 import type {
   CreateFaqDto,
@@ -47,23 +48,24 @@ const FAQ_NOT_FOUND = 'This FAQ could not be found. It may have been deleted.';
 @Injectable()
 export class FaqsService {
   /** Read by every partner, changed by HO rarely: re-read at most once a minute. */
-  private active: { at: number; value: LiveFaqs } | null = null;
+  private readonly active = new TtlCache<LiveFaqs>(ACTIVE_TTL_MS, 1);
 
   constructor(
     private readonly faqs: FaqRepository,
     private readonly sections: FaqSectionRepository,
   ) {}
 
-  async live(): Promise<LiveFaqs> {
-    if (this.active && Date.now() - this.active.at < ACTIVE_TTL_MS) {
-      return this.active.value;
-    }
+  live(): Promise<LiveFaqs> {
+    return this.active.get('live', () => this.load());
+  }
+
+  private async load(): Promise<LiveFaqs> {
     const [sections, faqs] = await Promise.all([
       this.sections.list(true),
       this.faqs.listActive(),
     ]);
     const shown = liveSections(sections, faqs);
-    const value: LiveFaqs = {
+    return {
       sections: shown.sections.map((s) => ({
         key: s._id,
         label: s.label,
@@ -71,13 +73,11 @@ export class FaqsService {
       })),
       faqs: shown.faqs.map(toView),
     };
-    this.active = { at: Date.now(), value };
-    return value;
   }
 
   /** A section change moves what the app sees, so the next read is fresh. */
   refresh(): void {
-    this.active = null;
+    this.active.delete('live');
   }
 
   inSection(key: string): Promise<boolean> {
@@ -115,7 +115,7 @@ export class FaqsService {
         created_by: by,
         updated_by: by,
       });
-      this.active = null;
+      this.active.delete('live');
       return saved;
     } catch (error) {
       if (isDuplicateKey(error)) throw duplicate(q);
@@ -139,7 +139,7 @@ export class FaqsService {
     try {
       const updated = await this.faqs.update(id, set);
       if (!updated) throw notFound(FAQ_NOT_FOUND);
-      this.active = null;
+      this.active.delete('live');
       return updated;
     } catch (error) {
       if (isDuplicateKey(error)) throw duplicate(set.q ?? '');
@@ -149,7 +149,7 @@ export class FaqsService {
 
   async remove(id: string): Promise<{ deleted: true }> {
     if (!(await this.faqs.remove(id))) throw notFound(FAQ_NOT_FOUND);
-    this.active = null;
+    this.active.delete('live');
     return { deleted: true };
   }
 

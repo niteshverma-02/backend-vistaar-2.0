@@ -129,6 +129,8 @@ VistaarLeadSchema.index({ agent_id: 1, created_at: -1 });
 VistaarLeadSchema.index({ agent_id: 1, stage: 1 });
 VistaarLeadSchema.index({ agent_id: 1, next_follow_up: 1 });
 VistaarLeadSchema.index({ created_at: -1 });
+// HO: customers (stage `won`) counted and summed, leads by stage, newest first.
+VistaarLeadSchema.index({ stage: 1, created_at: -1 });
 VistaarLeadSchema.index({ phone: 1 });
 // HO: customers by latest order (only won leads have one, so it walks them
 // first); follow-ups across partners. `_id` closes the sort (stable pages).
