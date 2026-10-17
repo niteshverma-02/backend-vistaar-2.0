@@ -3,6 +3,7 @@ import { HttpStatus, Injectable } from '@nestjs/common';
 import { apiError, notFound } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
 import { AgentsService } from '@modules/agents/services/agents.service';
+import { RewardsService } from '@modules/rewards/services/rewards.service';
 
 import type { PastEventsQueryDto } from '../dto/event.dto';
 import { EventRegistrationRepository } from '../repositories/event-registration.repository';
@@ -48,6 +49,7 @@ export class EventsService {
     private readonly events: EventRepository,
     private readonly registrations: EventRegistrationRepository,
     private readonly agents: AgentsService,
+    private readonly rewards: RewardsService,
   ) {}
 
   /** Upcoming events for the caller's cohort, soonest first. */
@@ -108,6 +110,8 @@ export class EventsService {
           : 'EVENT_CLOSED',
       );
     }
+    // The seat is taken — it can earn (once per event, ever).
+    await this.rewards.eventRegistered(agentId, id);
     return toView(updated, true, now);
   }
 

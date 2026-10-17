@@ -271,10 +271,37 @@ export interface CatalogTrigger {
 export const FOLLOW_UP_ACTIVITIES = ['call', 'visit', 'whatsapp'] as const;
 
 /**
+ * Stage moves a partner can make forward (`won` comes only from the first
+ * order, `lost` is never an advance) — what `lead_stage_advanced` fires on.
+ * The leads module asserts these match its own stage list.
+ */
+export const ADVANCE_FROM_STAGES = [
+  'prospect',
+  'contacted',
+  'interested',
+] as const;
+export const ADVANCE_TO_STAGES = [
+  'contacted',
+  'interested',
+  'negotiation',
+] as const;
+
+/**
  * Events a rule can pay on. A new trigger needs code (here, and the call that
  * fires it); conditions and rewards are HO's.
  */
-export const EARNING_TRIGGERS = ['lead_created', 'follow_up_done'] as const;
+export const EARNING_TRIGGERS = [
+  'lead_created',
+  'follow_up_done',
+  'lead_stage_advanced',
+  'reorder',
+  'meeting_attendee_captured',
+  'gig_approved',
+  'event_registered',
+  'attendance_streak',
+  'onboarding_approved',
+  'story_created',
+] as const;
 export type EarningTrigger = (typeof EARNING_TRIGGERS)[number];
 
 export const TRIGGER_CATALOG: Record<EarningTrigger, CatalogTrigger> = {
@@ -310,6 +337,113 @@ export const TRIGGER_CATALOG: Record<EarningTrigger, CatalogTrigger> = {
         label: 'Days overdue',
         type: 'number',
         hint: '0 = due today',
+      },
+    ],
+  },
+  lead_stage_advanced: {
+    label: 'Lead stage advanced',
+    description:
+      'The partner moves a lead forward (prospect → contacted → interested → negotiation). Once per lead per stage reached; won and lost never fire it. Usually pays coins.',
+    fields: [
+      {
+        key: 'to_stage',
+        label: 'Stage reached',
+        type: 'enum',
+        values: ADVANCE_TO_STAGES,
+      },
+      {
+        key: 'from_stage',
+        label: 'Stage before',
+        type: 'enum',
+        values: ADVANCE_FROM_STAGES,
+      },
+    ],
+  },
+  reorder: {
+    label: 'Customer ordered again',
+    description:
+      'A customer’s repeat order is confirmed by the order service (not their first). Once per order. Usually pays coins.',
+    fields: [
+      {
+        key: 'gap_days',
+        label: 'Days since previous order',
+        type: 'number',
+        hint: 'IST days between this order and the one before it',
+      },
+    ],
+  },
+  meeting_attendee_captured: {
+    label: 'Meeting attendee became a lead',
+    description:
+      'The partner captures a meeting attendee as a farmer lead (consent + crops + acreage). Once per attendee per meeting; the lead itself may also pay “Farmer lead added”. Usually pays coins.',
+    fields: [
+      { key: 'crops', label: 'Crops', type: 'string[]', hint: 'Any case' },
+      { key: 'acreage', label: 'Acreage', type: 'number', hint: 'Acres' },
+    ],
+  },
+  gig_approved: {
+    label: 'Gig work approved',
+    description:
+      'HO approves the partner’s submitted meeting-gig work. The gig’s own ₹ payout is separate — a rule here is a bonus on top. Once per gig. Usually pays coins.',
+    fields: [
+      {
+        key: 'attendees',
+        label: 'Attendees recorded',
+        type: 'number',
+      },
+      { key: 'photos', label: 'Photos uploaded', type: 'number' },
+    ],
+  },
+  event_registered: {
+    label: 'Registered for an event',
+    description:
+      'The partner registers for an HO event and takes a seat. Once per event per partner — leaving and registering again never pays twice. Usually pays coins.',
+    fields: [
+      {
+        key: 'event_id',
+        label: 'Event',
+        type: 'string',
+        hint: 'The event’s id, to reward one event in particular',
+      },
+    ],
+  },
+  attendance_streak: {
+    label: 'Attendance streak',
+    description:
+      'The partner punches out with an unbroken run of field days (IST). Fires once per day with the run’s length: “is 7” pays the day a streak reaches 7; “at least 7” pays every day it holds. Usually pays coins.',
+    fields: [
+      {
+        key: 'streak_days',
+        label: 'Streak days',
+        type: 'number',
+        hint: 'Consecutive days punched in, today included (looked back 60 days at most)',
+      },
+    ],
+  },
+  onboarding_approved: {
+    label: 'Partner approved',
+    description:
+      'HO approves the partner’s KYC — a welcome reward. Once per partner ever. Usually pays coins.',
+    fields: [
+      {
+        key: 'partner_type',
+        label: 'Partner type',
+        type: 'string',
+        hint: 'The onboarding cohort key picked at signup',
+      },
+      { key: 'state', label: 'State', type: 'string', upper: true },
+    ],
+  },
+  story_created: {
+    label: 'Story created',
+    description:
+      'The partner saves a new My Story image (an edit of the same story never fires it). Once per story. Usually pays coins.',
+    fields: [
+      {
+        key: 'template',
+        label: 'Template',
+        type: 'string',
+        hint: 'The story template’s key',
       },
     ],
   },

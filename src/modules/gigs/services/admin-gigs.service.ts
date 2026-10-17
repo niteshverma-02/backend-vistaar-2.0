@@ -14,6 +14,7 @@ import { istDate } from '@modules/attendance/attendance.domain';
 import { AgentsService } from '@modules/agents/services/agents.service';
 import { CountersService } from '@modules/counters/services/counters.service';
 import { EarningCohortsService } from '@modules/earning/services/earning-cohorts.service';
+import { RewardsService } from '@modules/rewards/services/rewards.service';
 import { SettingsService } from '@modules/settings/services/settings.service';
 import { StorageService } from '@modules/uploads/services/storage.service';
 
@@ -77,6 +78,7 @@ export class AdminGigsService {
     private readonly settings: SettingsService,
     private readonly storage: StorageService,
     private readonly earning: EarningCohortsService,
+    private readonly rewards: RewardsService,
   ) {}
 
   async list(query: AdminGigsQueryDto): Promise<PageResult<AdminGigRow>> {
@@ -324,31 +326,35 @@ export class AdminGigsService {
   }
 
   async approve(id: string, by: string): Promise<AdminGigView> {
-    return this.review(id, by, { status: 'approved' });
+    const gig = await this.review(id, by, { status: 'approved' });
+    // The approval can earn a rule bonus (over the gig's own ₹ payout).
+    if (gig.agent_id) {
+      await this.rewards.gigApproved(gig.agent_id, gig._id, {
+        attendees: gig.attendees.length,
+        photos: gig.photos.length,
+      });
+    }
+    return this.view(gig);
   }
 
   async reject(id: string, reason: string, by: string): Promise<AdminGigView> {
-    return this.review(id, by, { status: 'rejected', reject_reason: reason });
+    return this.view(
+      await this.review(id, by, { status: 'rejected', reject_reason: reason }),
+    );
   }
 
-  private async review(
-    id: string,
-    by: string,
-    decision: Partial<Gig>,
-  ): Promise<AdminGigView> {
-    return this.view(
-      await this.move(
-        id,
-        { status: 'submitted' },
-        {
-          $set: {
-            ...decision,
-            reviewed_by: by,
-            reviewed_at: new Date(),
-            updated_by: by,
-          },
+  private review(id: string, by: string, decision: Partial<Gig>): Promise<Gig> {
+    return this.move(
+      id,
+      { status: 'submitted' },
+      {
+        $set: {
+          ...decision,
+          reviewed_by: by,
+          reviewed_at: new Date(),
+          updated_by: by,
         },
-      ),
+      },
     );
   }
 

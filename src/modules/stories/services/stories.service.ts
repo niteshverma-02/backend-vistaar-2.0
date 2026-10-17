@@ -16,6 +16,7 @@ import {
   MeetingsService,
   type MeetingView,
 } from '@modules/meetings/services/meetings.service';
+import { RewardsService } from '@modules/rewards/services/rewards.service';
 import { TestimonialsService } from '@modules/testimonials/services/testimonials.service';
 import { StorageService } from '@modules/uploads/services/storage.service';
 
@@ -162,6 +163,7 @@ export class StoriesService {
     private readonly gigs: GigReadsService,
     private readonly testimonials: TestimonialsService,
     private readonly storage: StorageService,
+    private readonly rewards: RewardsService,
     config: ConfigService<Env, true>,
   ) {
     this.receiptSecret = config.get('VISTAAR_JWT_SECRET', { infer: true });
@@ -275,7 +277,11 @@ export class StoriesService {
     if (previous && previous.image_path !== dto.image) {
       await this.dropFile(agentId, previous.image_path);
     }
-    if (created) await this.trim(agentId);
+    if (created) {
+      await this.trim(agentId);
+      // A brand-new story can earn (an edit or re-share of one never does).
+      await this.rewards.storyCreated(agentId, story._id, story.template);
+    }
 
     const [view] = await this.views([saved]);
     return view;

@@ -6,6 +6,7 @@ import type { EventRegistrationRepository } from '../repositories/event-registra
 import type { EventRepository } from '../repositories/event.repository';
 import type { FarmerEvent } from '../schemas/event.schema';
 import { EventsService } from './events.service';
+import type { RewardsService } from '@modules/rewards/services/rewards.service';
 
 const AGENT = 'VST-000001';
 const ID = '2b1f3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d';
@@ -58,6 +59,9 @@ function setup(row: FarmerEvent | null = event(), cohort = 'vistaar_agent') {
     events as unknown as EventRepository,
     registrations as unknown as EventRegistrationRepository,
     agents as unknown as AgentsService,
+    {
+      eventRegistered: jest.fn().mockResolvedValue([]),
+    } as unknown as RewardsService,
   );
   return { service, events, registrations };
 }

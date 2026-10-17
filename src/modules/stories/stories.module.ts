@@ -6,6 +6,7 @@ import { AgentsModule } from '@modules/agents/agents.module';
 import { EventsModule } from '@modules/events/events.module';
 import { GigsModule } from '@modules/gigs/gigs.module';
 import { MeetingsModule } from '@modules/meetings/meetings.module';
+import { RewardsModule } from '@modules/rewards/rewards.module';
 import { TestimonialsModule } from '@modules/testimonials/testimonials.module';
 import { UploadsModule } from '@modules/uploads/uploads.module';
 
@@ -55,6 +56,7 @@ import { StorySamplesService } from './services/story-samples.service';
     EventsModule,
     GigsModule,
     MeetingsModule,
+    RewardsModule,
     TestimonialsModule,
     UploadsModule,
   ],

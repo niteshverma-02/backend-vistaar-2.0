@@ -11,6 +11,7 @@ import type { MeetingRepository } from '../repositories/meeting.repository';
 import type { Meeting } from '../schemas/meeting.schema';
 import type { MeetingNotifier } from './meeting-notifier.service';
 import { MeetingsService } from './meetings.service';
+import type { RewardsService } from '@modules/rewards/services/rewards.service';
 
 const AGENT = 'VST-000001';
 const ID = '2b1f3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d';
@@ -83,11 +84,13 @@ function setup(row: Meeting | null = meeting(), stage = 'approved') {
     requireByAgentId: jest.fn().mockResolvedValue({ stage, is_active: true }),
   };
   const notifier = { scheduled: jest.fn() };
+  const rewards = { meetingAttendeeCaptured: jest.fn().mockResolvedValue([]) };
   const service = new MeetingsService(
     meetings as unknown as MeetingRepository,
     leads as unknown as LeadsService,
     agents as unknown as AgentsService,
     notifier as unknown as MeetingNotifier,
+    rewards as unknown as RewardsService,
   );
   return { service, meetings, leads, notifier };
 }

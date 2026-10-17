@@ -19,6 +19,7 @@ import type { StoryDesignsService } from './story-designs.service';
 import type { StoryFestivalsService } from './story-festivals.service';
 import type { StoryTemplatesService } from './story-templates.service';
 import type { StorySamplesService } from './story-samples.service';
+import type { RewardsService } from '@modules/rewards/services/rewards.service';
 
 const AGENT = 'VST-000001';
 const SECRET = 'test-secret';
@@ -158,6 +159,9 @@ function setup(
       forStories: jest.fn().mockResolvedValue(opts.testimonials ?? []),
     } as unknown as TestimonialsService,
     storage as unknown as StorageService,
+    {
+      storyCreated: jest.fn().mockResolvedValue([]),
+    } as unknown as RewardsService,
     { get: () => SECRET } as unknown as ConfigService<Env, true>,
   );
   return { service, repo, stats, storage };

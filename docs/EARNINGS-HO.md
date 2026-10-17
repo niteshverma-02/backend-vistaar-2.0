@@ -296,10 +296,18 @@ this table:
 }
 ```
 
-| Trigger | When | Usually |
-|---|---|---|
-| `lead_created` | the partner adds a new farmer, verified by the farmer's OTP | coins |
-| `follow_up_done` | the partner logs a call / visit / WhatsApp on a lead whose follow-up is due today (IST) or overdue; one per due date | a gig (₹) |
+| Trigger | When | Once per | Usually |
+|---|---|---|---|
+| `lead_created` | the partner adds a new farmer, verified by the farmer's OTP | farmer, ever | coins |
+| `follow_up_done` | the partner logs a call / visit / WhatsApp on a lead whose follow-up is due today (IST) or overdue | lead + due day | a gig (₹) |
+| `lead_stage_advanced` | the partner moves a lead forward (`won` and `lost` never fire it); fields: `to_stage`, `from_stage` | lead + stage reached | coins |
+| `reorder` | the order service confirms a customer's repeat order (`POST /hooks/orders/confirmed`, result `updated`, newer than the last); field: `gap_days` | order | coins |
+| `meeting_attendee_captured` | the partner captures a meeting attendee as a lead (the new lead may also pay `lead_created`); fields: `crops`, `acreage` | meeting + attendee | coins |
+| `gig_approved` | HO approves submitted gig work — a bonus over the gig's own ₹ payout; fields: `attendees`, `photos` | gig | coins |
+| `event_registered` | the partner takes a seat at an HO event (leaving and re-registering never pays again); field: `event_id` | event + partner, ever | coins |
+| `attendance_streak` | the partner punches out with an unbroken run of field days (counted back 60 days at most); field: `streak_days` — an `is N` rule pays the day a streak reaches N, `at least N` pays every day it holds | IST day | coins |
+| `onboarding_approved` | HO approves the partner's KYC (fired after they are placed in a cohort); fields: `partner_type`, `state` | partner, ever | coins |
+| `story_created` | the partner saves a brand-new My Story (an edit or re-share never fires it); field: `template` | story | coins |
 
 | Type | Operators | `value` |
 |---|---|---|
@@ -367,7 +375,9 @@ approves or rejects it here. Nothing is paid before approval.
 - **One per event and kind**, whatever happens: a farmer's `lead_created` pays once
   ever (also after a release, a takeover or a remove and re-add — the first reward
   stands); a `follow_up_done` once per lead per **due day** (IST). The row id says so:
-  `lead_created:<pii_id>:<kind>`, `follow_up_done:<pii_id>:<YYYY-MM-DD>:<kind>`.
+  `<trigger>:<the event's once-only key>:<kind>` — e.g. `lead_created:<pii_id>:<kind>`,
+  `follow_up_done:<pii_id>:<YYYY-MM-DD>:<kind>`, `reorder:<order_id>:<kind>`,
+  `attendance_streak:<agent_id>:<day>:<kind>` (the *Once per* column above).
 - When a partner **removes a lead**, its `lead_created` rewards still `pending` are
   rejected by the system: `reason: "lead removed"`, `reviewed_by: "system"`. Approved
   ones stay.
@@ -388,7 +398,7 @@ approve or reject.
 | `POST` | `/api/v2/admin/rewards/reject` | `rewards.review` | `{ "ids": [...], "reason": "…" }` | `BulkResult` |
 
 Filters: `status` `pending` · `approved` · `rejected`; `kind` `coin` · `gig`; `trigger`
-`lead_created` · `follow_up_done`; `agent_id` `VST-…`; `from` / `to` IST days
+any trigger key of the catalog; `agent_id` `VST-…`; `from` / `to` IST days
 (`YYYY-MM-DD`, both included) on when the reward was earned. The queue is
 `?status=pending`.
 
@@ -398,11 +408,12 @@ Filters: `status` `pending` · `approved` · `rejected`; `kind` `coin` · `gig`;
 {
   "id": "follow_up_done:PII-1620070:2026-10-14:gig",
   "kind": "gig",                          // coin · gig
-  "trigger": "follow_up_done",            // lead_created · follow_up_done
+  "trigger": "follow_up_done",            // any trigger key of the catalog
   "trigger_label": "Follow-up done",
   "rule_id": "6c1e…", "rule_name": "Any follow-up on time",   // as the rule was then
   "cohort_id": "ec_paddy_belt",           // the partner's earning cohort then
-  "pii_id": "PII-1620070", "farmer_name": "Ramesh Patel",     // the farmer, as then
+  "pii_id": "PII-1620070", "farmer_name": "Ramesh Patel",     // the farmer, as then (null on a trigger not about one)
+  "ref_id": null,                         // the order / meeting / gig / event / story / day / agent it is about; else null
   "due_day": "2026-10-14",                // follow_up_done: the IST day it was due; else null
   "amount": 15,                           // coins, or ₹ for a gig
   "status": "pending",                    // pending · approved · rejected

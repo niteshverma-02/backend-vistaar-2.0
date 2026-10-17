@@ -5,13 +5,18 @@ import { Injectable } from '@nestjs/common';
 import type { PartnerRef } from '@common/auth/current-partner.decorator';
 import { notFound, serviceUnavailable } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
-import { istMonthKey, istMonthStart } from '@common/utils/ist-day.util';
+import {
+  istDaysBetween,
+  istMonthKey,
+  istMonthStart,
+} from '@common/utils/ist-day.util';
 import {
   OrderService,
   type CustomerBusiness,
 } from '@modules/orders/services/order.service';
 import type { OrderStage } from '@modules/orders/orders.domain';
 import { EarningCohortsService } from '@modules/earning/services/earning-cohorts.service';
+import { RewardsService } from '@modules/rewards/services/rewards.service';
 import { SettingsService } from '@modules/settings/services/settings.service';
 
 import type {
@@ -115,6 +120,7 @@ export class CustomersService {
     private readonly settings: SettingsService,
     private readonly leads: LeadsService,
     private readonly earning: EarningCohortsService,
+    private readonly rewards: RewardsService,
   ) {}
 
   // ── HO ───────────────────────────────────────────────────────────────
@@ -196,6 +202,15 @@ export class CustomersService {
           $max: { last_order_at: date },
           $min: { customer_at: date },
         });
+        // A genuinely newer order (not a replay or an older one) can earn.
+        if (!row.last_order_at || date > row.last_order_at) {
+          await this.rewards.reorder(
+            row.agent_id,
+            { pii_id: row.pii_id, name: row.name },
+            event.order_id,
+            row.last_order_at ? istDaysBetween(row.last_order_at, date) : 0,
+          );
+        }
         return { result: 'updated', pii_id: row.pii_id };
       }
       const now = new Date();
