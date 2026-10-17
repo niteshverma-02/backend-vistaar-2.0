@@ -23,10 +23,12 @@ import { PageQueryDto } from '@common/dto/page-query.dto';
 import {
   COHORT_ID_PATTERN,
   COHORT_KEY_PATTERN,
+  MAX_COHORT_CONDITIONS,
   MAX_DISTRICTS,
   MAX_PINCODES,
   MAX_STATES,
 } from '../earning.domain';
+import { RuleConditionDto } from './earning-rule.dto';
 
 const trim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
@@ -149,11 +151,26 @@ export class CreateEarningCohortDto {
   @MaxLength(300)
   description?: string | null;
 
-  @ApiProperty({ type: EarningFiltersDto })
-  @IsDefined()
+  @ApiPropertyOptional({
+    type: [RuleConditionDto],
+    description: `What places a partner here — all must hold, a list value on any entry (1–${MAX_COHORT_CONDITIONS}). Checked against GET /admin/earning-cohorts/catalog.`,
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_COHORT_CONDITIONS)
+  @ValidateNested({ each: true })
+  @Type(() => RuleConditionDto)
+  conditions?: RuleConditionDto[];
+
+  @ApiPropertyOptional({
+    type: EarningFiltersDto,
+    description:
+      'The legacy shape, taken only when `conditions` is absent and converted to conditions',
+  })
+  @IsOptional()
   @ValidateNested()
   @Type(() => EarningFiltersDto)
-  filters!: EarningFiltersDto;
+  filters?: EarningFiltersDto;
 
   @ApiPropertyOptional({
     example: 300,
@@ -194,8 +211,20 @@ export class UpdateEarningCohortDto {
   description?: string | null;
 
   @ApiPropertyOptional({
+    type: [RuleConditionDto],
+    description: `The whole list replaces (1–${MAX_COHORT_CONDITIONS}); not on the default cohort (400 EARNING_COHORT_LOCKED)`,
+  })
+  @ValidateIf((_, v) => v !== undefined)
+  @IsArray()
+  @ArrayMaxSize(MAX_COHORT_CONDITIONS)
+  @ValidateNested({ each: true })
+  @Type(() => RuleConditionDto)
+  conditions?: RuleConditionDto[];
+
+  @ApiPropertyOptional({
     type: EarningFiltersDto,
-    description: 'Not on the default cohort (400 EARNING_COHORT_LOCKED)',
+    description:
+      'Legacy, taken only without `conditions`: keys merge over the stored legacy view; not on the default cohort (400 EARNING_COHORT_LOCKED)',
   })
   @ValidateIf((_, v) => v !== undefined)
   @IsDefined()

@@ -14,9 +14,12 @@ import {
 
 export type EarningCohortRecord = EarningCohort;
 
-/** What an edit may set. */
+/** What an edit may set (`filters` only as the view derived from `conditions`). */
 export type EarningCohortPatch = Partial<
-  Pick<EarningCohort, 'name' | 'description' | 'filters' | 'meeting_gig_payout'>
+  Pick<
+    EarningCohort,
+    'name' | 'description' | 'conditions' | 'filters' | 'meeting_gig_payout'
+  >
 >;
 
 const isDuplicateKey = (error: unknown): boolean =>
@@ -48,6 +51,7 @@ export class EarningCohortRepository {
             $setOnInsert: {
               name: DEFAULT_COHORT_NAME,
               description: 'Every partner no other cohort takes.',
+              conditions: [],
               filters: NO_FILTERS,
               priority: 0,
               status: 'active',

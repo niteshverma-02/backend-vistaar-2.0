@@ -27,6 +27,8 @@ const cohort = (
   _id: id,
   name: id,
   description: null,
+  // Stored as a pre-conditions row on purpose: reads must convert it.
+  conditions: null,
   filters: NO_FILTERS,
   priority: 0,
   status: 'active',
@@ -203,6 +205,22 @@ describe('EarningCohortsService.recompute', () => {
     );
   });
 
+  it('matches a conditions cohort ahead of a legacy-filters one, in priority order', async () => {
+    const belt = cohort('ec_belt', {
+      priority: 1,
+      conditions: [
+        { field: 'state', op: 'any_of', value: ['MADHYA PRADESH'] },
+        { field: 'customers', op: 'lte', value: 3 },
+      ],
+    });
+    const { service } = setup({
+      cohorts: [cohort(DEFAULT_COHORT_ID), belt, { ...BIG, priority: 2 }],
+      held: { 'VST-000001': { open_leads: 12, customers: 2 } },
+    });
+    const done = await service.recompute('VST-000001', 'holdings_changed');
+    expect(done.cohort_id).toBe('ec_belt');
+  });
+
   it('leaves a partner who is not approved as they were', async () => {
     const { service, assignments } = setup({
       partners: [partner('VST-000001', { stage: 'blocked' })],
@@ -313,14 +331,72 @@ describe('EarningCohortsService — HO', () => {
     repo.find.mockResolvedValue(cohort('ec_big_books_2'));
     await service.create(dto(), HO);
 
+    // Legacy filters are converted and stored as conditions; `filters` is the derived view.
     expect(repo.create).toHaveBeenCalledWith(
       expect.objectContaining({
         _id: 'ec_big_books_2',
         priority: 5,
+        conditions: [{ field: 'open_leads', op: 'gte', value: 10 }],
         filters: { ...NO_FILTERS, min_leads: 10 },
       }),
     );
     expect(later).toHaveBeenCalledWith('cohorts_changed');
+  });
+
+  it('stores conditions as sent, normalised, and derives the legacy filters', async () => {
+    const { service, repo } = setup();
+    repo.find.mockResolvedValue(cohort('ec_belt'));
+    await service.create(
+      dto({
+        key: 'belt',
+        filters: undefined,
+        conditions: [
+          { field: 'state', op: 'any_of', value: ['madhya pradesh'] },
+          { field: 'customers', op: 'lte', value: 3 },
+        ],
+      }),
+      HO,
+    );
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        _id: 'ec_belt',
+        conditions: [
+          { field: 'state', op: 'any_of', value: ['MADHYA PRADESH'] },
+          { field: 'customers', op: 'lte', value: 3 },
+        ],
+        // An `lte` has no legacy shape, so only the state appears.
+        filters: { ...NO_FILTERS, states: ['MADHYA PRADESH'] },
+      }),
+    );
+  });
+
+  it('refuses a condition the catalog refuses, an empty list, and both shapes at once', async () => {
+    const { service } = setup();
+    const bad = (conditions: unknown[], filters?: unknown) =>
+      codeOf(
+        service.create(
+          dto({
+            filters: filters as CreateEarningCohortDto['filters'],
+            conditions: conditions as CreateEarningCohortDto['conditions'],
+          }),
+          HO,
+        ),
+      );
+    expect(await bad([{ field: 'crops', op: 'eq', value: 'x' }])).toBe(
+      'VALIDATION_FAILED',
+    );
+    expect(await bad([{ field: 'state', op: 'gte', value: 1 }])).toBe(
+      'VALIDATION_FAILED',
+    );
+    expect(await bad([{ field: 'open_leads', op: 'gte', value: 'ten' }])).toBe(
+      'VALIDATION_FAILED',
+    );
+    expect(await bad([])).toBe('VALIDATION_FAILED');
+    expect(
+      await bad([{ field: 'open_leads', op: 'gte', value: 1 }], {
+        min_leads: 2,
+      }),
+    ).toBe('VALIDATION_FAILED');
   });
 
   it('answers COHORT_EXISTS for a key in use', async () => {
@@ -334,13 +410,25 @@ describe('EarningCohortsService — HO', () => {
     );
   });
 
-  it('never filters or archives the default', async () => {
+  it('never conditions, filters or archives the default', async () => {
     const { service } = setup();
     expect(
       await codeOf(
         service.update(
           DEFAULT_COHORT_ID,
           { version: 1, filters: { min_leads: 1 } },
+          HO,
+        ),
+      ),
+    ).toBe('EARNING_COHORT_LOCKED');
+    expect(
+      await codeOf(
+        service.update(
+          DEFAULT_COHORT_ID,
+          {
+            version: 1,
+            conditions: [{ field: 'open_leads', op: 'gte', value: 1 }],
+          },
           HO,
         ),
       ),
@@ -363,13 +451,68 @@ describe('EarningCohortsService — HO', () => {
       { version: 2, filters: { min_leads: 20 } },
       HO,
     );
+    // A legacy edit merges over the stored legacy view, then stores conditions.
     expect(repo.save).toHaveBeenLastCalledWith(
       'ec_big',
       2,
-      { filters: { ...NO_FILTERS, min_leads: 20 } },
+      {
+        conditions: [{ field: 'open_leads', op: 'gte', value: 20 }],
+        filters: { ...NO_FILTERS, min_leads: 20 },
+      },
       HO,
     );
     expect(later).toHaveBeenCalledWith('cohorts_changed');
+  });
+
+  it('replaces the whole condition list on PATCH, and recomputes only on a real change', async () => {
+    const { service, repo, later } = setup();
+    repo.save.mockResolvedValue(BIG);
+    await service.update(
+      'ec_big',
+      {
+        version: 1,
+        conditions: [
+          { field: 'district', op: 'any_of', value: ['Bhopal', 'Sehore'] },
+        ],
+      },
+      HO,
+    );
+    expect(repo.save).toHaveBeenLastCalledWith(
+      'ec_big',
+      1,
+      {
+        conditions: [
+          { field: 'district', op: 'any_of', value: ['Bhopal', 'Sehore'] },
+        ],
+        filters: { ...NO_FILTERS, districts: ['Bhopal', 'Sehore'] },
+      },
+      HO,
+    );
+    expect(later).toHaveBeenCalledWith('cohorts_changed');
+    later.mockClear();
+    // The same conditions again: nothing moved, nobody recomputed.
+    await service.update(
+      'ec_big',
+      {
+        version: 2,
+        conditions: [{ field: 'open_leads', op: 'gte', value: 10 }],
+      },
+      HO,
+    );
+    expect(later).not.toHaveBeenCalled();
+  });
+
+  it('answers conditions, the derived filters and a summary on read', async () => {
+    const { service } = setup();
+    const view = await service.adminGet('ec_big');
+    expect(view.conditions).toEqual([
+      { field: 'open_leads', op: 'gte', value: 10 },
+    ]);
+    expect(view.filters).toEqual({ ...NO_FILTERS, min_leads: 10 });
+    expect(view.summary).toBe('Open leads at least 10');
+    const fallback = await service.adminGet(DEFAULT_COHORT_ID);
+    expect(fallback.conditions).toEqual([]);
+    expect(fallback.summary).toBe('Every partner');
   });
 
   it('refuses a reorder that is not the whole active list', async () => {

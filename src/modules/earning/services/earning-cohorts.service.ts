@@ -15,18 +15,31 @@ import type {
   UpdateEarningCohortDto,
 } from '../dto/earning-cohort.dto';
 import {
+  COHORT_FIELD_CATALOG,
   COHORT_ID_PATTERN,
   DEFAULT_COHORT_ID,
+  MAX_COHORT_CONDITIONS,
+  OPERATORS,
+  OPERATOR_LABELS,
+  checkConditionIn,
   cohortIdOf,
   cohortOrder,
+  conditionsToFilters,
+  describeCohortConditions,
+  filtersToConditions,
   hasFilters,
   normalizeFilters,
+  opsOf,
   orderError,
   pickCohort,
   withSuffix,
   type AssignmentReason,
+  type CatalogField,
+  type EarningFilters,
   type FiltersInput,
+  type Operator,
   type PartnerFacts,
+  type RuleCondition,
 } from '../earning.domain';
 import {
   EarningAssignmentRepository,
@@ -75,12 +88,27 @@ export type EarningAssignmentRow = Pick<
   'agent_id' | 'cohort_id' | 'from' | 'to'
 >;
 
-export type EarningCohortView = Omit<EarningCohortRecord, '_id'> & {
+export type EarningCohortView = Omit<
+  EarningCohortRecord,
+  '_id' | 'conditions' | 'filters'
+> & {
   id: string;
+  /** Authoritative for matching; `[]` only on the default cohort. */
+  conditions: RuleCondition[];
+  /** The legacy view, derived from `conditions` (best effort). */
+  filters: EarningFilters;
+  /** The conditions in words. */
+  summary: string;
   is_default: boolean;
   /** Approved partners in it now. */
   partners_count: number;
 };
+
+/** What the HO portal builds the cohort condition form from. */
+export interface EarningCohortCatalog {
+  fields: (CatalogField & { operators: readonly Operator[] })[];
+  operators: { key: Operator; label: string }[];
+}
 
 export interface PartnerEarningView {
   agent_id: string;
@@ -170,14 +198,15 @@ export class EarningCohortsService {
         (a, b) =>
           (b.archived_at?.getTime() ?? 0) - (a.archived_at?.getTime() ?? 0),
       );
-    return [...cohortOrder(rows), ...archived];
+    return [...cohortOrder(rows), ...archived].map(withConditions);
   }
 
   async find(id: string): Promise<EarningCohortRecord | null> {
     if (id === DEFAULT_COHORT_ID) {
       return (await this.all()).find((c) => c._id === id) ?? null;
     }
-    return this.cohorts.find(id);
+    const row = await this.cohorts.find(id);
+    return row && withConditions(row);
   }
 
   async get(id: string): Promise<EarningCohortRecord> {
@@ -381,12 +410,23 @@ export class EarningCohortsService {
     return viewOf(cohort, counts.get(id) ?? 0);
   }
 
+  /** What the HO portal builds the condition form from. */
+  catalog(): EarningCohortCatalog {
+    return {
+      fields: COHORT_FIELD_CATALOG.map((f) => ({ ...f, operators: opsOf(f) })),
+      operators: OPERATORS.map((key) => ({ key, label: OPERATOR_LABELS[key] })),
+    };
+  }
+
   /** Goes in just above the default; HO moves it with `reorder`. */
   async create(
     dto: CreateEarningCohortDto,
     by: string,
   ): Promise<EarningCohortView> {
-    const filters = this.checkFilters(dto.filters);
+    const conditions =
+      dto.conditions !== undefined
+        ? this.checkConditions(dto.conditions, dto.filters)
+        : filtersToConditions(this.checkFilters(dto.filters));
     const cohorts = await this.all();
     const taken = new Set(cohorts.map((c) => c._id));
     const priority =
@@ -420,7 +460,8 @@ export class EarningCohortsService {
         _id: id,
         name: dto.name,
         description: dto.description || null,
-        filters,
+        conditions,
+        filters: conditionsToFilters(conditions),
         priority,
         status: 'active',
         meeting_gig_payout: dto.meeting_gig_payout ?? null,
@@ -443,7 +484,12 @@ export class EarningCohortsService {
     );
   }
 
-  /** Only what is sent; `filters` keys merge over the stored ones. */
+  /**
+   * Only what is sent; `conditions` replaces the whole list. Legacy `filters`
+   * keys merge over the stored legacy view, then convert — a condition the
+   * legacy shape cannot say is dropped by such an edit (the sender cannot
+   * see it either).
+   */
   async update(
     id: string,
     dto: UpdateEarningCohortDto,
@@ -463,18 +509,29 @@ export class EarningCohortsService {
     if (dto.meeting_gig_payout !== undefined)
       set.meeting_gig_payout = dto.meeting_gig_payout;
     let moved = false;
-    if (dto.filters !== undefined) {
+    if (dto.conditions !== undefined || dto.filters !== undefined) {
       if (id === DEFAULT_COHORT_ID) {
         throw badRequest(
           'EARNING_COHORT_LOCKED',
-          'The default cohort takes every partner no other cohort takes, so it has no filters.',
+          'The default cohort takes every partner no other cohort takes, so it has no conditions.',
         );
       }
-      const sent = Object.fromEntries(
-        Object.entries(dto.filters).filter(([, v]) => v !== undefined),
-      ) as FiltersInput;
-      set.filters = this.checkFilters({ ...current.filters, ...sent });
-      moved = JSON.stringify(set.filters) !== JSON.stringify(current.filters);
+      if (dto.conditions !== undefined) {
+        set.conditions = this.checkConditions(dto.conditions, dto.filters);
+      } else {
+        const sent = Object.fromEntries(
+          Object.entries(dto.filters ?? {}).filter(([, v]) => v !== undefined),
+        ) as FiltersInput;
+        set.conditions = filtersToConditions(
+          this.checkFilters({
+            ...conditionsToFilters(current.conditions ?? []),
+            ...sent,
+          }),
+        );
+      }
+      set.filters = conditionsToFilters(set.conditions);
+      moved =
+        JSON.stringify(set.conditions) !== JSON.stringify(current.conditions);
     }
     if (Object.keys(set).length === 0) {
       throw badRequest('VALIDATION_FAILED', 'Nothing to change was sent.');
@@ -626,23 +683,69 @@ export class EarningCohortsService {
     return this.holdings(agentIds);
   }
 
+  /** Each condition against the cohort catalog; every problem is listed. */
+  private checkConditions(
+    input: readonly { field: string; op: string; value: unknown }[],
+    filters: FiltersInput | null | undefined,
+  ): RuleCondition[] {
+    if (filters !== undefined && filters !== null) {
+      throw badRequest(
+        'VALIDATION_FAILED',
+        'Send conditions or the legacy filters, not both.',
+      );
+    }
+    const out: RuleCondition[] = [];
+    const errors: string[] = [];
+    for (const c of input) {
+      const checked = checkConditionIn(COHORT_FIELD_CATALOG, 'a cohort', c);
+      if ('error' in checked) errors.push(checked.error);
+      else out.push(checked.ok);
+    }
+    if (errors.length) throw badRequest('VALIDATION_FAILED', errors[0], errors);
+    if (out.length === 0) {
+      throw badRequest(
+        'VALIDATION_FAILED',
+        'Add at least one condition. A cohort with none would take every partner — that is the default cohort.',
+      );
+    }
+    if (out.length > MAX_COHORT_CONDITIONS) {
+      throw badRequest(
+        'VALIDATION_FAILED',
+        `A cohort takes at most ${MAX_COHORT_CONDITIONS} conditions.`,
+      );
+    }
+    return out;
+  }
+
+  /** The legacy shape: at least one filter in use. */
   private checkFilters(input: FiltersInput | null | undefined) {
     const filters = normalizeFilters(input);
     if (!hasFilters(filters)) {
       throw badRequest(
         'VALIDATION_FAILED',
-        'Add at least one filter. A cohort with none would take every partner — that is the default cohort.',
+        'Add at least one condition (or legacy filter). A cohort with none would take every partner — that is the default cohort.',
       );
     }
     return filters;
   }
 }
 
+function withConditions(c: EarningCohortRecord): EarningCohortRecord {
+  // A row from before conditions: its legacy filters say what it means.
+  return c.conditions
+    ? c
+    : { ...c, conditions: filtersToConditions(c.filters) };
+}
+
 function viewOf(c: EarningCohortRecord, count: number): EarningCohortView {
-  const { _id, ...rest } = c;
+  const { _id, conditions, ...rest } = withConditions(c);
+  const list = conditions ?? [];
   return {
     id: _id,
     ...rest,
+    conditions: list,
+    filters: conditionsToFilters(list),
+    summary: describeCohortConditions(list),
     is_default: _id === DEFAULT_COHORT_ID,
     partners_count: count,
   };
