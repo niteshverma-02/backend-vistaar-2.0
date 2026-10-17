@@ -19,7 +19,7 @@ export class SubmitCredentialsDto {
   @ApiProperty({
     enum: CREDENTIAL_MODES,
     description:
-      'Production accepts only `live`, every other server only `test`',
+      '`test` or `live` on every server, as HO picks; never read from the key',
   })
   @IsIn(CREDENTIAL_MODES)
   mode!: CredentialMode;
@@ -27,11 +27,7 @@ export class SubmitCredentialsDto {
   @ApiProperty({
     description:
       "Exactly the provider's fields (see `fields` in GET /admin/payment-credentials). Secrets are encrypted and never returned.",
-    example: {
-      key_id: 'rzp_test_XXXXXXXXXXXX',
-      key_secret: '…',
-      webhook_secret: '…',
-    },
+    example: { key_id: 'rzp_test_XXXXXXXXXXXX' },
   })
   @IsObject()
   fields!: Record<string, unknown>;

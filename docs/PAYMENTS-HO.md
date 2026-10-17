@@ -91,22 +91,24 @@ from `robinsingh@` (user's decision, 2026-10-14 — `WITHHELD` in
    (AES-256-GCM, key only in the server env, bound to the row and field) and
    wait as `pending` for 24 hours. One waiting set per provider.
 2. **Gateway check** — the server calls the gateway with the keys (no money
-   moves): Razorpay lists payments, Cashfree reads a made-up order, PhonePe mints
-   a token. Approval needs a pass. The webhook secret cannot be checked this way.
+   moves): Razorpay looks up the Key ID (public preferences), Cashfree reads a
+   made-up order, PhonePe mints a token. Approval needs a pass.
 3. **Approve** — admin **B, not A** (`403 APPROVER_IS_SUBMITTER`). The keys go
    live; the previous live keys are **wiped**, not kept. If the server stops
    half-way, the set stays `approved`: any admin but A presses Approve again to
    finish it, or Reject to cancel it. No new keys can be submitted for that
    provider until it is finished or rejected (`409 CREDENTIALS_PENDING`).
 
-Production accepts only `live` keys; every other server only `test` keys.
+Every server accepts both `test` and `live` keys; HO picks the mode on the form
+(user's decision, 2026-10-16). `required_mode` is only the form's default: `live`
+in production, `test` elsewhere. The mode is never read from the key: a `rzp_live_` key may go under `test`.
 Every step is in the audit log and sent to Slack (`PAYMENTS_ALERT_WEBHOOK_URL`).
 
 ### Routes
 
 | Method | Route | Body | Returns |
 |---|---|---|---|
-| GET | `/admin/payment-credentials` | — | `{ storage_ready, required_mode, providers: [{ provider, fields[], active, pending }] }` |
+| GET | `/admin/payment-credentials` | — | `{ storage_ready, required_mode, modes, providers: [{ provider, fields[], active, pending }] }` |
 | GET | `/admin/payment-credentials/:provider/history` | `?page&limit` | `PageResult<CredentialView>` |
 | POST | `/admin/payment-credentials/:provider` | `{ mode, fields, note? }` | `CredentialView` (pending) |
 | POST | `/admin/payment-credentials/requests/:id/test` | — | `CredentialView` with `test` |
@@ -114,11 +116,11 @@ Every step is in the audit log and sent to Slack (`PAYMENTS_ALERT_WEBHOOK_URL`).
 | POST | `/admin/payment-credentials/requests/:id/reject` | `{ reason }` | `CredentialView` (rejected, wiped) |
 | POST | `/admin/payment-credentials/:provider/revoke` | `{ reason }` | `{ revoked: true }` — emergency stop |
 
-`fields` per provider (exactly these, no others):
+`fields` per provider (exactly these, no others; `fields[].optional` marks the ones that may be left empty):
 
 | Provider | Ids (shown) | Secrets (masked) |
 |---|---|---|
-| razorpay | `key_id` (`rzp_test_…` / `rzp_live_…`, must match `mode`) | `key_secret`, `webhook_secret` |
+| razorpay | `key_id` (`rzp_test_…` / `rzp_live_…`, under either `mode`) | none — **the Key ID is the only field**: KO Utils registers the Razorpay order with its own secret (as for My Mali); the check uses Razorpay's public `GET /v1/preferences?key_id=` |
 | cashfree | `app_id` | `secret_key` |
 | phonepe | `client_id`, `client_version` | `client_secret` |
 

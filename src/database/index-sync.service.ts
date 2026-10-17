@@ -12,6 +12,9 @@ import type { Env } from '@config/env.schema';
 /** Only the collections this service created outright. */
 const V2_COLLECTION_PREFIX = 'vistaar_v2_';
 
+/** Marks our builds, so a timed-out one can be found and killed — only ours. */
+const BUILD_TAG = 'vistaar-index-sync:';
+
 /**
  * How long one collection's build may take before boot moves on without it.
  *
@@ -40,6 +43,11 @@ const INDEX_BUILD_TIMEOUT_MS = 15_000;
  *   build that never returns is a server that never binds its port. When the
  *   beta Mongo host ran out of disk, `createIndexes()` stopped answering rather
  *   than failing.
+ * - **Only missing indexes, and a timed-out build is killed.** Mongo runs a
+ *   few index builds at a time for the whole server and queues the rest; the
+ *   queue outlives the client and `maxTimeMS`. When another app's build
+ *   wedged the shared beta host, every restart left ~27 more builds of ours
+ *   waiting there (969 by 2026-10-16), each one longer in line than the last.
  *
  * Outside production only. There an index build belongs in a migration, run
  * against live data deliberately (listed in `docs/PROD-CHECKLIST.md`).
@@ -66,14 +74,27 @@ export class IndexSyncService implements OnApplicationBootstrap {
 
         if (!collection.startsWith(V2_COLLECTION_PREFIX)) return;
 
+        const tag = `${BUILD_TAG}${collection}`;
         try {
+          // Nothing missing → no build queued at all. On a healthy host this
+          // is every restart after the first.
+          const { toCreate } = await this.withTimeout(
+            model.diffIndexes(),
+            collection,
+          );
+          if (!toCreate.length) return;
+
           // `maxTimeMS` asks the server to give up; the race enforces it when
           // the server is too wedged to notice its own deadline.
           await this.withTimeout(
-            model.createIndexes({ maxTimeMS: INDEX_BUILD_TIMEOUT_MS }),
+            model.createIndexes({
+              maxTimeMS: INDEX_BUILD_TIMEOUT_MS,
+              comment: tag,
+            }),
             collection,
           );
         } catch (error) {
+          await this.killBuild(tag);
           // Loud on purpose. A unique index that will not build is nearly
           // always duplicate rows already in the collection — which is exactly
           // the condition the index was meant to stop, so it has to be read by
@@ -86,6 +107,28 @@ export class IndexSyncService implements OnApplicationBootstrap {
         }
       }),
     );
+  }
+
+  /**
+   * Takes our timed-out build back out of Mongo's queue, so the next restart
+   * does not stand behind it. Best effort: a user may kill only its own ops,
+   * and the filter is our tag, so nothing of another app's is touched.
+   */
+  private async killBuild(tag: string): Promise<void> {
+    const admin = this.connection.db?.admin();
+    if (!admin) return;
+    try {
+      const { inprog } = (await admin.command({
+        currentOp: 1,
+        $ownOps: true,
+        'command.comment': tag,
+      })) as { inprog: { opid: unknown }[] };
+      await Promise.all(
+        inprog.map((op) => admin.command({ killOp: 1, op: op.opid })),
+      );
+    } catch {
+      // Left queued; it only builds an index we declared anyway.
+    }
   }
 
   /**
@@ -105,9 +148,10 @@ export class IndexSyncService implements OnApplicationBootstrap {
         () =>
           reject(
             new Error(
-              `no answer in ${INDEX_BUILD_TIMEOUT_MS}ms — the Mongo host is ` +
-                `likely out of disk; ${collection} still has only the indexes ` +
-                `it already had`,
+              `no answer in ${INDEX_BUILD_TIMEOUT_MS}ms — Mongo's index-build ` +
+                `queue is stuck (another build is wedged) or the host is out ` +
+                `of disk; ${collection} still has only the indexes it already ` +
+                `had, and the queued build was cancelled`,
             ),
           ),
         INDEX_BUILD_TIMEOUT_MS,

@@ -37,6 +37,8 @@ export interface CredentialField {
   pattern: RegExp;
   /** What HO is told when it does not match. */
   hint: string;
+  /** May be left empty. */
+  optional?: boolean;
 }
 
 /** No spaces or control characters — a pasted key with a stray newline fails here, not at payment time. */
@@ -55,20 +57,9 @@ export const CREDENTIAL_FIELDS: Record<
       pattern: /^rzp_(test|live)_[A-Za-z0-9]{8,32}$/,
       hint: 'starts with rzp_test_ or rzp_live_',
     },
-    {
-      key: 'key_secret',
-      label: 'Key secret',
-      secret: true,
-      pattern: TOKEN(12, 64),
-      hint: 'letters and digits, from Razorpay Dashboard → API Keys',
-    },
-    {
-      key: 'webhook_secret',
-      label: 'Webhook secret',
-      secret: true,
-      pattern: /^[\x21-\x7e]{8,64}$/,
-      hint: '8–64 characters, no spaces — the one set on the Razorpay webhook',
-    },
+    // The Key ID is all Razorpay needs here: KO Utils registers the order with
+    // its own secret (as for My Mali, RAZORPAY_ORDER_SOURCE=ko_utils) and the
+    // app opens the sheet with the Key ID alone. User's decision, 2026-10-16.
   ],
   cashfree: [
     {
@@ -122,7 +113,6 @@ export interface SplitFields {
  */
 export function splitFields(
   provider: PaymentProvider,
-  mode: CredentialMode,
   raw: Record<string, unknown>,
 ): { ok: SplitFields } | { errors: string[] } {
   const spec = CREDENTIAL_FIELDS[provider];
@@ -134,6 +124,7 @@ export function splitFields(
   const out: SplitFields = { public_fields: {}, secrets: {} };
   for (const field of spec) {
     const value = raw[field.key];
+    if (field.optional && (value === undefined || value === '')) continue;
     if (typeof value !== 'string' || !value) {
       errors.push(`Please enter the ${field.label}.`);
       continue;
@@ -144,38 +135,17 @@ export function splitFields(
     }
     (field.secret ? out.secrets : out.public_fields)[field.key] = value;
   }
-  const modeError = modeMismatch(provider, mode, out.public_fields);
-  if (modeError) errors.push(modeError);
   return errors.length ? { errors } : { ok: out };
 }
 
-/** Razorpay says test or live in the key itself; a mismatch is a pasted wrong key. */
-function modeMismatch(
-  provider: PaymentProvider,
-  mode: CredentialMode,
-  fields: Record<string, string>,
-): string | null {
-  if (provider !== 'razorpay' || !fields.key_id) return null;
-  const keyMode = fields.key_id.startsWith('rzp_live_') ? 'live' : 'test';
-  return keyMode === mode
-    ? null
-    : `This is a ${keyMode} Key ID, but the mode chosen is ${mode}.`;
-}
-
 /**
- * Production takes real money only with live keys; every other server only
- * with test keys, so a beta bug can never charge a real farmer.
+ * Both modes are accepted on every server — HO picks test or live on the form
+ * (user's decision, 2026-10-16). The server's own mode is only the form's
+ * default, and the mode is never read from the key: a rzp_live_ key may be
+ * filed under test, and the other way round.
  */
-export function modeAllowed(
-  mode: CredentialMode,
-  production: boolean,
-): string | null {
-  if (production && mode !== 'live')
-    return 'This server takes live payments: please submit live keys.';
-  if (!production && mode !== 'test')
-    return 'This is a test server: please submit test keys, never live ones.';
-  return null;
-}
+export const defaultMode = (production: boolean): CredentialMode =>
+  production ? 'live' : 'test';
 
 /** The only form a secret is ever shown in. */
 export const mask = (value: string): string => `••••${value.slice(-4)}`;
