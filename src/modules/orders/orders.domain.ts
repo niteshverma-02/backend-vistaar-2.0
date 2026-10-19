@@ -4,6 +4,16 @@ import type { OrderAddress, OrderStatusEntry } from './schemas/order.schema';
 export const VISTAAR_ORDER_SOURCE = 'vistaar';
 
 /**
+ * Vistaar's order numbers, `KSV-n`, from `app_counters._id = 'vistaar_orders'`.
+ * The old Vistaar issued `KSV-` numbers too (still in `orders_v2`), so the
+ * series starts at 1 and steps over every number already taken.
+ */
+export const ORDER_ID_COUNTER = 'vistaar_orders';
+export const ORDER_ID_PREFIX = 'KSV-';
+
+export const vistaarOrderId = (n: number): string => `${ORDER_ID_PREFIX}${n}`;
+
+/**
  * The app's order states (`OrderStatus` in the Flutter app). Stockship has
  * ~50 raw `order_status` values, several of them spellings of the same stage
  * (`in transit` / `in_transit`), so the app gets these and the raw value

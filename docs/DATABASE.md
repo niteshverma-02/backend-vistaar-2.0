@@ -44,6 +44,7 @@ writes its retailers.
 | `vistaar_v2_payment_credentials` | one set of merchant keys (admin) | `_id` UUID, `provider`, `mode` test/live, `status` pending/approved/active/superseded/revoked/rejected/expired, `public_fields{}` (Key ID, App ID…), `secrets{field: {kid, iv, tag, ct}}` (AES-256-GCM, AAD = row+provider+field; **`null` once not pending/active**), `masked{field: '••••abcd'}`, `note`, `submitted_by`, `expires_at` (24 h), `test{ok, message, by, at}`, `decided_by/at`, `reason`, `activated_at`, `retired_at/by`, timestamps. Unique: one `active` and one `pending` per provider. Never deleted |
 | `vistaar_v2_payment_option_audit` | who changed a payment option | `_id` UUID, `option_id` (provider, `*` for a reorder), `action` update/reorder/credentials_*, `before`, `after` (just the changed fields), `by` (HO email), `at`. Insert-only, **never deleted** |
 | `vistaar_v2_testimonials` | testimonial a partner sent in | `_id` UUID (made by the app), `agent_id`, `partner_name` (copy), farmer `pii_id` (one of the partner's leads) + `farmer_name`, `farmer_contact` `+91…`, `village`, `district`, `state` (copies); `type` product/combo, `bulk` / `family`, `product_name` (copy), `crop`, `kind` video/photo/text, `text`, `rating` 1–5, `media_path` (private) + `media_url` (download-token link, while approved) + `duration_sec`; `status` submitted/approved/rejected/removed, `reason`, `decided_by/at`, `approved_at`; `review_id` / `testimonial_id` (ids reserved at submit for the shared rows written on approval; `testimonial_id` null for a quote), `gig_id` (reserved), `views`, `shares`, timestamps |
+| `vistaar_v2_order_ids` | order number handed out | `_id` `<agent_id>:<request_id>` (one number per checkout attempt — `_id` keeps it unique with no other index), `order_id` `KSV-n` (from `app_counters` `vistaar_orders`), `agent_id`, `request_id` (the app's UUID), `created_at`. **Never deleted** — a number given out is never given again |
 | `vistaar_v2_testimonial_consents` | the farmer's consent for one testimonial | `_id` = the testimonial's, `agent_id`, `pii_id`, `farmer_name`, `version`, `text` (the exact words shown), `lang` en/hi, `given_at` (server time), `status` given/withdrawn, `withdrawn_at/by/reason`, timestamps. **Never deleted** |
 
 ### Indexes (declared on the schemas; listed in PROD-CHECKLIST)
@@ -173,7 +174,16 @@ person again through `contact_id` → `contacts_v2.pii_id`, else
 ### `app_counters` — one row, `_id: 'draft_orders'`
 
 `$inc: { count: 1 }` + `updated_at` on save of a new draft, never upserted.
-Nothing else in `app_counters` is touched.
+
+### `app_counters` — one row, `_id: 'vistaar_orders'` (`KSV-n` order numbers)
+
+Created once by hand (`{ _id: 'vistaar_orders', count: 0 }`, user's decision
+2026-10-16: the series starts at `KSV-1`). `POST /orders/id` makes the same
+`$inc: { count: 1 }` + `updated_at`, never upserted. The old Vistaar's
+`KSV-` orders are still in `orders_v2` (beta: 127 of `KSV-1`…`KSV-271`), so
+each process reads those numbers once at boot (one scan — `orders_v2` has no
+`order_id` index) and holds them in memory; a taken number is skipped, and no
+order waits on an `orders_v2` lookup.
 
 ## Shared — farmer leads, written with `source: 'vistaar'`
 

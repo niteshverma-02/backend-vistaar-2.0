@@ -126,6 +126,22 @@ export class OrderRepository {
   }
 
   /**
+   * Every `<prefix>n` number any channel's order already carries. A full scan
+   * (`orders_v2.order_id` has no index), so it is read once per process; the
+   * old Vistaar left a few hundred.
+   */
+  async takenNumbers(prefix: string): Promise<number[]> {
+    const rows = await this.model
+      .find(
+        { order_id: new RegExp(`^${escapeRegex(prefix)}\\d+$`) },
+        { _id: 0, order_id: 1 },
+      )
+      .lean<{ order_id: string }[]>()
+      .exec();
+    return rows.map((r) => Number(r.order_id.slice(prefix.length)));
+  }
+
+  /**
    * Per farmer: the partner's orders in `statuses`, their total and the
    * latest. One pass over the partner's own orders (`{ agent, order_status,
    * date }` index) — a partner has hundreds, not millions.

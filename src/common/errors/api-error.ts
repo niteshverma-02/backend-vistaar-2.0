@@ -68,6 +68,8 @@ export const API_ERROR_CODES = [
   // draft orders
   'DRAFT_CART_EMPTY',
   'DRAFT_ID_UNAVAILABLE',
+  // orders: no `app_counters` row for `KSV-` numbers, or no free one (503).
+  'ORDER_ID_UNAVAILABLE',
   // banners. HO is told the size to use, not just that the file failed.
   'IMAGE_SIZE_NOT_ALLOWED',
   'IMAGE_NOT_FOUND',

@@ -49,6 +49,11 @@ export class PiiService {
     return this.counters.next(key);
   }
 
+  /** `nextOrgNumber`, or `null` while the series' row is not in `app_counters`. */
+  tryNextOrgNumber(key: OrgCounterKey): Promise<number | null> {
+    return this.counters.tryNext(key);
+  }
+
   /**
    * The person's address as `source` filed it: updated in place when that row
    * exists, otherwise a new `ADDR-n` row listed on `piis.addresses[]` —

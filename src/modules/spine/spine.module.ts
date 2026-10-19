@@ -17,7 +17,7 @@ import { ProductFactsService } from './services/product-facts.service';
 /**
  * The org's shared records Vistaar touches: `piis` (find, or insert a new
  * person; KYC documents), `addresses` (rows Vistaar filed), `app_counters`
- * (`piis`, `addresses`, `leads`, `contacts`), and `pincode_map_v2` and the
+ * (`piis`, `addresses`, `leads`, `contacts`, `vistaar_orders`), and `pincode_map_v2` and the
  * catalogue's `products_v2` / `bulk_v2` / `categories_v2` (read).
  * Nothing else in this service may hold a model for them.
  */
