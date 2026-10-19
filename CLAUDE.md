@@ -163,6 +163,14 @@ user-approved field, `reminder_sent`. Its `DFT-n` ids come from the
 writers make — the only write this module makes to `app_counters`, never an
 upsert.
 
+**Exception — `app_counters._id: 'vistaar_orders'`** (user's decision,
+2026-10-16): Vistaar's order numbers `KSV-n`, from 1. The row is created once
+by hand (`count: 0`), never upserted; the order module makes the same `$inc`
+as every other series. The old Vistaar's `KSV-` numbers in `orders_v2` are
+read once per process (at boot) and skipped. Numbers handed out
+are kept in `vistaar_v2_order_ids` per `request_id`, so a retry never spends a
+second one.
+
 **Exception — `terms_and_conditions`** (shared with Krishi Sampark, B2B Portal,
 RLM): the terms module keeps Vistaar's partner T&C there, by the user's
 decision (2026-10-13), instead of a `vistaar_v2_*` collection. Rows use the
@@ -203,6 +211,7 @@ declared in code.
 | OTP attempts | `vistaar_v2_otp_attempts` | `_id` `send:<phone>` or `verify:<phone>` (sign-in), `lead-send:` / `lead-verify:<phone>` (farmer OTP on lead add), sliding window of hits, one atomic pipeline update; TTL. Shared OTP limits across processes |
 | Settings | `vistaar_v2_settings` | Default owner, farmer-lead owner, farmer-consent wording (versioned), lead / customer release days, commission (return window, min withdrawal, TDS rates, monthly target), conflict radius, Feedback reason chips |
 | Leads | `vistaar_v2_leads` | One row per farmer a partner holds (unique `pii_id`): holder (released when not worked, HO transfer), stage, follow-up, activity, consent, `otp_verified_at` (farmer OTP mandatory on add — a 15-min signed token from `POST /leads/otp/verify`); copy of the farmer basics for lists. The farmer is the org's `leads_v2` / `contacts_v2`. A **customer** is a row at `won` — set by the order service's confirmed-order call (`/hooks/orders/confirmed`), business read from `orders_v2` |
+| Order numbers | `vistaar_v2_order_ids` | `KSV-n` handed out (`order_id`), from `app_counters` `vistaar_orders`; `_id` `<agent_id>:<request_id>`, so a checkout retry gets the same number (no index needed for that). Never deleted |
 | Counters | `vistaar_v2_counters` | `VST-`, `WD-` and `GIG-` series (not `app_counters`, not legacy `sequences`) |
 | Commission plans | `vistaar_v2_commission_plans` | Rates per partner type or earning cohort from a month on (`<cohort>@<YYYY-MM>`, `ec_…` = earning cohort); fixed % or slabs, optional `min_order_value` (below → `ec_default`'s plan); past months locked; history kept. Order rate = cohort at placing; no earning plan saved = partner-type plan; no plan = the PRD's draft rates. Commission itself is never stored — worked out from `orders_v2` on read (`docs/COMMISSION-LOGIC.md`) |
 | Withdrawals | `vistaar_v2_withdrawals` | `WD-` payout requests: TDS fixed at approval, bank file + UTR; one open per partner (unique partial `open: true`). Never deleted |

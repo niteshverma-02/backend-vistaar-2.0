@@ -6,8 +6,8 @@ details** and **Order tracking** screens. Replaces the device-local
 
 Orders live in Stockship's `orders_v2`, the same collection every channel
 sells through. A Vistaar order is one with `source: 'vistaar'` and the
-partner's `VST-` id in `agent`. This module **only reads**; placing an order
-(checkout) is not built yet.
+partner's `VST-` id in `agent`. This module reads orders and hands out
+order numbers; placing an order (checkout) is not built yet.
 
 All routes are under `/api/v2/orders` and answer `{ "success": true, "data": … }`.
 Header: `Authorization: Bearer <Vistaar access token>` — that decides whose
@@ -19,6 +19,7 @@ orders come back. No `x-b2b-token` is needed.
 |---|---|---|
 | `GET` | `/orders?page=1&limit=50&status=shipped&customer=PII-123&from=2026-09-01&to=2026-09-30` | `PageResult<OrderView>`, newest first. `limit` ≤ 200; all filters optional: `status`, `customer` (one farmer's `pii_id` — a customer's Orders tab), `from` / `to` (IST days placed, **both included**; Reports → Order history) |
 | `GET` | `/orders/:id` | `OrderView` |
+| `POST` | `/orders/id` | `OrderIdView` — the order number for one checkout attempt (below) |
 
 `:id` is the order's `order_id` (`KSK-341382`); case does not matter. An id with `/` (`ORD/K0-150/41350`) is sent URL-encoded: `/orders/ORD%2FK0-150%2F41350`.
 
@@ -26,7 +27,35 @@ orders come back. No `x-b2b-token` is needed.
 `returned` — the app's `OrderStatus` minus `draft` (drafts are
 `/draft-orders`).
 
-## `OrderView`
+## Order number — `POST /orders/id`
+
+Vistaar's order numbers are `KSV-1`, `KSV-2`, … from `app_counters`
+(`_id: 'vistaar_orders'`). The old Vistaar already used some `KSV-` numbers;
+those are stepped over, so the series has gaps — never assume `KSV-n+1`
+follows `KSV-n`.
+
+```json
+// request
+{ "request_id": "3f2a7c1e-9b4d-4e8a-a1c2-5d6e7f809a1b" }
+// 200
+{ "success": true, "data": {
+  "order_id": "KSV-272",
+  "request_id": "3f2a7c1e-9b4d-4e8a-a1c2-5d6e7f809a1b",
+  "issued_at": "2026-10-16T07:30:00.000Z"
+} }
+```
+
+- Make **one UUID per checkout attempt** and send the same one on every retry
+  (timeout, double tap, app restart). The same `request_id` always gets the
+  same number back; a new one spends a new number.
+- A new attempt (the partner changes the cart and pays again) = a new UUID.
+- The number is the partner's alone: another partner's `request_id` never
+  returns it.
+- COD: ask for the number when the partner taps **Place order**. Prepaid: the
+  number comes from the payment webhook, once payment is confirmed (checkout
+  is not built yet), so a failed payment spends nothing.
+
+
 
 ```json
 {
@@ -112,3 +141,8 @@ orders come back. No `x-b2b-token` is needed.
 | 400 | `VALIDATION_FAILED` | bad `status`, `page`, `from` / `to` (or `from` after `to`), or an `:id` that is not an order id |
 | 401 | `UNAUTHORIZED` | no or expired Vistaar token |
 | 404 | `NOT_FOUND` | no such order, or it is another partner's |
+| 400 | `VALIDATION_FAILED` | `POST /orders/id`: `request_id` missing or not a UUID, or an extra field |
+| 403 | `PARTNER_NOT_APPROVED` / `ACCOUNT_BLOCKED` | `POST /orders/id`: the account is not approved yet, or is blocked — show `message` |
+| 429 | `TOO_MANY_REQUESTS` | `POST /orders/id`: more than 10 in a minute |
+| 503 | `ORDER_ID_UNAVAILABLE` | `POST /orders/id`: no number could be issued — retry later with the **same** `request_id` |
+| 5xx | `DATABASE_UNAVAILABLE` / `INTERNAL_ERROR` | `POST /orders/id`: retry with the **same** `request_id` — a number already issued comes back, none is spent twice |

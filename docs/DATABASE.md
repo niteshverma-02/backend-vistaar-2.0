@@ -48,6 +48,7 @@ writes its retailers.
 | `vistaar_v2_earning_rules` | coin / gig rule of an earning cohort (HO) | `_id` UUID, `cohort_id`, `name`, `trigger` (code catalog: `lead_created`, `follow_up_done`), `conditions[]{field, op eq/in/any_of/gte/lte, value}` (checked against the catalog on save; all must hold), `reward{kind coin/gig, amount}` (whole ≥ 1; gig = ₹), `order` (within the cohort), `status` active/archived, `version`, `created_by/updated_by`, `archived_by/at`, timestamps. Never deleted — archived (rewards name it) |
 | `vistaar_v2_earning_assignments` | stretch of time a partner spent in an earning cohort | `_id` UUID, `agent_id`, `cohort_id`, `from`, `to` (`null` while current), `open` (`true` while current; one per partner, unique partial), `reason` partner_approved/partner_unblocked/profile_changed/holdings_changed/cohorts_changed/first_assignment/recompute, `created_at`. A move closes the open row (`to` = now) and opens a new one; never edited after, never deleted (commission follows the cohort at an order's placing time — every commission book reads the partner's stretches) |
 | `vistaar_v2_rewards` | coin / gig reward an event earned a partner | `_id` `lead_created:<pii_id>:<kind>` or `follow_up_done:<pii_id>:<YYYY-MM-DD IST due day>:<kind>` (the event pays once per kind — a duplicate insert is "already rewarded"), `agent_id`, `rule_id` + `rule_name` (as then), `kind` coin/gig, `trigger` lead_created/follow_up_done, `pii_id` + `farmer_name` (as then), `due_day` (follow-ups; else `null`), `amount` (whole ≥ 1; coins or ₹), `cohort_id` (the partner's earning cohort then), `status` pending/approved/rejected, `reason`, `reviewed_by` (HO email or `system`), `reviewed_at` (an approved gig is earned from it), timestamps. Only a pending row is decided (status in the update filter). Commission reads the approved `kind: gig` rows into the wallet (while `gig_pay_enabled`). Never deleted — an approved gig is wallet money |
+| `vistaar_v2_order_ids` | order number handed out | `_id` `<agent_id>:<request_id>` (one number per checkout attempt — `_id` keeps it unique with no other index), `order_id` `KSV-n` (from `app_counters` `vistaar_orders`), `agent_id`, `request_id` (the app's UUID), `created_at`. **Never deleted** — a number given out is never given again |
 | `vistaar_v2_testimonial_consents` | the farmer's consent for one testimonial | `_id` = the testimonial's, `agent_id`, `pii_id`, `farmer_name`, `version`, `text` (the exact words shown), `lang` en/hi, `given_at` (server time), `status` given/withdrawn, `withdrawn_at/by/reason`, timestamps. **Never deleted** |
 
 ### Indexes (declared on the schemas; listed in PROD-CHECKLIST)
@@ -181,7 +182,16 @@ person again through `contact_id` → `contacts_v2.pii_id`, else
 ### `app_counters` — one row, `_id: 'draft_orders'`
 
 `$inc: { count: 1 }` + `updated_at` on save of a new draft, never upserted.
-Nothing else in `app_counters` is touched.
+
+### `app_counters` — one row, `_id: 'vistaar_orders'` (`KSV-n` order numbers)
+
+Created once by hand (`{ _id: 'vistaar_orders', count: 0 }`, user's decision
+2026-10-16: the series starts at `KSV-1`). `POST /orders/id` makes the same
+`$inc: { count: 1 }` + `updated_at`, never upserted. The old Vistaar's
+`KSV-` orders are still in `orders_v2` (beta: 127 of `KSV-1`…`KSV-271`), so
+each process reads those numbers once at boot (one scan — `orders_v2` has no
+`order_id` index) and holds them in memory; a taken number is skipped, and no
+order waits on an `orders_v2` lookup.
 
 ## Shared — farmer leads, written with `source: 'vistaar'`
 

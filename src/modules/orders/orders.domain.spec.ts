@@ -9,6 +9,7 @@ import {
   stageOf,
   statusesFor,
   trackingSteps,
+  vistaarOrderId,
 } from './orders.domain';
 
 const at = (h: number) => new Date(Date.UTC(2026, 9, 12, h));
@@ -195,5 +196,12 @@ describe('markTimes', () => {
     for (const s of ['split', 'merged', 'failed', 'pseudo', ' Split '])
       expect(isCounted(s)).toBe(false);
     expect(isCounted('delivered')).toBe(true);
+  });
+});
+
+describe('vistaarOrderId', () => {
+  it('formats the counter as KSV-n', () => {
+    expect(vistaarOrderId(1)).toBe('KSV-1');
+    expect(vistaarOrderId(272)).toBe('KSV-272');
   });
 });

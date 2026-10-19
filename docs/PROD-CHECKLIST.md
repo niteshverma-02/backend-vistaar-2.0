@@ -187,6 +187,15 @@ few thousand orders per partner; past that, ask Stockship for
 - [ ] Checkout (not built) writes orders through Stockship with `source: 'vistaar'` and the partner's `VST-` id in `agent`. Stockship's create-order checks `agent` against `agents_v2` today, so it must accept a `VST-` id for `source: 'vistaar'` (Stockship team).
 - [ ] Stockship team told `source: 'vistaar'` orders will appear, with a `VST-` id in `agent`.
 
+### Order numbers (`POST /orders/id`, `KSV-n`)
+
+- [ ] Index (support lookups only — one number per attempt rests on `_id`): `db.vistaar_v2_order_ids.createIndex({ order_id: 1 })`
+- [ ] The counter row, once (never an upsert in code — without it the route answers 503 `ORDER_ID_UNAVAILABLE`):
+  `db.app_counters.insertOne({ _id: 'vistaar_orders', count: 0, updated_at: new Date() })`
+- [ ] Nothing else may issue `KSV-` numbers: confirm the old CRM-Backend no longer does (beta's last `KSV-` order is 2026-05-30). Old numbers already in `orders_v2` are skipped, new ones from another writer would not be
+- [ ] Ask Stockship for `{ order_id: 1 }` on `orders_v2` (unique if the data allows). Without it, our one read of the old `KSV-` numbers at each process start is a full scan (~3 s on beta's 534k orders; an order asked for in those first seconds waits for it), and so is Stockship's own duplicate check on every create-order
+- [ ] Checkout passes the `KSV-` number to Stockship create-order as `order_id` (Stockship keeps a caller's `order_id`; it answers 409 if it exists)
+
 ## Commission, wallet, My Performance — before switching on
 
 - [ ] **The withdrawals indexes above, the unique partial `{ agent_id }` (`open: true`) first** — it is what stops two open withdrawals from one partner across server processes (one process also serialises a partner's requests in memory)
