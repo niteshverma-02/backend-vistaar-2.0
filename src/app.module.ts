@@ -29,6 +29,7 @@ import { FaqsModule } from '@modules/faqs/faqs.module';
 import { FeedbackModule } from '@modules/feedback/feedback.module';
 import { HealthModule } from '@modules/health/health.module';
 import { InfoPagesModule } from '@modules/info-pages/info-pages.module';
+import { KkdActivityModule } from '@modules/kkd-activity/kkd-activity.module';
 import { LeadsModule } from '@modules/leads/leads.module';
 import { OnboardingModule } from '@modules/onboarding/onboarding.module';
 import { OrdersModule } from '@modules/orders/orders.module';
@@ -115,6 +116,7 @@ import { UploadsModule } from '@modules/uploads/uploads.module';
     InfoPagesModule,
     LeadsModule,
     TodayModule,
+    KkdActivityModule,
     PaymentsModule,
   ],
   providers: [

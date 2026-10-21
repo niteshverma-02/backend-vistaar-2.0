@@ -203,6 +203,11 @@ seen after this feature shipped) · `recompute` (HO's button). A partner approve
 this feature is placed on their first app open, on this route, or on the recompute
 button — run it once after deploy.
 
+`profile_changed` is written only by the `backfill-partner-place` script. A partner's own
+place edit (`PATCH /me`, ONBOARDING-APP.md §6) does not re-place them today: they move on
+the next holdings change, cohort change or recompute — press recompute after a batch of
+place edits if a place-based cohort must follow at once.
+
 ## Commission per cohort
 
 A cohort's commission is a **plan** on the commission-plans routes, the same ones as the

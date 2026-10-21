@@ -186,6 +186,12 @@ Every key is optional; only the keys sent change. Do not send `null`. Answers th
 Writes `vistaar_v2_agents` only (`profile`, the HO list's `preview` copy of
 place, `pending_name`). The org's person record (`piis`) is never changed.
 
+A new village / district / state / pincode does **not** move the partner to another
+earning cohort by itself: the cohort is worked out again on the next lead change (add,
+win, lose, reopen, remove, transfer), HO cohort change or HO recompute
+(EARNINGS-HO.md). Until then `earning_cohort` on `GET /me` stays the one matched on the
+old place.
+
 ### Bank account change
 
 Payouts keep going to the verified account until HO approves the new one. While a change

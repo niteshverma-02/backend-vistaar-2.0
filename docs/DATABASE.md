@@ -305,6 +305,10 @@ with the next number, up to 3 times.
 | `agents_v2` | HO role (`user_role`), owner names; the owner's phone (`contact.phone_number`) for the app's reporting officer |
 | `pincode_map_v2` | pincode → state / district (cached 6 h) |
 | `franchises`, `prasar_v2_retailers`, `vistaaragents` | nearby-network warning at approval. ⚠️ `vistaaragents.latestCoordinates.coordinates` is stored `[lat, lng]` (swapped) — matched with a box, not a geo query |
+| `orders_v2` — KKD & App activity | the partner's held farmers' **own** orders: `{ pii_id $in, marketplace $in MKTP-2 / MKTP-3 / MKTP-4, date ≥ earliest hold }`, newest first, ≤ 2,000; projects `order_id, date, pii_id, marketplace, sub_source, created_by, warehouse.warehouse_id, order_status, total_amount, items.sku, items.qty`. Rides `{ pii_id, date }`. MKTP-4 counts only when sold at a store (POS login `created_by` or the store's warehouse) and not `sub_source: 'founder_office'` |
+| `franchise_v2_walkins`, `franchise_v2_prescriptions`, `franchise_v2_pos_orders` (owner: franchise backend) | KKD & App activity: walk-ins, crop advice, the POS archive (`in_stockship: false` only — the rest is in `orders_v2`), by `pii_id $in` **or** `phone $in` (10 digits), from the earliest hold, ≤ 2,000 each. No index on `pii_id` / `phone` there (48 / 11 / 507 rows on 2026-10-21) — see PROD-CHECKLIST |
+| `kkd_events` (owner: Katyayani app) | KKD & App activity: `APP_LAUNCH` and `Cart Abandoned` by `user_id $in` (the farmer's 10-digit mobile) from the earliest hold, ≤ 2,000; projects `event_values.total_price` and `event_values.items.{name, quantity}`. Only `_id` is indexed — see PROD-CHECKLIST |
+| `franchises`, `franchise_v2_franchises`, `employees` | KKD & App activity: the store list (id, address, city, state, pincode, phone, map point, warehouse id, email) and the POS logins that tie an MKTP-4 order to a store — from `employees` only `email` + `franchiseId` of rows with a `franchiseId`. Cached 60 s |
 
 ## Checks
 

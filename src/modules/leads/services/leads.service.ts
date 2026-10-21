@@ -101,8 +101,20 @@ export interface InviteeCard {
   stage: LeadStage;
 }
 
+/** A farmer a partner holds now, and since when — what activity of theirs the partner may see. */
+export interface HeldFarmer {
+  pii_id: string;
+  name: string;
+  phone: string;
+  village: string;
+  stage: LeadStage;
+  /** The start of this partner's hold (`held_since`, else when they added the farmer). */
+  since: Date;
+}
+
 /** Far above one partner's book; only a bound on a runaway read. */
 const INVITEE_CAP = 2000;
+const HELD_CAP = 5000;
 
 /** `created` — new to Katyayani; `linked` — an existing Katyayani farmer, now yours; `updated` — yours already. */
 export interface SavedLead extends LeadDetail {
@@ -608,6 +620,22 @@ export class LeadsService implements OnModuleInit {
     return new Map(
       rows.map((r) => [r.phone, { pii_id: r.pii_id, stage: r.stage }]),
     );
+  }
+
+  /** Every farmer the partner holds now — open, won and lost — with the start of the hold. */
+  async heldFarmers(agentId: string): Promise<HeldFarmer[]> {
+    const rows = await this.rows.all(
+      { agent_id: agentId.toUpperCase() },
+      HELD_CAP,
+    );
+    return rows.map((r) => ({
+      pii_id: r.pii_id,
+      name: r.name,
+      phone: r.phone,
+      village: r.village,
+      stage: r.stage,
+      since: r.held_since ?? r.created_at,
+    }));
   }
 
   async holds(agentId: string, piiId: string): Promise<boolean> {

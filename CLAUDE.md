@@ -144,7 +144,13 @@ names), `pincode_map_v2`, `orders_v2` + `products_v2` (the partner's orders:
 commission module reads `orders_v2` too), `bulk_v2` + `categories_v2` (GST and
 category, held in memory), and `franchises` / `prasar_v2_retailers` /
 `vistaaragents` for the nearby-network warning (and `franchises` as the KKD stores on
-the radar).
+the radar). KKD & App activity (2026-10-21) reads the held farmers' own orders in
+`orders_v2` (MKTP-2 / 3 / 4 by `pii_id`; MKTP-4 only when sold at a store, never
+`founder_office`), the franchise backend's `franchise_v2_walkins` /
+`franchise_v2_prescriptions` / `franchise_v2_pos_orders`, the Katyayani app's
+`kkd_events` (by mobile), and `franchises` / `franchise_v2_franchises` / `employees`
+(only `email` + `franchiseId`) for the stores — matched by `pii_id`, else phone, only
+after the hold began; writes nothing.
 
 **Exception — `carts`** (owned by B2B Sales): the cart module writes its rows
 there directly, by the user's decision (2026-10-08), always with
