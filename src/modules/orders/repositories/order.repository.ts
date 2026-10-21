@@ -4,7 +4,7 @@ import type { Model } from 'mongoose';
 
 import { escapeRegex } from '@common/utils/regex.util';
 
-import { VISTAAR_ORDER_SOURCE, type OrderSearch } from '../orders.domain';
+import { VISTAAR_MARKETPLACE, type OrderSearch } from '../orders.domain';
 import { Order, type OrderRecord } from '../schemas/order.schema';
 
 /**
@@ -78,7 +78,7 @@ export interface AdminOrderFilter {
 
 /**
  * The search box's narrowing, the same on the app's list and HO's. It only
- * adds conditions next to `agent` / `source`, so it never widens a filter.
+ * adds conditions next to `agent` / `marketplace`, so it never widens a filter.
  */
 function searchFilter(s: OrderSearch | null): Record<string, unknown> {
   if (s?.orderId) return { order_id: s.orderId };
@@ -181,7 +181,7 @@ export class OrderRepository {
             // No partner: these buyers' Vistaar orders with any partner (HO).
             ...(partnerId
               ? this.ownFilter(partnerId)
-              : { source: VISTAAR_ORDER_SOURCE }),
+              : { marketplace: VISTAAR_MARKETPLACE }),
             order_status: { $in: statuses },
             pii_id: piiIds ? { $in: piiIds } : { $type: 'string' },
           },
@@ -228,7 +228,7 @@ export class OrderRepository {
   }
 
   /**
-   * Every partner's orders. Rides Stockship's `{ source, order_status, date }`
+   * Every partner's orders. Rides Stockship's `{ marketplace, order_status, date }`
    * index (or `{ agent, order_status, date }` with a partner), so the
    * channel's other orders are never scanned.
    */
@@ -397,7 +397,7 @@ export class OrderRepository {
   adminFindOne(orderId: string): Promise<OrderRecord | null> {
     return this.model
       .findOne(
-        { source: VISTAAR_ORDER_SOURCE, order_id: orderId },
+        { marketplace: VISTAAR_MARKETPLACE, order_id: orderId },
         ADMIN_PROJECTION,
       )
       .lean<OrderRecord>()
@@ -409,7 +409,7 @@ export class OrderRepository {
     if (f.from) date.$gte = f.from;
     if (f.to) date.$lt = f.to;
     return {
-      source: VISTAAR_ORDER_SOURCE,
+      marketplace: VISTAAR_MARKETPLACE,
       ...(f.agentId ? { agent: f.agentId } : {}),
       ...(f.statuses ? { order_status: { $in: f.statuses } } : {}),
       ...(f.from || f.to ? { date } : {}),
@@ -431,9 +431,9 @@ export class OrderRepository {
     };
   }
 
-  // `agent` + `source` are in every filter: they keep a partner to their own
-  // orders, and Vistaar off every other channel's.
+  // `agent` + `marketplace` are in every filter: they keep a partner to their
+  // own orders, and Vistaar off every other channel's.
   private ownFilter(partnerId: string) {
-    return { agent: partnerId, source: VISTAAR_ORDER_SOURCE };
+    return { agent: partnerId, marketplace: VISTAAR_MARKETPLACE };
   }
 }

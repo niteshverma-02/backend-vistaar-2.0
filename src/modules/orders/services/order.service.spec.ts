@@ -29,7 +29,7 @@ function order(overrides: Partial<OrderRecord> = {}): OrderRecord {
     payment_mode: 'cod',
     order_status: 'created',
     order_status_map: [],
-    source: 'vistaar',
+    marketplace: 'MKTP-5',
     agent: 'VST-1',
     ...overrides,
   };

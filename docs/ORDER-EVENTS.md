@@ -22,7 +22,7 @@ Content-Type: application/json
 
 - **When:** once the order is confirmed. Only confirmed orders — Vistaar does not check the
   status. Sending the same order again is safe: the answer just says `updated`.
-- **Which orders:** Vistaar orders only (`source: "vistaar"`, `agent` = a `VST-` id).
+- **Which orders:** Vistaar orders only (`marketplace: "MKTP-5"`, `agent` = a `VST-` id).
 - **Secret:** `ORDER_EVENTS_SECRET` on the Vistaar server (≥ 24 characters), shared with the
   order service only — it is what makes the call trusted. Not set = the route answers
   `503 ORDER_EVENTS_NOT_CONFIGURED`.

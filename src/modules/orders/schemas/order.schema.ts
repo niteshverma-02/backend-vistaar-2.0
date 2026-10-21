@@ -9,8 +9,9 @@ import { Schema as MongooseSchema, type Types } from 'mongoose';
  * its writers set on live rows), so a Vistaar order is the same document as
  * everyone else's. This service only **reads** it.
  *
- * A Vistaar order is told apart by `source: 'vistaar'`, with the partner's
- * `VST-` id in `agent` (decided 2026-10-12). Every query here filters on both.
+ * A Vistaar order is told apart by `marketplace: 'MKTP-5'`, with the partner's
+ * `VST-` id in `agent`. Every query here filters on both. (Not `source`:
+ * Stockship rewrites it from its `marketplaces_v2` row on create.)
  *
  * No `index:` / `schema.index()` and `autoIndex: false` (CLAUDE.md rule 7):
  * Stockship owns the indexes. `{ agent, order_status, date }` already exists
@@ -235,10 +236,11 @@ export class Order {
   )
   order_status_map?: OrderStatusEntry[];
 
+  /** `MKTP-5` on every order this service reads. */
   @Prop({ type: String, default: null })
   marketplace?: string | null;
 
-  /** `vistaar` for every order this service reads. */
+  /** Stockship's channel type, set from its `marketplaces_v2` row — not `vistaar`. */
   @Prop({ type: String })
   source?: string;
 

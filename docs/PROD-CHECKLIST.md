@@ -187,8 +187,8 @@ few thousand orders per partner; past that, ask Stockship for
 
 ## Orders — before switching on
 
-- [ ] Checkout (not built) writes orders through Stockship with `source: 'vistaar'` and the partner's `VST-` id in `agent`. Stockship's create-order checks `agent` against `agents_v2` today, so it must accept a `VST-` id for `source: 'vistaar'` (Stockship team).
-- [ ] Stockship team told `source: 'vistaar'` orders will appear, with a `VST-` id in `agent`.
+- [ ] The app's checkout writes orders through Katyayani Utils → Stockship with `source: 'MKTP-5'` and the partner's `VST-` id in `agent`; Stockship keeps `marketplace: 'MKTP-5'` (what this service filters on) and rewrites `source` / `sub_source` from `marketplaces_v2`. Stockship's create-order checks `agent` against `agents_v2` (400 `Agent "VST-…" not found in agents_v2`), so it must accept a `VST-` id on `MKTP-5` (Stockship team).
+- [ ] Stockship team told `MKTP-5` orders will appear, with a `VST-` id in `agent`.
 
 ### Order numbers (`POST /orders/id`, `KSV-n`)
 
@@ -206,7 +206,7 @@ few thousand orders per partner; past that, ask Stockship for
 - [ ] Settings checked in `GET /admin/settings`: `return_window_days` 7, `min_withdrawal` 500, `tds_rate_with_pan` 2, `tds_rate_without_pan` 20, `monthly_target` 1,00,000 (defaults apply while unset)
 - [ ] Finance has an `agents_v2` role code for payouts → add it to `payouts.manage` / `commission.read` in `access.domain.ts` (heads only until then)
 - [ ] The bank's upload template, if it is not the generic CSV (`GET /admin/withdrawals/payout-file`)
-- [ ] Checkout (see *Orders*) — commission exists only for orders with `source: 'vistaar'` and the partner's `VST-` id in `agent`
+- [ ] Checkout (see *Orders*) — commission exists only for orders with `marketplace: 'MKTP-5'` and the partner's `VST-` id in `agent`
 - [ ] Every published onboarding form keeps a PAN field (`org_document: pan`), a bank-proof field (`org_document: bank_details`) and the bank account (`maps_to: details.bank_account`) — TDS rate and payouts read them (all five forms do, 2026-10-14)
 - [ ] Nothing to build in `orders_v2`: one aggregation per partner a minute on `{ agent, order_status, date }`
 
