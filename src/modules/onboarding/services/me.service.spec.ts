@@ -35,6 +35,7 @@ function build(row: Record<string, unknown>, staff = new Map()) {
       .mockResolvedValue(row),
   };
   const agents = new AgentsService(repo as never, {} as never, {} as never);
+  const cohorts = { recompute: jest.fn().mockResolvedValue(undefined) };
   const me = new MeService(
     agents,
     { findByAgent: jest.fn().mockResolvedValue(null) } as never,
@@ -46,8 +47,9 @@ function build(row: Record<string, unknown>, staff = new Map()) {
         .mockResolvedValue({ state: 'GUJARAT', district: 'SURAT' }),
     } as never,
     { sign: jest.fn().mockResolvedValue(new Map()), stat: jest.fn() } as never,
+    cohorts as never,
   );
-  return { me, repo };
+  return { me, repo, cohorts };
 }
 
 async function codeOf(call: Promise<unknown>): Promise<string> {
@@ -105,5 +107,26 @@ describe('MeService', () => {
       'profile.pincode': '395003',
       'preview.state': 'GUJARAT',
     });
+  });
+
+  it('works out the earning cohort again when the place changes', async () => {
+    const { me, cohorts } = build(agentRow());
+    await me.update(SUB, VST, { pincode: '395003' });
+    expect(cohorts.recompute).toHaveBeenCalledWith(VST, 'profile_changed');
+  });
+
+  it('leaves the cohort alone for an edit that is not the place', async () => {
+    const { me, cohorts } = build(agentRow());
+    await me.update(SUB, VST, { email: 'a@b.in' });
+    expect(cohorts.recompute).not.toHaveBeenCalled();
+  });
+
+  it('still saves the profile when the cohort cannot be worked out', async () => {
+    const { me, repo, cohorts } = build(agentRow());
+    cohorts.recompute.mockRejectedValue(new Error('mongo down'));
+    await expect(
+      me.update(SUB, VST, { district: 'Bhopal' }),
+    ).resolves.toBeDefined();
+    expect(repo.editProfile).toHaveBeenCalled();
   });
 });

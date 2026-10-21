@@ -32,9 +32,14 @@ const upper = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim().toUpperCase() : value;
 
 const DAY = /^\d{4}-\d{2}-\d{2}$/;
-/** `lead_created:PII-1:coin`, `follow_up_done:PII-1:2026-10-16:gig`. */
-const REWARD_ID =
-  /^[a-z_]{1,20}:PII-[A-Z0-9-]{1,20}(:\d{4}-\d{2}-\d{2})?:[a-z]{1,10}$/i;
+/**
+ * `rewardIdOf`: `<trigger>:<1–3 key parts>:<kind>` — `lead_created:PII-1:coin`,
+ * `event_registered:<uuid>:VST-000006:coin`, `reorder:KSK-341382:gig`. Built
+ * from the trigger and kind lists so every trigger's rewards can be decided.
+ */
+const REWARD_ID = new RegExp(
+  `^(?:${EARNING_TRIGGERS.join('|')})(?::[A-Za-z0-9_/-]{1,64}){1,3}:(?:${REWARD_KINDS.join('|')})$`,
+);
 
 /** The app's list: the partner's own rewards, newest first. */
 export class RewardsQueryDto extends PageQueryDto {
