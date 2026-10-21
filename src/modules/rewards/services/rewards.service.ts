@@ -45,8 +45,11 @@ export interface RewardView {
   trigger: EarningTrigger;
   trigger_label: string;
   rule_name: string;
-  pii_id: string;
+  /** The farmer, on a trigger about one; else `null`. */
+  pii_id: string | null;
   farmer_name: string | null;
+  /** The order / meeting / gig / event / story / day / agent the reward is about; else `null`. */
+  ref_id: string | null;
   /** `follow_up_done`: the IST day the follow-up was due. */
   due_day: string | null;
   /** Coins, or ₹ for a gig. */
@@ -98,6 +101,18 @@ export interface RewardFarmer {
   name: string | null;
 }
 
+/** What a reward is about — the row's subject and its once-only key. */
+interface RewardSubject {
+  /** The event's once-only key: the id parts between the trigger and the kind. */
+  key: readonly string[];
+  pii_id?: string | null;
+  farmer_name?: string | null;
+  /** The non-farmer thing (order, meeting, gig, event, story, IST day, agent). */
+  ref_id?: string | null;
+  /** `follow_up_done`: the IST day the follow-up was due. */
+  due_day?: string | null;
+}
+
 /**
  * Coin and gig rewards: recorded (pending) when an event matches an earning
  * rule of the partner's cohort at that moment, then approved or rejected by
@@ -127,12 +142,17 @@ export class RewardsService {
       state: string | null;
     },
   ): Promise<string[]> {
-    return this.record(agentId, 'lead_created', farmer, null, {
-      crops: farmer.crops,
-      acreage: farmer.acreage,
-      farmer_district: farmer.district,
-      farmer_state: farmer.state,
-    });
+    return this.record(
+      agentId,
+      'lead_created',
+      { key: [farmer.pii_id], pii_id: farmer.pii_id, farmer_name: farmer.name },
+      {
+        crops: farmer.crops,
+        acreage: farmer.acreage,
+        farmer_district: farmer.district,
+        farmer_state: farmer.state,
+      },
+    );
   }
 
   /**
@@ -149,10 +169,151 @@ export class RewardsService {
   ): Promise<string[]> {
     const due = dueFollowUp(nextFollowUp, activityType, now);
     if (!due) return Promise.resolve([]);
-    return this.record(agentId, 'follow_up_done', farmer, due.due_day, {
-      activity_type: activityType,
-      days_overdue: due.days_overdue,
-    });
+    return this.record(
+      agentId,
+      'follow_up_done',
+      {
+        key: [farmer.pii_id, due.due_day],
+        pii_id: farmer.pii_id,
+        farmer_name: farmer.name,
+        due_day: due.due_day,
+      },
+      { activity_type: activityType, days_overdue: due.days_overdue },
+    );
+  }
+
+  /**
+   * The partner moved a lead forward (prospect → contacted → interested →
+   * negotiation; `won` and `lost` never come here). Once per lead per stage
+   * reached, whatever path it took.
+   */
+  leadStageAdvanced(
+    agentId: string,
+    farmer: RewardFarmer,
+    fromStage: string,
+    toStage: string,
+  ): Promise<string[]> {
+    return this.record(
+      agentId,
+      'lead_stage_advanced',
+      {
+        key: [farmer.pii_id, toStage],
+        pii_id: farmer.pii_id,
+        farmer_name: farmer.name,
+      },
+      { from_stage: fromStage, to_stage: toStage },
+    );
+  }
+
+  /** A customer's repeat confirmed order (the order service's call). Once per order. */
+  reorder(
+    agentId: string,
+    farmer: RewardFarmer,
+    orderId: string,
+    gapDays: number,
+  ): Promise<string[]> {
+    return this.record(
+      agentId,
+      'reorder',
+      {
+        key: [orderId],
+        pii_id: farmer.pii_id,
+        farmer_name: farmer.name,
+        ref_id: orderId,
+      },
+      { gap_days: gapDays },
+    );
+  }
+
+  /** A meeting attendee the partner captured as a lead. Once per attendee per meeting. */
+  meetingAttendeeCaptured(
+    agentId: string,
+    farmer: RewardFarmer,
+    meetingId: string,
+    crops: readonly string[],
+    acreage: number,
+  ): Promise<string[]> {
+    return this.record(
+      agentId,
+      'meeting_attendee_captured',
+      {
+        key: [meetingId, farmer.pii_id],
+        pii_id: farmer.pii_id,
+        farmer_name: farmer.name,
+        ref_id: meetingId,
+      },
+      { crops, acreage },
+    );
+  }
+
+  /** HO approved the partner's gig work — a bonus over the gig's own ₹. Once per gig. */
+  gigApproved(
+    agentId: string,
+    gigId: string,
+    counts: { attendees: number; photos: number },
+  ): Promise<string[]> {
+    return this.record(
+      agentId,
+      'gig_approved',
+      { key: [gigId], ref_id: gigId },
+      counts,
+    );
+  }
+
+  /** The partner took a seat at an HO event. Once per event per partner, ever. */
+  eventRegistered(agentId: string, eventId: string): Promise<string[]> {
+    return this.record(
+      agentId,
+      'event_registered',
+      { key: [eventId, agentId.toUpperCase()], ref_id: eventId },
+      { event_id: eventId },
+    );
+  }
+
+  /**
+   * The partner punched out with an unbroken run of field days, `day` (IST
+   * `YYYY-MM-DD`) included. Once per day — an `eq` rule pays the day a streak
+   * is reached, a `gte` rule every day it holds.
+   */
+  attendanceStreak(
+    agentId: string,
+    day: string,
+    streakDays: number,
+  ): Promise<string[]> {
+    return this.record(
+      agentId,
+      'attendance_streak',
+      { key: [agentId.toUpperCase(), day], ref_id: day },
+      { streak_days: streakDays },
+    );
+  }
+
+  /** HO approved the partner's KYC — the welcome reward. Once per partner ever. */
+  onboardingApproved(
+    agentId: string,
+    partnerType: string | null,
+    state: string | null,
+  ): Promise<string[]> {
+    return this.record(
+      agentId,
+      'onboarding_approved',
+      { key: [agentId.toUpperCase()], ref_id: agentId.toUpperCase() },
+      { partner_type: partnerType, state },
+    );
+  }
+
+  /** The partner saved a brand-new My Story (an edit never fires it). Once per story. */
+  storyCreated(
+    agentId: string,
+    storyId: string,
+    template: string,
+  ): Promise<string[]> {
+    return this.record(
+      agentId,
+      'story_created',
+      { key: [storyId], ref_id: storyId },
+      { template },
+    );
   }
 
   /** The partner dropped the lead: its lead-added rewards still waiting are closed. */
@@ -160,7 +321,7 @@ export class RewardsService {
     try {
       return await this.rewards.decideMany(
         (['coin', 'gig'] as const).map((kind) =>
-          rewardIdOf('lead_created', piiId, kind),
+          rewardIdOf('lead_created', kind, piiId),
         ),
         'rejected',
         LEAD_REMOVED_REASON,
@@ -179,8 +340,7 @@ export class RewardsService {
   private async record(
     agentId: string,
     trigger: EarningTrigger,
-    farmer: RewardFarmer,
-    dueDay: string | null,
+    subject: RewardSubject,
     facts: Facts,
   ): Promise<string[]> {
     try {
@@ -188,15 +348,16 @@ export class RewardsService {
       const rows: NewReward[] = earned
         .filter((e) => Number.isInteger(e.amount) && e.amount >= 1)
         .map((e) => ({
-          _id: rewardIdOf(trigger, farmer.pii_id, e.kind, dueDay),
+          _id: rewardIdOf(trigger, e.kind, ...subject.key),
           agent_id: agentId.toUpperCase(),
           rule_id: e.rule_id,
           rule_name: e.rule_name,
           kind: e.kind,
           trigger,
-          pii_id: farmer.pii_id,
-          farmer_name: farmer.name,
-          due_day: dueDay,
+          pii_id: subject.pii_id ?? null,
+          farmer_name: subject.farmer_name ?? null,
+          ref_id: subject.ref_id ?? null,
+          due_day: subject.due_day ?? null,
           amount: e.amount,
           cohort_id: e.cohort_id,
           status: 'pending',
@@ -207,7 +368,7 @@ export class RewardsService {
       return rows.length ? await this.rewards.insertNew(rows) : [];
     } catch (error) {
       this.logger.error(
-        `Reward for ${trigger} ${farmer.pii_id} (${agentId}) not recorded: ${String(error)}`,
+        `Reward for ${trigger} ${subject.key.join(':')} (${agentId}) not recorded: ${String(error)}`,
       );
       return [];
     }
@@ -394,6 +555,7 @@ function viewOf(r: RewardRecord): RewardView {
     rule_name: r.rule_name,
     pii_id: r.pii_id,
     farmer_name: r.farmer_name,
+    ref_id: r.ref_id,
     due_day: r.due_day,
     amount: r.amount,
     status: r.status,

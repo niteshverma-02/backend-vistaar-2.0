@@ -35,18 +35,17 @@ export const istDayKey = (at: Date): string =>
 
 /**
  * The row's `_id` — one per event and reward kind, so the same event can
- * never pay twice (a retry, a double tap, another process): a farmer's lead
- * pays once ever, a follow-up once per due day.
+ * never pay twice (a retry, a double tap, another process). `parts` is the
+ * event's once-only key: a farmer's lead pays once ever (`pii_id`), a
+ * follow-up once per due day (`pii_id`, due day), a reorder once per order
+ * (`order_id`), a streak once per day (`agent_id`, day), and so on.
  */
 export function rewardIdOf(
   trigger: EarningTrigger,
-  piiId: string,
   kind: RewardKind,
-  dueDay: string | null = null,
+  ...parts: readonly string[]
 ): string {
-  return trigger === 'follow_up_done'
-    ? `${trigger}:${piiId}:${dueDay ?? ''}:${kind}`
-    : `${trigger}:${piiId}:${kind}`;
+  return [trigger, ...parts, kind].join(':');
 }
 
 /**

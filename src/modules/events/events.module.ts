@@ -4,6 +4,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AccessModule } from '@modules/access/access.module';
 import { AgentsModule } from '@modules/agents/agents.module';
 import { OnboardingModule } from '@modules/onboarding/onboarding.module';
+import { RewardsModule } from '@modules/rewards/rewards.module';
 
 import { AdminEventsController } from './controllers/admin-events.controller';
 import { EventsController } from './controllers/events.controller';
@@ -26,6 +27,7 @@ import { EventsService } from './services/events.service';
     AccessModule,
     AgentsModule,
     OnboardingModule,
+    RewardsModule,
   ],
   controllers: [EventsController, AdminEventsController],
   providers: [

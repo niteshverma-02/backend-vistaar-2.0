@@ -50,7 +50,7 @@ Contract docs, one per feature, named by who reads them:
 | [FEEDBACK-APP.md](./FEEDBACK-APP.md) | app | Feedback screen: NPS + reasons + comment + app stars, Suggest a product, HO-edited chips |
 | [FEEDBACK-HO.md](./FEEDBACK-HO.md) | HO portal | NPS dashboard, answers list, detractor call-backs, reason chips, product suggestions |
 | [EARNINGS-APP.md](./EARNINGS-APP.md) | app | The partner's earning cohort and its coin / gig rules on `GET /me`; what it changes in commission ("My plan") and meeting-gig pay ("Your rate"); farmer OTP on lead add (breaking); my rewards and coin / gig totals |
-| [EARNINGS-HO.md](./EARNINGS-HO.md) | HO portal | Earning cohorts (filters, priority, default, archive), a partner's cohort history, commission plan and meeting-gig payout per cohort, coin / gig rules from the catalog; the rewards desk (approve / reject, bulk, totals) |
+| [EARNINGS-HO.md](./EARNINGS-HO.md) | HO portal | Earning cohorts (conditions + catalog, legacy filters, priority, default, archive), a partner's cohort history, commission plan and meeting-gig payout per cohort, coin / gig rules from the catalog; the rewards desk (approve / reject, bulk, totals) |
 | [DATABASE.md](./DATABASE.md) | both | Every collection this service reads or writes |
 | [TEST-DATA.md](./TEST-DATA.md) | everyone testing on beta | Test partners and farmers, what each is for, how to seed and remove them |
 | [PROD-CHECKLIST.md](./PROD-CHECKLIST.md) | backend | What must exist in production before a feature goes live |

@@ -2,11 +2,13 @@
  * Earning cohorts and the light rule engine (user + TL, 2026-10-16).
  *
  * An earning cohort is **not** the onboarding cohort (`vistaar_v2_cohorts`,
- * the partner type and its form). HO builds earning cohorts from filters on
- * where the partner is (profile state / district / pincode) and what they hold
- * now (open leads, customers). A partner is in exactly one: the first match in
- * HO's priority order, else the built-in default. The cohort fixes the
- * commission plan, the meeting-gig payout, and which coin / gig rules pay.
+ * the partner type and its form). HO builds earning cohorts from an ordered
+ * list of conditions — the same `{ field, op, value }` shape the rules use —
+ * over where the partner is (profile state / district / pincode) and what they
+ * hold now (open leads, customers). A partner is in exactly one: the first
+ * match in HO's priority order, else the built-in default. The cohort fixes
+ * the commission plan, the meeting-gig payout, and which coin / gig rules pay.
+ * The legacy `filters` object converts both ways for old callers and old rows.
  *
  * Everything here is pure: the services load rows and call these.
  */
@@ -72,7 +74,10 @@ export interface CohortLike {
   _id: string;
   status: EarningStatus;
   priority: number;
-  filters: EarningFilters;
+  /** Authoritative; a stored row from before conditions has only `filters`. */
+  conditions?: RuleCondition[] | null;
+  /** The legacy shape, kept so old rows match until a migration runs. */
+  filters?: EarningFilters | null;
 }
 
 /** Why a partner's assignment was looked at again. */
@@ -130,25 +135,7 @@ export const hasFilters = (f: EarningFilters): boolean =>
   f.min_leads !== null ||
   f.min_customers !== null;
 
-const inList = (list: readonly string[], value: string | null): boolean => {
-  if (!value) return false;
-  const key = normText(value);
-  return list.some((v) => normText(v) === key);
-};
-
-/** Every used filter holds (AND); inside one, any value does (OR). */
-export function matchesFilters(f: EarningFilters, p: PartnerFacts): boolean {
-  if (f.states.length && !inList(f.states, p.state)) return false;
-  if (f.districts.length && !inList(f.districts, p.district)) return false;
-  if (
-    f.pincodes.length &&
-    !(p.pincode && f.pincodes.includes(p.pincode.trim()))
-  )
-    return false;
-  if (f.min_leads !== null && p.open_leads < f.min_leads) return false;
-  if (f.min_customers !== null && p.customers < f.min_customers) return false;
-  return true;
-}
+// (Filter matching lives on as conditions: see "Cohort conditions" below.)
 
 /** Active cohorts in HO's order, the default last; ties by id so every process agrees. */
 export function cohortOrder<T extends CohortLike>(cohorts: readonly T[]): T[] {
@@ -159,14 +146,15 @@ export function cohortOrder<T extends CohortLike>(cohorts: readonly T[]): T[] {
     .sort((a, b) => rank(a) - rank(b) || a._id.localeCompare(b._id));
 }
 
-/** The partner's cohort: the first active one whose filters hold, else the default. */
+/** The partner's cohort: the first active one whose conditions hold, else the default. */
 export function pickCohort(
   cohorts: readonly CohortLike[],
   partner: PartnerFacts,
 ): string {
+  const facts: Facts = { ...partner };
   for (const c of cohortOrder(cohorts)) {
     if (c._id === DEFAULT_COHORT_ID) break;
-    if (matchesFilters(c.filters, partner)) return c._id;
+    if (matchesConditions(cohortConditionsOf(c), facts)) return c._id;
   }
   return DEFAULT_COHORT_ID;
 }
@@ -259,7 +247,19 @@ export interface CatalogField {
   /** Kept upper case (states, as partners' are). */
   upper?: boolean;
   hint?: string;
+  /** Overrides the type's operators (a cohort's `state` takes any_of, not in). */
+  operators?: readonly Operator[];
+  /** Cap on a list value of this field (pincode pastes are long); default 200. */
+  max_values?: number;
+  /** Every value must match (a regex source, so the catalog stays JSON). */
+  pattern?: string;
+  /** The human message when `pattern` refuses a value. */
+  pattern_hint?: string;
 }
+
+/** The operators a field takes: its own, else its type's. */
+export const opsOf = (field: CatalogField): readonly Operator[] =>
+  field.operators ?? OPS_BY_TYPE[field.type];
 
 export interface CatalogTrigger {
   label: string;
@@ -271,10 +271,37 @@ export interface CatalogTrigger {
 export const FOLLOW_UP_ACTIVITIES = ['call', 'visit', 'whatsapp'] as const;
 
 /**
+ * Stage moves a partner can make forward (`won` comes only from the first
+ * order, `lost` is never an advance) — what `lead_stage_advanced` fires on.
+ * The leads module asserts these match its own stage list.
+ */
+export const ADVANCE_FROM_STAGES = [
+  'prospect',
+  'contacted',
+  'interested',
+] as const;
+export const ADVANCE_TO_STAGES = [
+  'contacted',
+  'interested',
+  'negotiation',
+] as const;
+
+/**
  * Events a rule can pay on. A new trigger needs code (here, and the call that
  * fires it); conditions and rewards are HO's.
  */
-export const EARNING_TRIGGERS = ['lead_created', 'follow_up_done'] as const;
+export const EARNING_TRIGGERS = [
+  'lead_created',
+  'follow_up_done',
+  'lead_stage_advanced',
+  'reorder',
+  'meeting_attendee_captured',
+  'gig_approved',
+  'event_registered',
+  'attendance_streak',
+  'onboarding_approved',
+  'story_created',
+] as const;
 export type EarningTrigger = (typeof EARNING_TRIGGERS)[number];
 
 export const TRIGGER_CATALOG: Record<EarningTrigger, CatalogTrigger> = {
@@ -310,6 +337,113 @@ export const TRIGGER_CATALOG: Record<EarningTrigger, CatalogTrigger> = {
         label: 'Days overdue',
         type: 'number',
         hint: '0 = due today',
+      },
+    ],
+  },
+  lead_stage_advanced: {
+    label: 'Lead stage advanced',
+    description:
+      'The partner moves a lead forward (prospect → contacted → interested → negotiation). Once per lead per stage reached; won and lost never fire it. Usually pays coins.',
+    fields: [
+      {
+        key: 'to_stage',
+        label: 'Stage reached',
+        type: 'enum',
+        values: ADVANCE_TO_STAGES,
+      },
+      {
+        key: 'from_stage',
+        label: 'Stage before',
+        type: 'enum',
+        values: ADVANCE_FROM_STAGES,
+      },
+    ],
+  },
+  reorder: {
+    label: 'Customer ordered again',
+    description:
+      'A customer’s repeat order is confirmed by the order service (not their first). Once per order. Usually pays coins.',
+    fields: [
+      {
+        key: 'gap_days',
+        label: 'Days since previous order',
+        type: 'number',
+        hint: 'IST days between this order and the one before it',
+      },
+    ],
+  },
+  meeting_attendee_captured: {
+    label: 'Meeting attendee became a lead',
+    description:
+      'The partner captures a meeting attendee as a farmer lead (consent + crops + acreage). Once per attendee per meeting; the lead itself may also pay “Farmer lead added”. Usually pays coins.',
+    fields: [
+      { key: 'crops', label: 'Crops', type: 'string[]', hint: 'Any case' },
+      { key: 'acreage', label: 'Acreage', type: 'number', hint: 'Acres' },
+    ],
+  },
+  gig_approved: {
+    label: 'Gig work approved',
+    description:
+      'HO approves the partner’s submitted meeting-gig work. The gig’s own ₹ payout is separate — a rule here is a bonus on top. Once per gig. Usually pays coins.',
+    fields: [
+      {
+        key: 'attendees',
+        label: 'Attendees recorded',
+        type: 'number',
+      },
+      { key: 'photos', label: 'Photos uploaded', type: 'number' },
+    ],
+  },
+  event_registered: {
+    label: 'Registered for an event',
+    description:
+      'The partner registers for an HO event and takes a seat. Once per event per partner — leaving and registering again never pays twice. Usually pays coins.',
+    fields: [
+      {
+        key: 'event_id',
+        label: 'Event',
+        type: 'string',
+        hint: 'The event’s id, to reward one event in particular',
+      },
+    ],
+  },
+  attendance_streak: {
+    label: 'Attendance streak',
+    description:
+      'The partner punches out with an unbroken run of field days (IST). Fires once per day with the run’s length: “is 7” pays the day a streak reaches 7; “at least 7” pays every day it holds. Usually pays coins.',
+    fields: [
+      {
+        key: 'streak_days',
+        label: 'Streak days',
+        type: 'number',
+        hint: 'Consecutive days punched in, today included (looked back 60 days at most)',
+      },
+    ],
+  },
+  onboarding_approved: {
+    label: 'Partner approved',
+    description:
+      'HO approves the partner’s KYC — a welcome reward. Once per partner ever. Usually pays coins.',
+    fields: [
+      {
+        key: 'partner_type',
+        label: 'Partner type',
+        type: 'string',
+        hint: 'The onboarding cohort key picked at signup',
+      },
+      { key: 'state', label: 'State', type: 'string', upper: true },
+    ],
+  },
+  story_created: {
+    label: 'Story created',
+    description:
+      'The partner saves a new My Story image (an edit of the same story never fires it). Once per story. Usually pays coins.',
+    fields: [
+      {
+        key: 'template',
+        label: 'Template',
+        type: 'string',
+        hint: 'The story template’s key',
       },
     ],
   },
@@ -349,20 +483,20 @@ const isText = (v: unknown): v is string =>
   typeof v === 'string' && v.trim().length > 0 && v.length <= MAX_TEXT;
 
 /**
- * The condition as stored, or why it is refused: the field must be the
- * trigger's, the operator one its type takes, the value of that type.
+ * The condition as stored, or why it is refused: the field must be one of
+ * `fields`, the operator one the field takes, the value of the field's type.
+ * `subject` names what the fields belong to ("Farmer lead added", a cohort).
  */
-export function checkCondition(
-  trigger: EarningTrigger,
+export function checkConditionIn(
+  fields: readonly CatalogField[],
+  subject: string,
   c: { field: string; op: string; value: unknown },
 ): { ok: RuleCondition } | { error: string } {
-  const field = fieldOf(trigger, c.field);
+  const field = fields.find((f) => f.key === c.field);
   if (!field) {
-    return {
-      error: `"${c.field}" is not a field of ${TRIGGER_CATALOG[trigger].label}.`,
-    };
+    return { error: `"${c.field}" is not a field of ${subject}.` };
   }
-  const ops = OPS_BY_TYPE[field.type];
+  const ops = opsOf(field);
   if (!(ops as readonly string[]).includes(c.op)) {
     return {
       error: `${field.label} takes ${ops.map((o) => `"${o}"`).join(', ')}, not "${c.op}".`,
@@ -370,6 +504,11 @@ export function checkCondition(
   }
   const op = c.op as Operator;
   const fix = (v: string) => (field.upper ? tidy(v).toUpperCase() : tidy(v));
+  const fits = (v: string): boolean =>
+    !field.pattern || new RegExp(field.pattern).test(v);
+  const patternError = () => ({
+    error: `${field.label}: ${field.pattern_hint ?? 'a value is not in the right format'}.`,
+  });
 
   if (field.type === 'number') {
     const n = c.value;
@@ -385,18 +524,20 @@ export function checkCondition(
     const value = fix(c.value);
     if (field.values && !field.values.includes(value))
       return { error: `${field.label} is one of ${field.values.join(', ')}.` };
+    if (!fits(value)) return patternError();
     return { ok: { field: field.key, op, value } };
   }
   // `in` and `any_of`: a list.
+  const max = field.max_values ?? MAX_VALUES;
   const list = c.value;
   if (
     !Array.isArray(list) ||
     list.length === 0 ||
-    list.length > MAX_VALUES ||
+    list.length > max ||
     !list.every(isText)
   ) {
     return {
-      error: `${field.label} needs a list of 1–${MAX_VALUES} values.`,
+      error: `${field.label} needs a list of 1–${max} values.`,
     };
   }
   const values = uniqueText(list, field.upper);
@@ -405,7 +546,20 @@ export function checkCondition(
     if (bad.length)
       return { error: `${field.label} is one of ${field.values.join(', ')}.` };
   }
+  if (!values.every(fits)) return patternError();
   return { ok: { field: field.key, op, value: values } };
+}
+
+/** A rule's condition, against its trigger's fields. */
+export function checkCondition(
+  trigger: EarningTrigger,
+  c: { field: string; op: string; value: unknown },
+): { ok: RuleCondition } | { error: string } {
+  return checkConditionIn(
+    TRIGGER_CATALOG[trigger].fields,
+    TRIGGER_CATALOG[trigger].label,
+    c,
+  );
 }
 
 /** One condition against the event's facts; a missing fact never matches. */
@@ -426,8 +580,11 @@ export function matchesCondition(c: RuleCondition, facts: Facts): boolean {
         c.value.some((v) => normText(v) === normText(fact))
       );
     case 'any_of': {
-      if (!Array.isArray(fact) || !Array.isArray(c.value)) return false;
+      if (!Array.isArray(c.value)) return false;
       const wanted = new Set(c.value.map(normText));
+      // A scalar fact (a cohort's state, district, pincode) is "is any of".
+      if (typeof fact === 'string') return wanted.has(normText(fact));
+      if (!Array.isArray(fact)) return false;
       return (fact as readonly string[]).some((f) => wanted.has(normText(f)));
     }
     case 'gte':
@@ -471,17 +628,162 @@ export function pickRewards<T extends RuleLike>(
   return out;
 }
 
+/** A long list reads "462001, … +1,994 more", not two thousand values. */
+const SUMMARY_VALUES = 8;
+
 /** "Crops has any of Wheat, Soybean · Acreage at least 2" — for the app and HO lists. */
-export function describeConditions(
-  trigger: EarningTrigger,
+export function describeConditionsIn(
+  fields: readonly CatalogField[],
   conditions: readonly RuleCondition[],
+  empty: string,
 ): string {
-  if (conditions.length === 0) return 'Every time';
+  if (conditions.length === 0) return empty;
   return conditions
     .map((c) => {
-      const label = fieldOf(trigger, c.field)?.label ?? c.field;
-      const value = Array.isArray(c.value) ? c.value.join(', ') : c.value;
+      const label = fields.find((f) => f.key === c.field)?.label ?? c.field;
+      const value = Array.isArray(c.value)
+        ? c.value.slice(0, SUMMARY_VALUES).join(', ') +
+          (c.value.length > SUMMARY_VALUES
+            ? ` +${(c.value.length - SUMMARY_VALUES).toLocaleString('en-IN')} more`
+            : '')
+        : c.value;
       return `${label} ${OPERATOR_LABELS[c.op]} ${value}`;
     })
     .join(' · ');
 }
+
+export function describeConditions(
+  trigger: EarningTrigger,
+  conditions: readonly RuleCondition[],
+): string {
+  return describeConditionsIn(
+    TRIGGER_CATALOG[trigger].fields,
+    conditions,
+    'Every time',
+  );
+}
+
+// ── Cohort conditions ────────────────────────────────────────────────────
+//
+// A cohort is matched by the same `{ field, op, value }` conditions the rules
+// use, over `PartnerFacts`. All conditions must hold; a list value holds when
+// any of its entries matches. The legacy `filters` object converts both ways.
+
+export const MAX_COHORT_CONDITIONS = 12;
+
+/** The partner facts a cohort can condition on — what `factsOf` reads today. */
+export const COHORT_FIELD_CATALOG: readonly CatalogField[] = [
+  {
+    key: 'state',
+    label: 'State',
+    type: 'string',
+    upper: true,
+    operators: ['eq', 'any_of'],
+    max_values: MAX_STATES,
+    hint: 'Profile state (kept upper case)',
+  },
+  {
+    key: 'district',
+    label: 'District',
+    type: 'string',
+    operators: ['eq', 'any_of'],
+    max_values: MAX_DISTRICTS,
+    hint: 'Profile district, any case',
+  },
+  {
+    key: 'pincode',
+    label: 'Pincode',
+    type: 'string',
+    operators: ['eq', 'any_of'],
+    max_values: MAX_PINCODES,
+    pattern: '^[1-9]\\d{5}$',
+    pattern_hint: 'each pincode is 6 digits',
+    hint: 'Profile pincode',
+  },
+  {
+    key: 'open_leads',
+    label: 'Open leads',
+    type: 'number',
+    operators: ['gte', 'lte'],
+    hint: 'Leads held now, not won, not lost',
+  },
+  {
+    key: 'customers',
+    label: 'Customers',
+    type: 'number',
+    operators: ['gte', 'lte'],
+    hint: 'Won leads held now',
+  },
+] as const;
+
+/** Every condition holds; an empty list takes everyone (only the default may). */
+export const matchesConditions = (
+  conditions: readonly RuleCondition[],
+  facts: Facts,
+): boolean => conditions.every((c) => matchesCondition(c, facts));
+
+/** A cohort's conditions, converting a pre-conditions row on the spot. */
+export const cohortConditionsOf = (c: CohortLike): RuleCondition[] =>
+  c.conditions ?? filtersToConditions(c.filters);
+
+/**
+ * Legacy `filters` → the conditions they mean. The order is fixed (place
+ * first, thresholds last) so a round trip compares equal.
+ */
+export function filtersToConditions(
+  input: FiltersInput | null | undefined,
+): RuleCondition[] {
+  const f = normalizeFilters(input);
+  const out: RuleCondition[] = [];
+  if (f.states.length)
+    out.push({ field: 'state', op: 'any_of', value: f.states });
+  if (f.districts.length)
+    out.push({ field: 'district', op: 'any_of', value: f.districts });
+  if (f.pincodes.length)
+    out.push({ field: 'pincode', op: 'any_of', value: f.pincodes });
+  if (f.min_leads !== null)
+    out.push({ field: 'open_leads', op: 'gte', value: f.min_leads });
+  if (f.min_customers !== null)
+    out.push({ field: 'customers', op: 'gte', value: f.min_customers });
+  return out;
+}
+
+/**
+ * The legacy view of conditions, best effort: a condition the old shape
+ * cannot say (an `lte`, say) just does not appear. First one per slot wins.
+ */
+export function conditionsToFilters(
+  conditions: readonly RuleCondition[],
+): EarningFilters {
+  const f: EarningFilters = { ...NO_FILTERS };
+  const asList = (v: ConditionValue): string[] =>
+    Array.isArray(v) ? [...v] : typeof v === 'string' ? [v] : [];
+  for (const c of conditions) {
+    if (c.field === 'state' && (c.op === 'any_of' || c.op === 'eq')) {
+      if (!f.states.length) f.states = asList(c.value);
+    } else if (c.field === 'district' && (c.op === 'any_of' || c.op === 'eq')) {
+      if (!f.districts.length) f.districts = asList(c.value);
+    } else if (c.field === 'pincode' && (c.op === 'any_of' || c.op === 'eq')) {
+      if (!f.pincodes.length) f.pincodes = asList(c.value);
+    } else if (
+      c.field === 'open_leads' &&
+      c.op === 'gte' &&
+      typeof c.value === 'number'
+    ) {
+      if (f.min_leads === null) f.min_leads = c.value;
+    } else if (
+      c.field === 'customers' &&
+      c.op === 'gte' &&
+      typeof c.value === 'number'
+    ) {
+      if (f.min_customers === null) f.min_customers = c.value;
+    }
+  }
+  return f;
+}
+
+/** The cohort's conditions in words, for HO lists and the app. */
+export const describeCohortConditions = (
+  conditions: readonly RuleCondition[],
+): string =>
+  describeConditionsIn(COHORT_FIELD_CATALOG, conditions, 'Every partner');

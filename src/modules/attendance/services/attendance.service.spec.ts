@@ -8,6 +8,7 @@ import type {
   PunchSession,
 } from '../schemas/attendance-day.schema';
 import { AttendanceService } from './attendance.service';
+import type { RewardsService } from '@modules/rewards/services/rewards.service';
 
 const AGENT = 'VST-101';
 // 10:00 IST on 12 Oct.
@@ -61,10 +62,12 @@ function setup() {
     openSession: jest.fn(),
     closeSession: jest.fn(),
   };
+  const rewards = { attendanceStreak: jest.fn().mockResolvedValue([]) };
   const service = new AttendanceService(
     repo as unknown as AttendanceRepository,
+    rewards as unknown as RewardsService,
   );
-  return { repo, service };
+  return { repo, service, rewards };
 }
 
 async function codeOf(promise: Promise<unknown>): Promise<unknown> {
@@ -197,6 +200,25 @@ describe('AttendanceService.punchOut', () => {
       3_600_000,
     );
     expect(view).toMatchObject({ status: 'day_closed', last_out_at: NOW });
+  });
+
+  it('records the attendance streak, counted back over consecutive days', async () => {
+    const { repo, service, rewards } = setup();
+    repo.find.mockResolvedValue(day());
+    repo.closeSession.mockResolvedValue(
+      day({ punched_in: false, last_out_at: NOW }),
+    );
+    // Yesterday and the day before are field days; the 9th is a hole.
+    repo.range.mockResolvedValue([
+      day({ date: '2026-10-08' }),
+      day({ date: '2026-10-10' }),
+      day({ date: '2026-10-11' }),
+      day({ date: TODAY }),
+    ]);
+
+    await service.punchOut(AGENT, DTO);
+
+    expect(rewards.attendanceStreak).toHaveBeenCalledWith(AGENT, TODAY, 3);
   });
 
   it('refuses when nothing is open today', async () => {

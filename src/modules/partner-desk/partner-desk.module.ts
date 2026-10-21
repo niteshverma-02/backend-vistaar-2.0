@@ -4,6 +4,7 @@ import { AccessModule } from '@modules/access/access.module';
 import { AgentsModule } from '@modules/agents/agents.module';
 import { EarningModule } from '@modules/earning/earning.module';
 import { OnboardingModule } from '@modules/onboarding/onboarding.module';
+import { RewardsModule } from '@modules/rewards/rewards.module';
 import { SettingsModule } from '@modules/settings/settings.module';
 
 import { AdminAgentsController } from './controllers/admin-agents.controller';
@@ -17,6 +18,7 @@ import { DeskService } from './services/desk.service';
     AgentsModule,
     EarningModule,
     OnboardingModule,
+    RewardsModule,
     SettingsModule,
   ],
   controllers: [AdminAgentsController],

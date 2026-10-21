@@ -15,6 +15,7 @@ import {
 import type { VistaarLeadsRepository } from '../repositories/vistaar-leads.repository';
 import { CustomersService } from './customers.service';
 import type { LeadsService } from './leads.service';
+import type { RewardsService } from '@modules/rewards/services/rewards.service';
 
 type Row = Record<string, unknown> & {
   pii_id: string;
@@ -113,6 +114,7 @@ function setup(opts: {
     }),
   };
   const earning = { recomputeLater: jest.fn() };
+  const rewards = { reorder: jest.fn().mockResolvedValue([]) };
   const leads = { mirrorFollowUp: jest.fn().mockResolvedValue(undefined) };
   const service = new CustomersService(
     repo as unknown as VistaarLeadsRepository,
@@ -120,8 +122,9 @@ function setup(opts: {
     settings as unknown as SettingsService,
     leads as unknown as LeadsService,
     earning as unknown as EarningCohortsService,
+    rewards as unknown as RewardsService,
   );
-  return { service, repo, orders, earning };
+  return { service, repo, orders, earning, rewards };
 }
 
 async function codeOf(promise: Promise<unknown>): Promise<string> {
@@ -198,6 +201,35 @@ describe('CustomersService.recordOrder', () => {
       reason: 'not_held',
     });
     expect(repo.update).not.toHaveBeenCalled();
+  });
+
+  it('rewards a repeat order with the gap, never a replay or an older one', async () => {
+    const { service, repo, rewards } = setup({ rows: [lead('PII-9')] });
+    const repeatDate = daysAgo(2).toISOString();
+    await service.recordOrder(
+      ordered({ order_id: 'KSK-0', order_date: daysAgo(9).toISOString() }),
+    );
+    expect(rewards.reorder).not.toHaveBeenCalled(); // the first order wins, not reorders
+
+    await service.recordOrder(
+      ordered({ order_id: 'KSK-2', order_date: repeatDate }),
+    );
+    expect(rewards.reorder).toHaveBeenCalledWith(
+      ME.agent_id,
+      { pii_id: 'PII-9', name: repo.rows.get('PII-9')!.name },
+      'KSK-2',
+      7,
+    );
+
+    rewards.reorder.mockClear();
+    // A replay of the same order, and one older than the last, pay nothing.
+    await service.recordOrder(
+      ordered({ order_id: 'KSK-2', order_date: repeatDate }),
+    );
+    await service.recordOrder(
+      ordered({ order_id: 'KSK-1', order_date: daysAgo(5).toISOString() }),
+    );
+    expect(rewards.reorder).not.toHaveBeenCalled();
   });
 
   it('reads the lead again when the partner moved it meanwhile', async () => {
@@ -324,6 +356,7 @@ describe('CustomersService — HO', () => {
     {} as SettingsService,
     leads as unknown as LeadsService,
     {} as EarningCohortsService,
+    { reorder: jest.fn().mockResolvedValue([]) } as unknown as RewardsService,
   );
 
   it('lists won leads only, latest order first, with one business read for the page', async () => {

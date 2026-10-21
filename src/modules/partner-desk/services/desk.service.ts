@@ -10,6 +10,7 @@ import {
 } from '@modules/agents/services/agents.service';
 import { EarningCohortsService } from '@modules/earning/services/earning-cohorts.service';
 import type { AssignmentReason } from '@modules/earning/earning.domain';
+import { RewardsService } from '@modules/rewards/services/rewards.service';
 import {
   OnboardingService,
   type DeskOnboardingView,
@@ -89,6 +90,7 @@ export class DeskService {
     private readonly settings: SettingsService,
     private readonly network: NetworkRepository,
     private readonly earning: EarningCohortsService,
+    private readonly rewards: RewardsService,
   ) {}
 
   summary() {
@@ -290,6 +292,14 @@ export class DeskService {
       this.onboarding.approve(a, by),
     );
     await this.placeInCohort(approved, 'partner_approved');
+    // Placed in a cohort, the welcome reward can be worked out (once ever).
+    if (approved.agent_id) {
+      await this.rewards.onboardingApproved(
+        approved.agent_id,
+        approved.cohort,
+        approved.profile?.state ?? null,
+      );
+    }
     return approved;
   }
 

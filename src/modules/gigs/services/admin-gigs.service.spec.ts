@@ -10,6 +10,7 @@ import type { CreateGigDto } from '../dto/gig.dto';
 import type { GigRepository } from '../repositories/gig.repository';
 import type { Gig } from '../schemas/gig.schema';
 import { AdminGigsService } from './admin-gigs.service';
+import type { RewardsService } from '@modules/rewards/services/rewards.service';
 
 const ID = 'GIG-000001';
 const HO = 'ho@katyayaniorganics.com';
@@ -98,6 +99,9 @@ function setup(row: Gig = gig(), agent: Record<string, unknown> = {}) {
         since: new Date(),
       }),
     } as unknown as EarningCohortsService,
+    {
+      gigApproved: jest.fn().mockResolvedValue([]),
+    } as unknown as RewardsService,
   );
   return { service, repo };
 }

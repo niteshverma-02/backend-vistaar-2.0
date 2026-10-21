@@ -27,6 +27,7 @@ import {
 } from '../dto/earning-cohort.dto';
 import {
   EarningCohortsService,
+  type EarningCohortCatalog,
   type EarningCohortView,
   type PartnerEarningView,
 } from '../services/earning-cohorts.service';
@@ -50,6 +51,16 @@ export class AdminEarningCohortsController {
     @Query() query: EarningCohortsQueryDto,
   ): Promise<PageResult<EarningCohortView>> {
     return this.cohorts.adminList(query);
+  }
+
+  @Get('catalog')
+  @Can('earning.read')
+  @ApiOperation({
+    summary:
+      'The partner fields and operators a cohort condition can use — build the form from this',
+  })
+  catalog(): EarningCohortCatalog {
+    return this.cohorts.catalog();
   }
 
   @Put('order')

@@ -25,6 +25,7 @@ import {
   type InviteeCard,
   type SavedLead,
 } from '@modules/leads/services/leads.service';
+import { RewardsService } from '@modules/rewards/services/rewards.service';
 
 import type {
   AdminMeetingsQueryDto,
@@ -101,6 +102,7 @@ export class MeetingsService {
     private readonly leads: LeadsService,
     private readonly agents: AgentsService,
     private readonly notifier: MeetingNotifier,
+    private readonly rewards: RewardsService,
   ) {}
 
   async list(
@@ -343,6 +345,14 @@ export class MeetingsService {
       partner.agent_id,
       phone,
       lead.pii_id,
+    );
+    // The capture can earn (the new lead itself may also pay lead_created).
+    await this.rewards.meetingAttendeeCaptured(
+      partner.agent_id,
+      { pii_id: lead.pii_id, name: lead.name },
+      id,
+      dto.crops,
+      dto.acreage,
     );
     // Cancelled in between: the lead stands, the meeting is shown as it is.
     return {

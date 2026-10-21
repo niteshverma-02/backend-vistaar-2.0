@@ -11,11 +11,32 @@ const ist = (iso: string) => new Date(`${iso}+05:30`);
 
 describe('rewardIdOf', () => {
   it('pays a lead once ever, a follow-up once per due day — each per kind', () => {
-    expect(rewardIdOf('lead_created', 'PII-9', 'coin')).toBe(
+    expect(rewardIdOf('lead_created', 'coin', 'PII-9')).toBe(
       'lead_created:PII-9:coin',
     );
-    expect(rewardIdOf('follow_up_done', 'PII-9', 'gig', '2026-10-14')).toBe(
+    expect(rewardIdOf('follow_up_done', 'gig', 'PII-9', '2026-10-14')).toBe(
       'follow_up_done:PII-9:2026-10-14:gig',
+    );
+  });
+
+  it('keys each new trigger on its own once-only subject', () => {
+    expect(
+      rewardIdOf('lead_stage_advanced', 'coin', 'PII-9', 'interested'),
+    ).toBe('lead_stage_advanced:PII-9:interested:coin');
+    expect(rewardIdOf('reorder', 'coin', 'KSK-341382')).toBe(
+      'reorder:KSK-341382:coin',
+    );
+    expect(
+      rewardIdOf('meeting_attendee_captured', 'coin', 'MTG-1', 'PII-9'),
+    ).toBe('meeting_attendee_captured:MTG-1:PII-9:coin');
+    expect(rewardIdOf('event_registered', 'coin', 'EVT-1', 'VST-000006')).toBe(
+      'event_registered:EVT-1:VST-000006:coin',
+    );
+    expect(
+      rewardIdOf('attendance_streak', 'coin', 'VST-000006', '2026-10-16'),
+    ).toBe('attendance_streak:VST-000006:2026-10-16:coin');
+    expect(rewardIdOf('onboarding_approved', 'coin', 'VST-000006')).toBe(
+      'onboarding_approved:VST-000006:coin',
     );
   });
 });

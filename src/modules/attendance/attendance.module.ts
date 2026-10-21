@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 
 import { AccessModule } from '@modules/access/access.module';
 import { AgentsModule } from '@modules/agents/agents.module';
+import { RewardsModule } from '@modules/rewards/rewards.module';
 
 import { AdminAttendanceController } from './controllers/admin-attendance.controller';
 import { AttendanceController } from './controllers/attendance.controller';
@@ -18,6 +19,7 @@ import { AttendanceService } from './services/attendance.service';
   imports: [
     AccessModule,
     AgentsModule,
+    RewardsModule,
     MongooseModule.forFeature([
       { name: AttendanceDay.name, schema: AttendanceDaySchema },
     ]),

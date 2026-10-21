@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 
 import { badRequest, conflict } from '@common/errors/api-error';
+import { DAY_MS } from '@common/utils/ist-day.util';
+import { RewardsService } from '@modules/rewards/services/rewards.service';
 
 import {
   MAX_SESSIONS_PER_DAY,
@@ -21,6 +23,9 @@ import type {
 import { AttendanceRepository } from '../repositories/attendance.repository';
 import type { AttendanceDay } from '../schemas/attendance-day.schema';
 
+/** How far back an attendance streak is counted (the catalog's hint says so). */
+const STREAK_LOOKBACK_DAYS = 60;
+
 /**
  * Punch in / out for the calling partner. Every time is the server's clock and
  * every day is an IST day, so a phone with a wrong clock or timezone cannot
@@ -28,7 +33,10 @@ import type { AttendanceDay } from '../schemas/attendance-day.schema';
  */
 @Injectable()
 export class AttendanceService {
-  constructor(private readonly days: AttendanceRepository) {}
+  constructor(
+    private readonly days: AttendanceRepository,
+    private readonly rewards: RewardsService,
+  ) {}
 
   async today(agentId: string): Promise<AttendanceDayView> {
     const date = istDate(new Date());
@@ -88,7 +96,33 @@ export class AttendanceService {
       sessionMs(open.in_at, now),
     );
     if (!closed) throw changed();
+    // An unbroken run of field days can earn (once per IST day).
+    await this.recordStreak(agentId, date, now);
     return toDayView(closed, date, date);
+  }
+
+  /**
+   * Consecutive field days (any punch-in) ending today, looked back
+   * [STREAK_LOOKBACK_DAYS] at most — the `attendance_streak` event's fact.
+   */
+  private async recordStreak(
+    agentId: string,
+    today: string,
+    now: Date,
+  ): Promise<void> {
+    const from = istDate(
+      new Date(now.getTime() - STREAK_LOOKBACK_DAYS * DAY_MS),
+    );
+    const days = await this.days.range(agentId, from, today);
+    const have = new Set(days.map((d) => d.date));
+    let streak = 0;
+    while (
+      streak <= STREAK_LOOKBACK_DAYS &&
+      have.has(istDate(new Date(now.getTime() - streak * DAY_MS)))
+    ) {
+      streak++;
+    }
+    await this.rewards.attendanceStreak(agentId, today, streak);
   }
 
   /** Field days (punched in) in IST month `YYYY-MM` — a health-score factor. */

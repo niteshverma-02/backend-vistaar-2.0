@@ -1,12 +1,17 @@
 import {
+  COHORT_FIELD_CATALOG,
   DEFAULT_COHORT_ID,
   NO_FILTERS,
   checkCondition,
+  checkConditionIn,
   cohortAtIn,
   cohortIdOf,
+  conditionsToFilters,
+  describeCohortConditions,
   describeConditions,
+  filtersToConditions,
   matchesCondition,
-  matchesFilters,
+  matchesConditions,
   normalizeFilters,
   orderError,
   pickCohort,
@@ -15,6 +20,7 @@ import {
   type CohortLike,
   type EarningFilters,
   type PartnerFacts,
+  type RuleCondition,
   type RuleLike,
 } from './earning.domain';
 
@@ -41,47 +47,172 @@ const cohort = (
 
 const DEFAULT = cohort(DEFAULT_COHORT_ID, 0, {});
 
-describe('matchesFilters', () => {
-  it('takes any value inside one filter (OR)', () => {
-    const f = filters({ states: ['CHHATTISGARH', 'MADHYA PRADESH'] });
-    expect(matchesFilters(f, partner())).toBe(true);
-    expect(matchesFilters(f, partner({ state: 'GUJARAT' }))).toBe(false);
+const over = (
+  conditions: RuleCondition[],
+  p: PartnerFacts = partner(),
+): boolean => matchesConditions(conditions, { ...p });
+
+describe('matchesConditions over partner facts', () => {
+  it('takes any value inside one list condition (OR)', () => {
+    const c: RuleCondition[] = [
+      {
+        field: 'state',
+        op: 'any_of',
+        value: ['CHHATTISGARH', 'MADHYA PRADESH'],
+      },
+    ];
+    expect(over(c)).toBe(true);
+    expect(over(c, partner({ state: 'GUJARAT' }))).toBe(false);
   });
 
-  it('needs every used filter (AND); an empty one is not used', () => {
-    const f = filters({ states: ['MADHYA PRADESH'], min_leads: 10 });
-    expect(matchesFilters(f, partner({ open_leads: 9 }))).toBe(false);
-    expect(matchesFilters(f, partner({ open_leads: 10 }))).toBe(true);
+  it('needs every condition (AND); an empty list takes everyone', () => {
+    const c: RuleCondition[] = [
+      { field: 'state', op: 'any_of', value: ['MADHYA PRADESH'] },
+      { field: 'open_leads', op: 'gte', value: 10 },
+    ];
+    expect(over(c, partner({ open_leads: 9 }))).toBe(false);
+    expect(over(c, partner({ open_leads: 10 }))).toBe(true);
+    expect(over([], partner({ state: null }))).toBe(true);
+  });
+
+  it('matches eq, any_of, gte and lte over the facts', () => {
+    expect(over([{ field: 'district', op: 'eq', value: 'BHOPAL' }])).toBe(true);
     expect(
-      matchesFilters(filters({ min_customers: 2 }), partner({ customers: 2 })),
+      over(
+        [{ field: 'pincode', op: 'any_of', value: ['462026', '462027'] }],
+        partner(),
+      ),
     ).toBe(true);
+    expect(over([{ field: 'customers', op: 'lte', value: 1 }])).toBe(true);
+    expect(
+      over(
+        [{ field: 'customers', op: 'lte', value: 1 }],
+        partner({ customers: 2 }),
+      ),
+    ).toBe(false);
   });
 
   it('compares districts without case or extra spaces; pincodes exactly', () => {
     expect(
-      matchesFilters(filters({ districts: [' bhopal '] }), partner()),
+      over([{ field: 'district', op: 'any_of', value: [' bhopal '] }]),
     ).toBe(true);
-    expect(matchesFilters(filters({ pincodes: ['462026'] }), partner())).toBe(
-      true,
-    );
-    expect(matchesFilters(filters({ pincodes: ['462027'] }), partner())).toBe(
+    expect(over([{ field: 'pincode', op: 'any_of', value: ['462027'] }])).toBe(
       false,
     );
   });
 
-  it('never matches a place filter when the profile has no such place', () => {
+  it('never matches a place condition when the profile has no such place', () => {
     expect(
-      matchesFilters(
-        filters({ states: ['MADHYA PRADESH'] }),
+      over(
+        [{ field: 'state', op: 'any_of', value: ['MADHYA PRADESH'] }],
         partner({ state: null }),
       ),
     ).toBe(false);
     expect(
-      matchesFilters(
-        filters({ pincodes: ['462026'] }),
+      over(
+        [{ field: 'pincode', op: 'eq', value: '462026' }],
         partner({ pincode: null }),
       ),
     ).toBe(false);
+  });
+});
+
+describe('filters ⇄ conditions', () => {
+  it('converts every legacy filter to the condition it means', () => {
+    expect(
+      filtersToConditions({
+        states: ['madhya pradesh'],
+        districts: ['Bhopal'],
+        pincodes: ['462026'],
+        min_leads: 10,
+        min_customers: 2,
+      }),
+    ).toEqual([
+      { field: 'state', op: 'any_of', value: ['MADHYA PRADESH'] },
+      { field: 'district', op: 'any_of', value: ['Bhopal'] },
+      { field: 'pincode', op: 'any_of', value: ['462026'] },
+      { field: 'open_leads', op: 'gte', value: 10 },
+      { field: 'customers', op: 'gte', value: 2 },
+    ]);
+    expect(filtersToConditions({ min_leads: 0 })).toEqual([]);
+    expect(filtersToConditions(null)).toEqual([]);
+  });
+
+  it('derives the legacy view back, dropping what the old shape cannot say', () => {
+    expect(
+      conditionsToFilters([
+        { field: 'state', op: 'eq', value: 'MADHYA PRADESH' },
+        { field: 'pincode', op: 'any_of', value: ['462026'] },
+        { field: 'open_leads', op: 'gte', value: 10 },
+        { field: 'open_leads', op: 'lte', value: 50 }, // not representable
+        { field: 'customers', op: 'lte', value: 3 }, // not representable
+      ]),
+    ).toEqual({
+      ...NO_FILTERS,
+      states: ['MADHYA PRADESH'],
+      pincodes: ['462026'],
+      min_leads: 10,
+    });
+  });
+
+  it('round-trips a legacy cohort unchanged', () => {
+    const f = filters({ districts: ['Bhopal', 'Sehore'], min_customers: 5 });
+    expect(conditionsToFilters(filtersToConditions(f))).toEqual(f);
+  });
+});
+
+describe('checkConditionIn — the cohort catalog', () => {
+  const check = (c: { field: string; op: string; value: unknown }) =>
+    checkConditionIn(COHORT_FIELD_CATALOG, 'a cohort', c);
+
+  it('refuses an unknown field, a wrong operator and a wrong value type', () => {
+    expect(check({ field: 'crops', op: 'eq', value: 'x' })).toHaveProperty(
+      'error',
+    );
+    expect(check({ field: 'state', op: 'in', value: ['MP'] })).toHaveProperty(
+      'error',
+    );
+    expect(check({ field: 'open_leads', op: 'eq', value: 5 })).toHaveProperty(
+      'error',
+    );
+    expect(
+      check({ field: 'open_leads', op: 'gte', value: '5' }),
+    ).toHaveProperty('error');
+    expect(
+      check({ field: 'district', op: 'any_of', value: [] }),
+    ).toHaveProperty('error');
+  });
+
+  it('keeps states upper case and refuses a pincode that is not 6 digits', () => {
+    expect(
+      check({ field: 'state', op: 'any_of', value: ['madhya pradesh'] }),
+    ).toEqual({
+      ok: { field: 'state', op: 'any_of', value: ['MADHYA PRADESH'] },
+    });
+    expect(
+      check({ field: 'pincode', op: 'any_of', value: ['462026', '46'] }),
+    ).toHaveProperty('error');
+    expect(
+      check({ field: 'pincode', op: 'eq', value: '046202' }),
+    ).toHaveProperty('error');
+  });
+});
+
+describe('describeCohortConditions', () => {
+  it('reads like a sentence and shortens a long list', () => {
+    expect(describeCohortConditions([])).toBe('Every partner');
+    expect(
+      describeCohortConditions([
+        { field: 'state', op: 'any_of', value: ['MADHYA PRADESH'] },
+        { field: 'open_leads', op: 'gte', value: 10 },
+      ]),
+    ).toBe('State has any of MADHYA PRADESH · Open leads at least 10');
+    const many = Array.from({ length: 12 }, (_, i) => `46202${i}`);
+    expect(
+      describeCohortConditions([
+        { field: 'pincode', op: 'any_of', value: many },
+      ]),
+    ).toContain('+4 more');
   });
 });
 
@@ -116,6 +247,20 @@ describe('pickCohort', () => {
     const a = cohort('ec_a', 1, { states: ['MADHYA PRADESH'] });
     const b = cohort('ec_b', 1, { states: ['MADHYA PRADESH'] });
     expect(pickCohort([b, a, DEFAULT], partner())).toBe('ec_a');
+  });
+
+  it('reads conditions when a cohort has them, legacy filters when not', () => {
+    const conditioned: CohortLike = {
+      _id: 'ec_small',
+      priority: 1,
+      status: 'active',
+      conditions: [{ field: 'open_leads', op: 'lte', value: 3 }],
+      filters: null,
+    };
+    const legacy = cohort('ec_mp_old', 2, { states: ['MADHYA PRADESH'] });
+    const cohorts = [DEFAULT, conditioned, legacy];
+    expect(pickCohort(cohorts, partner({ open_leads: 2 }))).toBe('ec_small');
+    expect(pickCohort(cohorts, partner({ open_leads: 9 }))).toBe('ec_mp_old');
   });
 });
 

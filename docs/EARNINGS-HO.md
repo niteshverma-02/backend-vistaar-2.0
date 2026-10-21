@@ -15,21 +15,35 @@ saved (worked out right after the answer; a few seconds for 10,000 partners).
 
 ## How a partner gets a cohort
 
-- HO builds a cohort from **filters**: `states[]`, `districts[]`, `pincodes[]` (the
-  partner's **profile** place — mapped at approval — not GPS), `min_leads` (open leads
-  the partner holds **now**: not won, not lost) and `min_customers` (customers — leads
-  at `won` — held **now**). Not lifetime, not monthly.
-- Several values in one filter = **any** of them. Different filters together = **all**
-  of them. An empty list or `null` = that filter is not used. A cohort needs at least
-  one filter.
-- A partner is in exactly **one** cohort: the first one, in HO's priority order, whose
-  filters all hold. The built-in **`ec_default`** ("Everyone else") has no filters, is
-  always looked at last and catches everyone else. It cannot be archived and its
-  filters cannot be set; its name, description, meeting-gig payout and rules can.
+- HO builds a cohort from an ordered list of **conditions** — the same
+  `{ field, op, value }` shape the rules use. The fields are the partner facts:
+  `state`, `district`, `pincode` (the partner's **profile** place — mapped at
+  approval — not GPS), `open_leads` (open leads held **now**: not won, not lost)
+  and `customers` (leads at `won`, held **now**). Not lifetime, not monthly.
+  Build the form from `GET /admin/earning-cohorts/catalog` (below), not from
+  this list.
+- **All** conditions must hold; a condition whose value is a **list** holds when
+  **any** of its entries matches. A non-default cohort needs at least one
+  condition, and takes at most **12**.
+- The old **`filters`** object (`states[]`, `districts[]`, `pincodes[]`,
+  `min_leads`, `min_customers`) is still accepted on create and PATCH **when
+  `conditions` is absent**: the server converts it to conditions (states →
+  `{state, any_of}`, districts → `{district, any_of}`, pincodes →
+  `{pincode, any_of}`, `min_leads` → `{open_leads, gte}`, `min_customers` →
+  `{customers, gte}`) and stores those. Responses always return **both**: the
+  stored `conditions`, and a `filters` view derived back from the conditions
+  that fit the old shape (one that does not — an `lte`, say — just does not
+  appear in `filters`). Cohorts stored before conditions existed are converted
+  on read and inside the matcher, so nothing breaks before a migration.
+- A partner is in exactly **one** cohort: the first one, in HO's priority order,
+  whose conditions all hold. The built-in **`ec_default`** ("Everyone else") has
+  no conditions, is always looked at last and catches everyone else. It cannot
+  be archived and its conditions cannot be set; its name, description,
+  meeting-gig payout and rules can.
 - Only approved partners are placed. A partner is looked at again when: HO approves or
   unblocks them; they add a farmer (or take one over); a lead moves into or out of
   `lost`; a lead is won (first order); they remove a lead; HO transfers a farmer (both
-  partners); HO adds, edits filters of, reorders or archives a cohort (everyone).
+  partners); HO adds, edits conditions of, reorders or archives a cohort (everyone).
 - A lapsed hold still counts (the farmer stays the partner's until another partner
   takes them over), so a partner does not drop out of a cohort just by time passing.
 - Every stretch a partner spends in a cohort is kept (`history`), because commission
@@ -40,6 +54,7 @@ saved (worked out right after the answer; a few seconds for 10,000 partners).
 | Method | Path | Capability | Body | Returns |
 |---|---|---|---|---|
 | `GET` | `/api/v2/admin/earning-cohorts?include_archived=&page=&limit=` | `earning.read` | — | `PageResult<EarningCohort>` — priority order, `ec_default` last, then archived (newest first) |
+| `GET` | `/api/v2/admin/earning-cohorts/catalog` | `earning.read` | — | `CohortCatalog` — the fields and operators a condition can use |
 | `GET` | `/api/v2/admin/earning-cohorts/:id` | `earning.read` | — | `EarningCohort` |
 | `POST` | `/api/v2/admin/earning-cohorts` | `earning.write` | `CreateCohort` | `201` `EarningCohort` |
 | `PATCH` | `/api/v2/admin/earning-cohorts/:id` | `earning.write` | `UpdateCohort` | `EarningCohort` |
@@ -55,9 +70,14 @@ saved (worked out right after the answer; a few seconds for 10,000 partners).
   "id": "ec_paddy_belt",            // never changes
   "name": "Paddy belt, 10+ leads",
   "description": null,
-  "filters": {
-    "states": ["MADHYA PRADESH"],   // upper case
-    "districts": ["Bhopal", "Sehore"],
+  "conditions": [                   // authoritative: all must hold; a list value on any entry
+    { "field": "state", "op": "any_of", "value": ["MADHYA PRADESH"] },
+    { "field": "open_leads", "op": "gte", "value": 10 }
+  ],
+  "summary": "State has any of MADHYA PRADESH · Open leads at least 10",
+  "filters": {                      // the legacy view, derived from conditions (best effort)
+    "states": ["MADHYA PRADESH"],
+    "districts": [],
     "pincodes": [],
     "min_leads": 10,                // null = not used
     "min_customers": null
@@ -73,6 +93,38 @@ saved (worked out right after the answer; a few seconds for 10,000 partners).
 }
 ```
 
+`ec_default`'s `conditions` is `[]` and its `summary` is "Every partner". A
+`summary` shortens a long list ("462001, … +1,994 more").
+
+### `GET /admin/earning-cohorts/catalog`
+
+The fields a condition can use and the operators each takes — build the form
+from it, exactly like the rules catalog (same field shape):
+
+```jsonc
+{
+  "fields": [
+    { "key": "state",      "label": "State",      "type": "string", "upper": true,
+      "operators": ["eq", "any_of"], "max_values": 40,  "hint": "Profile state (kept upper case)" },
+    { "key": "district",   "label": "District",   "type": "string",
+      "operators": ["eq", "any_of"], "max_values": 800, "hint": "Profile district, any case" },
+    { "key": "pincode",    "label": "Pincode",    "type": "string",
+      "operators": ["eq", "any_of"], "max_values": 2000,
+      "pattern": "^[1-9]\\d{5}$", "pattern_hint": "each pincode is 6 digits", "hint": "Profile pincode" },
+    { "key": "open_leads", "label": "Open leads", "type": "number",
+      "operators": ["gte", "lte"], "hint": "Leads held now, not won, not lost" },
+    { "key": "customers",  "label": "Customers",  "type": "number",
+      "operators": ["gte", "lte"], "hint": "Won leads held now" }
+  ],
+  "operators": [ { "key": "eq", "label": "is" }, { "key": "in", "label": "is one of" },
+                 { "key": "any_of", "label": "has any of" }, { "key": "gte", "label": "at least" },
+                 { "key": "lte", "label": "at most" } ]
+}
+```
+
+`eq` takes one word; `any_of` a list of 1–`max_values` words (compared without
+case; `state` values kept upper case); `gte` / `lte` a number from 0.
+
 ### `POST /admin/earning-cohorts`
 
 ```jsonc
@@ -80,13 +132,10 @@ saved (worked out right after the answer; a few seconds for 10,000 partners).
   "name": "Paddy belt, 10+ leads",     // required, ≤ 60
   "key": "paddy_belt",                 // optional — the id (`ec_` added); left out = made from the name
   "description": "…",                  // optional, ≤ 300
-  "filters": {                         // required, at least one used
-    "states": ["madhya pradesh"],      // ≤ 40, kept upper case
-    "districts": ["Bhopal"],           // ≤ 800, any case
-    "pincodes": ["462026"],            // ≤ 2000, 6 digits
-    "min_leads": 10,                   // 0–1,00,000; 0 or null = not used
-    "min_customers": null
-  },
+  "conditions": [                      // 1–12, all must hold
+    { "field": "state", "op": "any_of", "value": ["madhya pradesh"] },
+    { "field": "open_leads", "op": "gte", "value": 10 }
+  ],
   "meeting_gig_payout": 300            // optional ₹ 0–1,00,000; null = settings gig_payout
 }
 ```
@@ -95,19 +144,29 @@ saved (worked out right after the answer; a few seconds for 10,000 partners).
   `_2`, `_3` … when taken). A key in use, or `default`, is `409 COHORT_EXISTS`.
 - A new cohort goes **just above the default** (lowest priority of the active ones);
   move it with `PUT /order`.
-- No filter at all is `400 VALIDATION_FAILED` — that cohort would take everyone.
+- Each condition is checked against the catalog: an unknown field, an operator the
+  field does not take, a value of the wrong type or an empty list is
+  `400 VALIDATION_FAILED`; `details` lists every problem, one line each.
+- No condition at all is `400 VALIDATION_FAILED` — that cohort would take everyone.
+- Legacy: the old `filters` object is accepted **instead of** `conditions` (never
+  both — `400 VALIDATION_FAILED`) and converted as above.
 
 ### `PATCH /admin/earning-cohorts/:id`
 
 `{ "version": 3, … }` plus any of `name`, `description` (`null` clears),
-`filters`, `meeting_gig_payout` (`null` = settings). `filters` keys **merge** over the
-stored ones: send only the filters that change; `[]` / `null` stops using one.
+`conditions`, `meeting_gig_payout` (`null` = settings). `conditions` is the
+**whole list** — it replaces what is stored, like a rule's conditions.
 
 - `version` is the one HO read; another screen saved meanwhile → `409 VERSION_CONFLICT`
   (reload and edit again).
-- `filters` on `ec_default` → `400 EARNING_COHORT_LOCKED`.
+- `conditions` (or `filters`) on `ec_default` → `400 EARNING_COHORT_LOCKED`.
 - An archived cohort → `409 EARNING_ARCHIVED`.
-- Only a change to `filters` moves partners; name, description and payout do not.
+- Only a change to `conditions` moves partners; name, description and payout do not.
+- Legacy: `filters` is accepted when `conditions` is absent. Its keys **merge** over
+  the stored legacy view (send only the filters that change; `[]` / `null` stops
+  using one), and the merged result converts to conditions. A condition the legacy
+  shape cannot say (an `lte`) is dropped by such an edit — a legacy screen cannot
+  see it either, so move the screen to `conditions`.
 
 ### Archive (the delete)
 
@@ -237,10 +296,18 @@ this table:
 }
 ```
 
-| Trigger | When | Usually |
-|---|---|---|
-| `lead_created` | the partner adds a new farmer, verified by the farmer's OTP | coins |
-| `follow_up_done` | the partner logs a call / visit / WhatsApp on a lead whose follow-up is due today (IST) or overdue; one per due date | a gig (₹) |
+| Trigger | When | Once per | Usually |
+|---|---|---|---|
+| `lead_created` | the partner adds a new farmer, verified by the farmer's OTP | farmer, ever | coins |
+| `follow_up_done` | the partner logs a call / visit / WhatsApp on a lead whose follow-up is due today (IST) or overdue | lead + due day | a gig (₹) |
+| `lead_stage_advanced` | the partner moves a lead forward (`won` and `lost` never fire it); fields: `to_stage`, `from_stage` | lead + stage reached | coins |
+| `reorder` | the order service confirms a customer's repeat order (`POST /hooks/orders/confirmed`, result `updated`, newer than the last); field: `gap_days` | order | coins |
+| `meeting_attendee_captured` | the partner captures a meeting attendee as a lead (the new lead may also pay `lead_created`); fields: `crops`, `acreage` | meeting + attendee | coins |
+| `gig_approved` | HO approves submitted gig work — a bonus over the gig's own ₹ payout; fields: `attendees`, `photos` | gig | coins |
+| `event_registered` | the partner takes a seat at an HO event (leaving and re-registering never pays again); field: `event_id` | event + partner, ever | coins |
+| `attendance_streak` | the partner punches out with an unbroken run of field days (counted back 60 days at most); field: `streak_days` — an `is N` rule pays the day a streak reaches N, `at least N` pays every day it holds | IST day | coins |
+| `onboarding_approved` | HO approves the partner's KYC (fired after they are placed in a cohort); fields: `partner_type`, `state` | partner, ever | coins |
+| `story_created` | the partner saves a brand-new My Story (an edit or re-share never fires it); field: `template` | story | coins |
 
 | Type | Operators | `value` |
 |---|---|---|
@@ -308,7 +375,9 @@ approves or rejects it here. Nothing is paid before approval.
 - **One per event and kind**, whatever happens: a farmer's `lead_created` pays once
   ever (also after a release, a takeover or a remove and re-add — the first reward
   stands); a `follow_up_done` once per lead per **due day** (IST). The row id says so:
-  `lead_created:<pii_id>:<kind>`, `follow_up_done:<pii_id>:<YYYY-MM-DD>:<kind>`.
+  `<trigger>:<the event's once-only key>:<kind>` — e.g. `lead_created:<pii_id>:<kind>`,
+  `follow_up_done:<pii_id>:<YYYY-MM-DD>:<kind>`, `reorder:<order_id>:<kind>`,
+  `attendance_streak:<agent_id>:<day>:<kind>` (the *Once per* column above).
 - When a partner **removes a lead**, its `lead_created` rewards still `pending` are
   rejected by the system: `reason: "lead removed"`, `reviewed_by: "system"`. Approved
   ones stay.
@@ -329,7 +398,7 @@ approve or reject.
 | `POST` | `/api/v2/admin/rewards/reject` | `rewards.review` | `{ "ids": [...], "reason": "…" }` | `BulkResult` |
 
 Filters: `status` `pending` · `approved` · `rejected`; `kind` `coin` · `gig`; `trigger`
-`lead_created` · `follow_up_done`; `agent_id` `VST-…`; `from` / `to` IST days
+any trigger key of the catalog; `agent_id` `VST-…`; `from` / `to` IST days
 (`YYYY-MM-DD`, both included) on when the reward was earned. The queue is
 `?status=pending`.
 
@@ -339,11 +408,12 @@ Filters: `status` `pending` · `approved` · `rejected`; `kind` `coin` · `gig`;
 {
   "id": "follow_up_done:PII-1620070:2026-10-14:gig",
   "kind": "gig",                          // coin · gig
-  "trigger": "follow_up_done",            // lead_created · follow_up_done
+  "trigger": "follow_up_done",            // any trigger key of the catalog
   "trigger_label": "Follow-up done",
   "rule_id": "6c1e…", "rule_name": "Any follow-up on time",   // as the rule was then
   "cohort_id": "ec_paddy_belt",           // the partner's earning cohort then
-  "pii_id": "PII-1620070", "farmer_name": "Ramesh Patel",     // the farmer, as then
+  "pii_id": "PII-1620070", "farmer_name": "Ramesh Patel",     // the farmer, as then (null on a trigger not about one)
+  "ref_id": null,                         // the order / meeting / gig / event / story / day / agent it is about; else null
   "due_day": "2026-10-14",                // follow_up_done: the IST day it was due; else null
   "amount": 15,                           // coins, or ₹ for a gig
   "status": "pending",                    // pending · approved · rejected
@@ -389,8 +459,8 @@ Filters: `status` `pending` · `approved` · `rejected`; `kind` `coin` · `gig`;
 
 | HTTP | `error.code` | When |
 |---|---|---|
-| 400 | `VALIDATION_FAILED` | body shape; a cohort with no filter; a condition the catalog refuses (`details` lists them) |
-| 400 | `EARNING_COHORT_LOCKED` | filters on, or archive of, `ec_default` |
+| 400 | `VALIDATION_FAILED` | body shape; a cohort with no condition (or no legacy filter), or with both shapes at once; a condition the catalog refuses (`details` lists them) |
+| 400 | `EARNING_COHORT_LOCKED` | conditions (or legacy filters) on, or archive of, `ec_default` |
 | 404 | `NOT_FOUND` | no such cohort, rule or partner |
 | 409 | `COHORT_EXISTS` | the key is taken (or `default`) |
 | 409 | `VERSION_CONFLICT` | edited on another screen since it was read |

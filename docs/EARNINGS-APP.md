@@ -93,6 +93,14 @@ approves or rejects it. The app never creates one.
 |---|---|---|
 | Add a farmer (`POST /leads`, OTP verified) | `lead_created` | a farmer new to the partner (`result` `created` or `linked`), not a save of one they already hold. **Once per farmer ever** — a farmer released and added again, or removed and re-added, does not pay again |
 | Log a call / visit / WhatsApp (`POST /leads/:piiId/activities`) | `follow_up_done` | the lead's `next_follow_up` is due by the end of **today (IST)** or overdue. **Once per due day** per lead: set the next follow-up to earn on the next one. A note never counts |
+| Move a lead forward (`PATCH /leads/:piiId` `stage`) | `lead_stage_advanced` | the stage moves ahead (prospect → contacted → interested → negotiation). **Once per lead per stage reached**; moving back and forward again never pays twice. `won` and `lost` never fire it |
+| A customer orders again (order service confirms) | `reorder` | a repeat confirmed order, newer than the last. **Once per order** — nothing for the app to call |
+| Capture a meeting attendee (`POST /meetings/:id/attendees/:phone/lead`) | `meeting_attendee_captured` | the attendee becomes a lead. **Once per attendee per meeting** (the new lead may also pay `lead_created`) |
+| HO approves gig work | `gig_approved` | a bonus over the gig's own ₹ payout. **Once per gig** — nothing for the app to call |
+| Register for an event (`POST /events/:id/register`) | `event_registered` | the seat is taken. **Once per event ever** — leaving and registering again never pays twice |
+| Punch out (`POST /attendance/punch-out`) | `attendance_streak` | fired with the unbroken run of field days (today included, 60 days back at most). **Once per IST day** |
+| HO approves the partner | `onboarding_approved` | the welcome reward. **Once per partner ever** |
+| Save a new story (`POST /stories`) | `story_created` | a brand-new story only — an edit or re-share of a saved one never pays. **Once per story** |
 
 - Per event, one coin rule and one gig rule at most.
 - If the partner removes a lead while its `lead_created` reward is still pending, that
@@ -129,8 +137,9 @@ The partner's own, newest first. `kind` `coin` · `gig`; `status` `pending` ·
   "trigger": "follow_up_done",
   "trigger_label": "Follow-up done",
   "rule_name": "Any follow-up on time",
-  "pii_id": "PII-1620070",
+  "pii_id": "PII-1620070",                // the farmer; null on a trigger not about one
   "farmer_name": "Ramesh Patel",          // as when it was earned
+  "ref_id": null,                         // the order / meeting / gig / event / story / day it is about; else null
   "due_day": "2026-10-14",                // follow-ups: the day it was due; else null
   "amount": 15,                           // coins, or ₹ for a gig
   "status": "rejected",

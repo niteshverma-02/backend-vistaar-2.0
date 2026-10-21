@@ -5,6 +5,7 @@ import {
   COHORT_STATUSES,
   type EarningFilters,
   type EarningStatus,
+  type RuleCondition,
 } from '../earning.domain';
 
 /**
@@ -23,6 +24,14 @@ export class EarningCohort {
   @Prop({ type: String }) _id!: string;
   @Prop({ type: String, required: true }) name!: string;
   @Prop({ type: String, default: null }) description!: string | null;
+  /**
+   * What places a partner in the cohort — all must hold, a list value holds
+   * on any entry. `null` only on a row from before conditions: the services
+   * convert its `filters` on read (`ec_default` keeps `[]`, locked).
+   */
+  @Prop({ type: SchemaTypes.Mixed, default: null })
+  conditions!: RuleCondition[] | null;
+  /** The legacy view, derived from `conditions` (best effort), kept for old readers. */
   @Prop({ type: SchemaTypes.Mixed, required: true }) filters!: EarningFilters;
   /** 1 = looked at first among active cohorts; the default is always last (its own is 0). */
   @Prop({ type: Number, required: true }) priority!: number;

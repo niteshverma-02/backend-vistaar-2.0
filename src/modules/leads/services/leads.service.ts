@@ -46,6 +46,7 @@ import {
 import {
   EX_EMPLOYEE_COHORT,
   LEAD_SOURCE,
+  LEAD_STAGES,
   MAX_ACTIVITIES,
   MAX_HOLDER_HISTORY,
   MAX_STAGE_HISTORY,
@@ -710,6 +711,19 @@ export class LeadsService implements OnModuleInit {
       row.next_follow_up,
       saved.next_follow_up,
     );
+    // A forward move can earn (`lost` never; `won` comes only from an order).
+    if (
+      moving &&
+      stage !== 'lost' &&
+      LEAD_STAGES.indexOf(stage) > LEAD_STAGES.indexOf(row.stage)
+    ) {
+      await this.rewards.leadStageAdvanced(
+        by,
+        { pii_id: row.pii_id, name: saved.name },
+        row.stage,
+        stage,
+      );
+    }
     // Lost is not an open lead: moving in or out of it changes the count.
     if (moving && (stage === 'lost' || row.stage === 'lost')) {
       this.earning.recomputeLater([by], 'holdings_changed');

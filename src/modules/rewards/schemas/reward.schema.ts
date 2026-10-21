@@ -24,9 +24,10 @@ import { REWARD_STATUSES, type RewardStatus } from '../rewards.domain';
 })
 export class Reward {
   /**
-   * `lead_created:<pii_id>:<kind>` or
-   * `follow_up_done:<pii_id>:<YYYY-MM-DD due day, IST>:<kind>` — the same
-   * event can only ever be inserted once.
+   * `<trigger>:<the event's once-only key>:<kind>` — the same event can only
+   * ever be inserted once. E.g. `lead_created:<pii_id>:<kind>`,
+   * `follow_up_done:<pii_id>:<YYYY-MM-DD due day, IST>:<kind>`,
+   * `reorder:<order_id>:<kind>`, `attendance_streak:<agent_id>:<day>:<kind>`.
    */
   @Prop({ type: String }) _id!: string;
   /** The partner (`VST-…`). */
@@ -38,10 +39,16 @@ export class Reward {
   kind!: RewardKind;
   @Prop({ type: String, enum: EARNING_TRIGGERS, required: true })
   trigger!: EarningTrigger;
-  /** The farmer. */
-  @Prop({ type: String, required: true }) pii_id!: string;
+  /** The farmer, on a trigger about one; else `null`. */
+  @Prop({ type: String, default: null }) pii_id!: string | null;
   /** The farmer's name then, for the lists. */
   @Prop({ type: String, default: null }) farmer_name!: string | null;
+  /**
+   * The non-farmer thing the reward is about, when there is one: the order
+   * (`reorder`), meeting, gig, event, story, the streak's IST day, or the
+   * partner themselves (`onboarding_approved`); else `null`.
+   */
+  @Prop({ type: String, default: null }) ref_id!: string | null;
   /** `follow_up_done`: the IST day the follow-up was due; else `null`. */
   @Prop({ type: String, default: null }) due_day!: string | null;
   /** Coins, or ₹ for a gig; a whole number ≥ 1. */
