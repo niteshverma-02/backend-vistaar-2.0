@@ -80,7 +80,11 @@ export interface AdminWithdrawalView extends WithdrawalView {
 }
 
 export type WalletBlock =
-  'not_approved' | 'bank_not_verified' | 'withdrawal_open' | 'below_minimum';
+  | 'not_approved'
+  | 'bank_not_verified'
+  | 'bank_change_pending'
+  | 'withdrawal_open'
+  | 'below_minimum';
 
 export interface WalletView {
   withdrawable: number;
@@ -185,11 +189,13 @@ export class WalletService {
         ? 'not_approved'
         : !facts?.bank_verified
           ? 'bank_not_verified'
-          : open
-            ? 'withdrawal_open'
-            : book.withdrawable < settings.min_withdrawal
-              ? 'below_minimum'
-              : null;
+          : facts.bank_change_pending
+            ? 'bank_change_pending'
+            : open
+              ? 'withdrawal_open'
+              : book.withdrawable < settings.min_withdrawal
+                ? 'below_minimum'
+                : null;
     return {
       withdrawable: book.withdrawable,
       earned: book.earned,
@@ -245,6 +251,13 @@ export class WalletService {
       }
       const facts = await this.payoutFactsOf(partner);
       if (!facts?.bank_verified) throw bankNotVerified();
+      // Which account it would be paid into is open until HO decides the change.
+      if (facts.bank_change_pending) {
+        throw conflict(
+          'BANK_CHANGE_PENDING',
+          'Your new bank account is waiting for Katyayani to check it. You can withdraw once it is approved, or after you cancel the change.',
+        );
+      }
 
       const rate = facts.pan_verified
         ? settings.tds_rate_with_pan

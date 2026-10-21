@@ -1,18 +1,17 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsIn, IsOptional, Matches } from 'class-validator';
+import { IsIn, IsOptional, IsString, Length, Matches } from 'class-validator';
 
 import { PageQueryDto } from '@common/dto/page-query.dto';
 import { DATE_PATTERN } from '@modules/attendance/attendance.domain';
 
-import { ORDER_STAGES, type OrderStage } from '../orders.domain';
+import {
+  ORDER_ID_PATTERN,
+  ORDER_STAGES,
+  type OrderStage,
+} from '../orders.domain';
 
-/**
- * `orders_v2.order_id` as the channels issue it: `KSK-341382`, or
- * `ORD/K0-150/41350` (the app sends that one URL-encoded, `%2F`).
- */
-const ORDER_ID_PATTERN = /^[A-Z0-9][A-Z0-9_/-]{1,39}$/;
-
+/** The app sends an id like `ORD/K0-150/41350` URL-encoded (`%2F`). */
 export class OrderParamDto {
   @ApiProperty({ example: 'KSK-341382' })
   @Transform(({ value }: { value: unknown }) =>
@@ -62,4 +61,17 @@ export class OrdersQueryDto extends PageQueryDto {
     message: 'Please choose a valid end date, for example 2026-09-30.',
   })
   to?: string;
+
+  @ApiPropertyOptional({
+    example: 'KSK-341382',
+    description:
+      'Search: an order id (exact, any case), 4+ digits = the end of the buyer’s phone, else part of the buyer’s name (any case). 2–60 characters.',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @Length(2, 60, { message: 'Please type 2 to 60 characters to search.' })
+  q?: string;
 }

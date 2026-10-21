@@ -12,6 +12,7 @@ import { PiiService } from '@modules/spine/services/pii.service';
 import { PincodeService } from '@modules/spine/services/pincode.service';
 import { StorageService } from '@modules/uploads/services/storage.service';
 
+import { BANK_ACCOUNT_FIELD, BANK_DOCUMENT } from '../bank-change.domain';
 import {
   checkValue,
   documentKeys,
@@ -29,6 +30,15 @@ import {
   type RawData,
   type StepDef,
 } from '../form.domain';
+import {
+  duplicatesOf,
+  idFieldKeys,
+  idInUseMessage,
+  idKeysOf,
+  PAN_DOCUMENT,
+  type DuplicateIds,
+  type IdKeys,
+} from '../id-keys.domain';
 import { OnboardingRepository } from '../repositories/onboarding.repository';
 import type { OnboardingConfig } from '../schemas/onboarding-config.schema';
 import type {
@@ -42,6 +52,8 @@ import { ConfigsService } from './configs.service';
 
 const MAX_KEYS_PER_SAVE = 100;
 const MAX_RETRIES = 3;
+/** Other partners shown to HO per duplicated Aadhaar / PAN. */
+const MAX_ID_HOLDERS = 50;
 
 /** Field keys as the form names them — `Aadhaar card, PAN card`. */
 function labelsOf(steps: StepDef[], keys: string[]): string {
@@ -56,17 +68,14 @@ export interface PayoutFacts {
   pan_number: string | null;
   pan_verified: boolean;
   bank_verified: boolean;
+  /** A new account is waiting for HO: no new withdrawal until it is decided. */
+  bank_change_pending: boolean;
   bank_account: {
     account_holder: string | null;
     account_number: string | null;
     ifsc: string | null;
   } | null;
 }
-
-/** ko-sales' `piis.documents` keys the form's PAN and bank-proof fields carry. */
-const PAN_DOCUMENT = 'pan';
-const BANK_DOCUMENT = 'bank_details';
-const BANK_ACCOUNT_FIELD = 'details.bank_account';
 
 const text = (v: unknown): string | null =>
   typeof v === 'string' && v.trim() ? v.trim() : null;
@@ -95,6 +104,8 @@ export interface DeskOnboardingView extends OnboardingView {
   steps: StepDef[];
   updated_data: AdminEdit[];
   location: GeoPoint | null;
+  /** Other partners whose form holds the same Aadhaar or PAN. */
+  duplicate_ids: DuplicateIds[];
 }
 
 type Changes = { sets: RawData; unsets: string[] };
@@ -187,6 +198,7 @@ export class OnboardingService {
       agent.pii_id as string,
       editable,
     );
+    await this.assertIdsFree(agent._id, config.steps, changes.sets);
     doc = await this.apply(doc, config, changes, {
       by: 'self',
       ...(input.step_id ? { current_step: input.step_id } : {}),
@@ -222,9 +234,12 @@ export class OnboardingService {
       );
     }
 
+    await this.assertIdsFree(agent._id, config.steps, doc.raw_data);
+
     const updated = await this.withRetry(doc, (current) => ({
       $set: {
         documents_review: this.reviewForSubmit(config.steps, current),
+        id_keys: idKeysOf(config.steps, current.raw_data),
         remarks: {},
         submitted_at: new Date(),
         updated_by: 'self',
@@ -243,12 +258,17 @@ export class OnboardingService {
     const doc = await this.onboarding.findByAgent(agent._id);
     if (!doc) return null;
     const config = await this.configs.version(doc.cohort, doc.config_version);
-    const base = await this.view(agent, doc, config, null);
+    const mine = idKeysOf(config.steps, doc.raw_data);
+    const [base, holders] = await Promise.all([
+      this.view(agent, doc, config, null),
+      this.onboarding.idHolders(mine, agent._id, MAX_ID_HOLDERS),
+    ]);
     return {
       ...base,
       steps: config.steps,
       updated_data: doc.updated_data ?? [],
       location: doc.location ?? null,
+      duplicate_ids: duplicatesOf(mine, agent._id, holders),
     };
   }
 
@@ -275,6 +295,7 @@ export class OnboardingService {
       agent.pii_id as string,
       null,
     );
+    await this.assertIdsFree(agent._id, config.steps, changes.sets);
     const at = new Date();
     const audit: AdminEdit[] = [
       ...Object.entries(changes.sets).map(([field, value]) => ({
@@ -343,34 +364,46 @@ export class OnboardingService {
         `The partner has not uploaded ${field.label?.en ?? 'this document'} yet.`,
       );
 
-    const entry: DocumentReview = {
-      status: decision,
-      reason: decision === 'rejected' ? (reason as string).trim() : null,
-      by,
-      at: new Date(),
-      sig: JSON.stringify(value),
-    };
+    const entry = this.reviewEntry(decision, reason, by, value, new Date());
     await this.withRetry(doc, () => ({
       $set: { [`documents_review.${key}`]: entry, updated_by: by },
     }));
-    if (field.org_document) {
-      await this.mirrorToPii(
-        agent.pii_id as string,
-        field.org_document,
-        decision,
-        value,
-      );
-    }
+    await this.mirrorReviewed(agent.pii_id as string, field, decision, value);
     return (await this.forDesk(agent)) as DeskOnboardingView;
   }
 
-  /** The org copy on `piis.documents`, in ko-sales' entry shape. */
-  private mirrorToPii(
+  /**
+   * HO's verdict on one document as `documents_review` keeps it. The review
+   * desk and the bank-change approval both write it from here.
+   */
+  reviewEntry(
+    decision: 'verified' | 'rejected',
+    reason: string | null | undefined,
+    by: string,
+    value: unknown,
+    at: Date,
+  ): DocumentReview {
+    return {
+      status: decision,
+      reason: decision === 'rejected' ? (reason ?? '').trim() : null,
+      by,
+      at,
+      sig: JSON.stringify(value),
+    };
+  }
+
+  /**
+   * After a verdict on a field with an `org_document`: the org copy on
+   * `piis.documents`, in ko-sales' entry shape. Nothing for other fields.
+   */
+  mirrorReviewed(
     piiId: string,
-    type: string,
+    field: FieldDef,
     decision: 'verified' | 'rejected',
     value: unknown,
   ): Promise<void> {
+    const type = field.org_document;
+    if (!type) return Promise.resolve();
     if (decision === 'rejected') return this.piis.unverifyDocument(piiId, type);
     const { files = [], number } = value as {
       files?: string[];
@@ -510,6 +543,7 @@ export class OnboardingService {
         pan_number: text(panValue?.number)?.toUpperCase() ?? null,
         pan_verified: verified(pan),
         bank_verified: verified(proof),
+        bank_change_pending: doc.bank_change?.status === 'pending',
         bank_account: account
           ? {
               account_holder: text(account.account_holder),
@@ -529,6 +563,65 @@ export class OnboardingService {
     limit: number,
   ): Promise<OnboardingData[]> {
     return this.onboarding.near(point, radiusKm, excludeAgentRef, limit);
+  }
+
+  /**
+   * One-off (`scripts/backfill-id-keys`): fills `id_keys` on rows saved before
+   * the duplicate check and reports every Aadhaar / PAN held by more than one
+   * partner — agent ids only, never the value.
+   */
+  async backfillIdKeys(apply: boolean): Promise<{
+    scanned: number;
+    changed: number;
+    skipped: number;
+    duplicates: DuplicateIds[];
+  }> {
+    const PAGE = 200;
+    const holders = new Map<string, Set<string>>();
+    const hold = (key: string, agentId: string) =>
+      holders.set(key, (holders.get(key) ?? new Set()).add(agentId));
+    let scanned = 0;
+    let changed = 0;
+    let skipped = 0;
+    for (let after: string | null = null; ;) {
+      const rows = await this.onboarding.pageAfter(after, PAGE);
+      for (const row of rows) {
+        scanned += 1;
+        const config = await this.configs.version(
+          row.cohort,
+          row.config_version,
+        );
+        const keys: IdKeys = idKeysOf(config.steps, row.raw_data ?? {});
+        if (keys.aadhaar_hash)
+          hold(`aadhaar:${keys.aadhaar_hash}`, row.agent_id);
+        if (keys.pan) hold(`pan:${keys.pan}`, row.agent_id);
+        if (
+          row.id_keys?.aadhaar_hash === keys.aadhaar_hash &&
+          row.id_keys?.pan === keys.pan
+        )
+          continue;
+        changed += 1;
+        // A save that lands meanwhile writes `id_keys` itself.
+        if (
+          apply &&
+          !(await this.onboarding.updateIfVersion(row._id, row.version, {
+            $set: { id_keys: keys },
+          }))
+        )
+          skipped += 1;
+      }
+      if (rows.length < PAGE) break;
+      after = rows[rows.length - 1]._id;
+    }
+    const duplicates = [...holders]
+      .filter(([, ids]) => ids.size > 1)
+      .map(([key, ids]) => ({
+        kind: key.startsWith('aadhaar:')
+          ? ('aadhaar' as const)
+          : ('pan' as const),
+        agent_ids: [...ids].sort(),
+      }));
+    return { scanned, changed, skipped, duplicates };
   }
 
   // ── internals ─────────────────────────────────────────────────────────
@@ -617,6 +710,7 @@ export class OnboardingService {
         config_id: target._id,
         config_version: target.version,
         raw_data: kept,
+        id_keys: idKeysOf(target.steps, kept),
         ...progress(target.steps, kept),
         ...this.locationUpdate(target.steps, kept),
       },
@@ -696,6 +790,7 @@ export class OnboardingService {
 
       const $set: Record<string, unknown> = {
         ...progress(config.steps, merged),
+        id_keys: idKeysOf(config.steps, merged),
         updated_by: meta.by,
         ...(meta.current_step ? { current_step: meta.current_step } : {}),
       };
@@ -717,6 +812,31 @@ export class OnboardingService {
         update.$push = { updated_data: { $each: meta.audit, $slice: -200 } };
       return update;
     });
+  }
+
+  /**
+   * Refuses an Aadhaar or PAN another partner's form already holds. Only the
+   * values in `raw` are checked — a save passes just the fields it sets, so an
+   * old clash never blocks an unrelated answer (submit checks everything).
+   */
+  private async assertIdsFree(
+    agentRef: string,
+    steps: StepDef[],
+    raw: RawData,
+  ): Promise<void> {
+    const keys = idKeysOf(steps, raw);
+    const clashes = duplicatesOf(
+      keys,
+      agentRef,
+      await this.onboarding.idHolders(keys, agentRef, MAX_ID_HOLDERS),
+    );
+    if (clashes.length === 0) return;
+    const fieldKeys = idFieldKeys(steps);
+    throw conflict(
+      'ID_IN_USE',
+      idInUseMessage(clashes.map((c) => c.kind)),
+      clashes.flatMap((c) => fieldKeys[c.kind] ?? []),
+    );
   }
 
   /** Optimistic write: retried against a fresh read if another write landed first. */

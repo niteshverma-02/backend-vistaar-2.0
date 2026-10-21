@@ -15,9 +15,12 @@ export interface StaffRecord {
   name: string;
   user_role: string | null;
   is_active: boolean;
+  /** `contact.phone_number` as text; `null` when the account has none. */
+  phone: string | null;
 }
 
-const FIELDS = '_id email agent_id first_name last_name user_role is_active';
+const FIELDS =
+  '_id email agent_id first_name last_name user_role is_active contact';
 
 type Raw = Partial<StaffAccount> & { _id?: Types.ObjectId | string };
 
@@ -29,6 +32,10 @@ const toRecord = (doc: Raw): StaffRecord => ({
   name: [doc.first_name, doc.last_name].filter(Boolean).join(' ').trim(),
   user_role: doc.user_role ?? null,
   is_active: doc.is_active === true,
+  phone:
+    doc.contact?.phone_number != null && doc.contact.phone_number !== ''
+      ? String(doc.contact.phone_number)
+      : null,
 });
 
 @Injectable()

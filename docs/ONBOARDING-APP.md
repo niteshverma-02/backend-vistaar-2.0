@@ -122,10 +122,20 @@ Before the first submit the form follows the latest published version (values fo
 fields are dropped) and the partner may switch cohort by sending a different `cohort`.
 After submitting, both are fixed.
 
+### Aadhaar / PAN used by another partner
+
+A save that sets the Aadhaar or PAN field, and the submit, are refused with
+`409 ID_IN_USE` when another Vistaar partner's form already holds the same number:
+"This Aadhaar (PAN / Aadhaar and PAN) is already used by another Vistaar account. Contact
+Katyayani support." `details` = the clashing field keys, e.g. `["aadhaar"]` — mark those
+fields. The number itself is never in the answer. Aadhaar is compared on its 12 digits
+(spaces and `-` ignored), PAN in upper case. Your own number saved again is fine.
+
 ## 5. Errors
 
 | Code | HTTP | Meaning |
 |---|---|---|
+| `ID_IN_USE` | 409 | Aadhaar / PAN already on another partner's form; `details` = field keys (§4) |
 | `COHORT_REQUIRED` | 400 | first save without `cohort` |
 | `COHORT_NOT_FOUND` | 400 | unknown or inactive partner type |
 | `CONFIG_NOT_PUBLISHED` | 409 | that type has no published form yet |
@@ -138,3 +148,72 @@ After submitting, both are fixed.
 | `UPLOADS_NOT_CONFIGURED` | 503 | file storage not set up on this server |
 | `FILE_REQUIRED`, `FILE_TYPE_NOT_ALLOWED`, `FILE_TOO_LARGE` | 400 / 413 | upload problems |
 | `ACCOUNT_BLOCKED` | 403 | |
+| `PARTNER_NOT_APPROVED` | 403 | `PATCH /me` or a bank change before approval (§6) |
+| `IMAGE_NOT_FOUND` | 400 | `PATCH /me`: the photo path is not an upload in your own folder |
+| `BANK_CHANGE_PENDING` | 409 | a bank change is already waiting for HO; also refuses a new withdrawal (COMMISSION-APP.md) |
+| `BANK_CHANGE_NOT_PENDING` | 409 | withdraw a bank change that is no longer waiting — reload |
+| `CONFIG_INVALID` | 409 | bank change: your form has no payout account field — contact support |
+
+## 6. After approval — edit profile, change bank account
+
+`PATCH /me` and `POST /me/bank-change` are for approved partners only: a blocked or
+switched-off account gets `403 ACCOUNT_BLOCKED`, any other stage `403 PARTNER_NOT_APPROVED`.
+
+### `PATCH /me` — Edit Profile
+
+```jsonc
+{ "name": "Ramesh Patel",          // 3–100 — waits for HO (pending_name), not applied now
+  "email": "ramesh@example.com",
+  "language_pref": "hi",           // ^[a-z]{2,3}$
+  "village": "Rampur", "district": "Sehore", "state": "MADHYA PRADESH",   // 1–100 each
+  "pincode": "466001",             // 6 digits
+  "photo": "KO-documents/PII-1203/profile_photo/…jpg" }   // ≤ 300, path from POST /uploads
+```
+
+Every key is optional; only the keys sent change. Do not send `null`. Answers the full
+`GET /me` (AUTH-APP.md).
+
+- **Name:** goes to `pending_name` until HO approves it; `profile.name` stays as it is. A
+  name equal to the current one is ignored; a new one replaces one still waiting. HO's
+  decision shows in `name_change` (a refusal carries `reason`).
+- **Pincode:** a pincode the org's list knows sets `state` and `district` (over the typed
+  ones); an unknown pincode keeps what was typed.
+- **Photo:** upload first with `POST /uploads?purpose=profile_photo`, then send its `path`.
+  It must be your own upload (`KO-documents/<your pii_id>/`) — else `400 IMAGE_NOT_FOUND` —
+  and an image, not a PDF (`400 FILE_TYPE_NOT_ALLOWED`). Show it from `photo_url`.
+- `language_pref` is saved as `profile.details.language_pref`, where the form puts it.
+
+Writes `vistaar_v2_agents` only (`profile`, the HO list's `preview` copy of
+place, `pending_name`). The org's person record (`piis`) is never changed.
+
+### Bank account change
+
+Payouts keep going to the verified account until HO approves the new one. While a change
+is waiting, no new withdrawal is accepted (`GET /wallet` → `blocked_reason:
+"bank_change_pending"`).
+
+| Method | Path | Body | Answer |
+|---|---|---|---|
+| GET | `/me/bank-change` | — | the waiting or last request, or `null` |
+| POST | `/me/bank-change` | `{ account_holder, account_number, ifsc, proof_path }` | the request, `status: "pending"` |
+| DELETE | `/me/bank-change` | — | the request, `status: "withdrawn"` |
+
+```jsonc
+{ "status": "pending",            // pending · approved · rejected · withdrawn
+  "account_holder": "Suresh Kumar", "account_last4": "4321", "ifsc": "SBIN0001234",
+  "requested_at": "…", "decided_at": null,
+  "reason": null }                // HO's reason when rejected
+```
+
+- `account_holder` ≤ 100; `account_number` 9–18 digits; `ifsc` like `SBIN0001234` (any case,
+  saved upper case); `proof_path` = a cancelled cheque or passbook photo from
+  `POST /uploads?purpose=<the bank-proof field's key>`, in your own folder. The form's own
+  rules for the bank fields apply too (`400 VALIDATION_FAILED`, `details[0]` says what).
+- The same account number and IFSC as today → `400 VALIDATION_FAILED`.
+- One waiting at a time (`409 BANK_CHANGE_PENDING`); withdraw it first to send another.
+  Only the latest request is kept.
+- On approval the new account replaces the old one on the form (a UPI ID there is kept).
+  Read the current account from `GET /wallet` `bank`, not from
+  `profile.details.bank_account` — that copy is taken once at approval and is not updated.
+
+Writes `vistaar_v2_onboarding_data.bank_change` only. HO's approval is in ONBOARDING-HO.md §3.

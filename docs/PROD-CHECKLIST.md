@@ -37,6 +37,8 @@ db.vistaar_v2_agents.createIndex({ otp_verified: 1, stage: 1, decided_at: -1 })
 db.vistaar_v2_agents.createIndex({ location: '2dsphere' })
 db.vistaar_v2_onboarding_data.createIndex({ agent_ref: 1 }, { unique: true })
 db.vistaar_v2_onboarding_data.createIndex({ location: '2dsphere' })
+db.vistaar_v2_onboarding_data.createIndex({ 'id_keys.aadhaar_hash': 1 }, { partialFilterExpression: { 'id_keys.aadhaar_hash': { $exists: true } } })
+db.vistaar_v2_onboarding_data.createIndex({ 'id_keys.pan': 1 }, { partialFilterExpression: { 'id_keys.pan': { $exists: true } } })
 db.vistaar_v2_onboarding_configs.createIndex({ cohort: 1, version: -1 }, { unique: true })
 db.vistaar_v2_onboarding_configs.createIndex({ cohort: 1, status: 1 }, { unique: true, partialFilterExpression: { status: 'draft' } })
 db.vistaar_v2_otp_attempts.createIndex({ expires_at: 1 }, { expireAfterSeconds: 0 })
@@ -123,6 +125,7 @@ race; onboarding create re-reads on a race; sessions are deleted on refresh (no 
 - Role **USR-1040 "Vistaar Partner"** in `userroles` (`{ UserRoleId, role_name, agent_categories: [], __v: 0 }`) — by the ko-sales owner (`POST /api/v1/agents/roles` takes max+1, so check the max is USR-1039 first). Not on beta yet either.
 - Forms published before 2026-10-09 by the seed: `seed-onboarding.js --apply --republish` (12-digit Aadhaar, `org_document`).
 - Partners saved or approved before state/district came from the pincode (2026-10-14): `node dist/scripts/backfill-partner-place.js` (dry run), then `--apply`. Only `vistaar_v2_agents`; safe to run again. Beta done 2026-10-14 (VST-000006).
+- Aadhaar / PAN duplicate check (2026-10-16): after deploy, `node dist/scripts/backfill-id-keys.js` (dry run), then `--apply` — fills `id_keys` on forms saved before the check, which cannot see them until then. Only `vistaar_v2_onboarding_data`; safe to run again. Hand the printed duplicate groups (agent ids) to HO. Build the two `id_keys` indexes above first.
 
 ## Owed by other teams
 

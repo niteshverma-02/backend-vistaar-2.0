@@ -22,6 +22,7 @@ import { ProductFactsService } from '@modules/spine/services/product-facts.servi
 import {
   ORDER_STAGES,
   firstUrl,
+  orderSearch,
   stageOf,
   statusesFor,
   type OrderStage,
@@ -230,19 +231,14 @@ export function partnerOf(
   };
 }
 
-/** An order id, or the end of a phone number. */
-const ORDER_ID = /^[A-Z0-9][A-Z0-9_/-]{1,39}$/;
-
 /** The longest range the order cards sum over. */
 const MAX_SUMMARY_DAYS = 366;
 
 function filterOf(query: AdminOrdersQueryDto): AdminOrderFilter {
   const { from, to } = checkedRange(query.from, query.to);
-  const q = query.q?.toUpperCase() ?? '';
-  const digits = q.replace(/\D/g, '');
-  const isPhone = /^[\d\s+-]+$/.test(q) && digits.length >= 4;
-  // A search that is neither must not quietly become "every order".
-  if (q && !isPhone && !ORDER_ID.test(q)) {
+  const search = orderSearch(query.q);
+  // HO searches by id or phone only; a name must not quietly become "every order".
+  if (search.name) {
     throw badRequest(
       'VALIDATION_FAILED',
       'Search by an order number (e.g. KSK-341382) or at least 4 digits of the phone.',
@@ -256,8 +252,8 @@ function filterOf(query: AdminOrdersQueryDto): AdminOrderFilter {
     piiId: query.customer ?? null,
     paymentMode: query.payment_mode ?? null,
     state: query.state || null,
-    orderId: !isPhone && ORDER_ID.test(q) ? q : null,
-    phoneEnd: isPhone ? digits.slice(-10) : null,
+    orderId: search.orderId,
+    phoneEnd: search.phoneEnd,
   };
 }
 

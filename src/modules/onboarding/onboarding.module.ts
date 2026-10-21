@@ -7,8 +7,10 @@ import { EarningModule } from '@modules/earning/earning.module';
 import { SpineModule } from '@modules/spine/spine.module';
 import { UploadsModule } from '@modules/uploads/uploads.module';
 
+import { AdminBankChangeController } from './controllers/admin-bank-change.controller';
 import { AdminCohortsController } from './controllers/admin-cohorts.controller';
 import { AdminConfigsController } from './controllers/admin-configs.controller';
+import { BankChangeController } from './controllers/bank-change.controller';
 import { MeController } from './controllers/me.controller';
 import { OnboardingController } from './controllers/onboarding.controller';
 import { CohortRepository } from './repositories/cohort.repository';
@@ -23,6 +25,7 @@ import {
   OnboardingData,
   OnboardingDataSchema,
 } from './schemas/onboarding-data.schema';
+import { BankChangeService } from './services/bank-change.service';
 import { CohortsService } from './services/cohorts.service';
 import { ConfigsService } from './services/configs.service';
 import { MeService } from './services/me.service';
@@ -46,6 +49,8 @@ import { OnboardingService } from './services/onboarding.service';
     MeController,
     AdminCohortsController,
     AdminConfigsController,
+    BankChangeController,
+    AdminBankChangeController,
   ],
   providers: [
     CohortRepository,
@@ -55,6 +60,7 @@ import { OnboardingService } from './services/onboarding.service';
     ConfigsService,
     OnboardingService,
     MeService,
+    BankChangeService,
   ],
   exports: [OnboardingService, CohortsService],
 })

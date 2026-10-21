@@ -20,6 +20,7 @@ import {
   type AgentProfile,
   type EarningCohortRef,
   type StageHistoryEntry,
+  type VerificationCall,
 } from '../schemas/agent.schema';
 
 export type AgentRecord = Agent;
@@ -317,6 +318,61 @@ export class AgentRepository {
         { $set: { owner_agent_id: ownerAgentId, updated_by: by } },
         { returnDocument: 'after' },
       )
+      .lean<AgentRecord | null>()
+      .exec();
+  }
+
+  /** Conditional on the stage, so a call is never logged on a decided partner. */
+  addVerificationCall(
+    id: string,
+    stages: readonly Stage[],
+    call: VerificationCall,
+  ): Promise<AgentRecord | null> {
+    return this.model
+      .findOneAndUpdate(
+        { _id: id, stage: { $in: stages } },
+        {
+          $push: { verification_calls: call },
+          $set: { updated_by: call.by },
+        },
+        { returnDocument: 'after' },
+      )
+      .select('agent_id stage verification_calls')
+      .lean<AgentRecord | null>()
+      .exec();
+  }
+
+  /** The partner's own profile edit — only while still approved. */
+  editProfile(
+    id: string,
+    set: Record<string, unknown>,
+  ): Promise<AgentRecord | null> {
+    return this.model
+      .findOneAndUpdate(
+        { _id: id, stage: 'approved' },
+        { $set: { ...set, updated_by: 'self' } },
+        { returnDocument: 'after' },
+      )
+      .lean<AgentRecord | null>()
+      .exec();
+  }
+
+  /**
+   * Conditional on the pending name HO saw, so a newer request the partner
+   * sent meanwhile is never approved unseen.
+   */
+  decideNameChange(
+    id: string,
+    value: string,
+    set: Record<string, unknown>,
+  ): Promise<AgentRecord | null> {
+    return this.model
+      .findOneAndUpdate(
+        { _id: id, 'pending_name.value': value },
+        { $set: set },
+        { returnDocument: 'after' },
+      )
+      .select('-stage_history')
       .lean<AgentRecord | null>()
       .exec();
   }

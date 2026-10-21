@@ -59,7 +59,9 @@ export class AdminOrdersQueryDto extends OrdersQueryDto {
   )
   @IsString()
   @MaxLength(40)
-  q?: string;
+  // HO keeps its own rules and words (no name search); the initializer only
+  // lets the field be redeclared over the app's.
+  override q?: string = undefined;
 }
 
 /** `GET /admin/orders/breakdown`: sales panels, cancelled and returned left out. */

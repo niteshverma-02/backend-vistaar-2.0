@@ -178,13 +178,18 @@ that apply only to orders placed before earning cohorts: hide it, or label it so
   "bank": { "account_holder": "Suresh Kumar", "account_last4": "4321", "ifsc": "SBIN0001234", "verified": true },
   "open_withdrawal": null,                 // the one in progress, if any (Withdrawal below)
   "can_withdraw": true,
-  "blocked_reason": null                   // not_approved · bank_not_verified · withdrawal_open · below_minimum
+  "blocked_reason": null                   // not_approved · bank_not_verified · bank_change_pending · withdrawal_open · below_minimum
 }
 ```
 
+`bank` is the account payouts go to now — after HO approves a bank account change, the new
+one. `bank_change_pending`: a new account is waiting for HO (ONBOARDING-APP.md §6) — hide
+Withdraw and say so; the partner can cancel the change with `DELETE /me/bank-change`.
+
 ### `POST /wallet/withdrawals` — `{ "amount": 970 }`
 
-Whole ₹, ≥ `min_withdrawal`, ≤ `withdrawable`; one open request at a time. Answers the
+Whole ₹, ≥ `min_withdrawal`, ≤ `withdrawable`; one open request at a time; none while a
+bank account change waits (`409 BANK_CHANGE_PENDING`). Answers the
 **Withdrawal**:
 
 ```jsonc
@@ -247,6 +252,7 @@ TDS **actually deducted** at payout, by the month it was paid.
 | `NOT_ENOUGH_BALANCE` | 409 | amount > `withdrawable` (message names the maximum) |
 | `WITHDRAWAL_OPEN` | 409 | one is already requested / approved |
 | `BANK_NOT_VERIFIED` | 409 | HO has not verified the bank proof |
+| `BANK_CHANGE_PENDING` | 409 | a new bank account is waiting for HO — no new withdrawal until it is decided or withdrawn |
 | `PARTNER_NOT_APPROVED` | 403 | not approved, or blocked |
 | `WITHDRAWAL_CHANGED` | 409 | cancel after HO approved / closed it |
 | `NOT_FOUND` | 404 | no such withdrawal of mine |

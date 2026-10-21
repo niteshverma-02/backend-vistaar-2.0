@@ -3,7 +3,9 @@ import { SchemaTypes, type HydratedDocument } from 'mongoose';
 
 import type { GeoPoint } from '@common/utils/geo.util';
 
+import type { BankChange } from '../bank-change.domain';
 import type { RawData } from '../form.domain';
+import type { IdKeys } from '../id-keys.domain';
 
 export type DocumentStatus = 'pending' | 'verified' | 'rejected';
 
@@ -72,6 +74,13 @@ export class OnboardingData {
 
   @Prop({ type: [SchemaTypes.Mixed], default: [] }) updated_data!: AdminEdit[];
 
+  /** Normalised Aadhaar (hash) and PAN from `raw_data`, for the duplicate check across partners. */
+  @Prop({ type: SchemaTypes.Mixed, default: undefined }) id_keys?: IdKeys;
+
+  /** The partner's latest request to change the payout account (one pending at a time). */
+  @Prop({ type: SchemaTypes.Mixed, default: undefined })
+  bank_change?: BankChange;
+
   @Prop({ type: String, default: 'vistaar_app' }) source!: string;
   @Prop({ type: String, default: 'self' }) created_by!: string;
   @Prop({ type: String, default: 'self' }) updated_by!: string;
@@ -88,3 +97,12 @@ export const OnboardingDataSchema =
 
 OnboardingDataSchema.index({ agent_ref: 1 }, { unique: true });
 OnboardingDataSchema.index({ location: '2dsphere' });
+// Not unique: the save refuses a clash, and beta may already hold duplicates.
+OnboardingDataSchema.index(
+  { 'id_keys.aadhaar_hash': 1 },
+  { partialFilterExpression: { 'id_keys.aadhaar_hash': { $exists: true } } },
+);
+OnboardingDataSchema.index(
+  { 'id_keys.pan': 1 },
+  { partialFilterExpression: { 'id_keys.pan': { $exists: true } } },
+);

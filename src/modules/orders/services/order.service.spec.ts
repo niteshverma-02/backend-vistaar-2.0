@@ -113,6 +113,17 @@ describe('OrderService', () => {
     expect(call[4]).toBe('PII-7');
   });
 
+  it('passes the search box to the caller’s own list', async () => {
+    list.mockResolvedValue([[], 0]);
+    await service.list(
+      PARTNER,
+      Object.assign(new OrdersQueryDto(), { q: 'Mohan' }),
+    );
+    const call = list.mock.calls[0] as unknown[];
+    expect(call[0]).toBe('VST-1');
+    expect(call[6]).toEqual({ orderId: null, phoneEnd: null, name: 'Mohan' });
+  });
+
   it('shows a shop-stock order (the partner’s own pii) as self', async () => {
     findOne.mockResolvedValue(order({ pii_id: 'PII-9' }));
     const view = await service.get(PARTNER, 'KSK-1');

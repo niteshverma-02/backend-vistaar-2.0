@@ -1,14 +1,21 @@
 import { HttpStatus, Injectable } from '@nestjs/common';
 
-import { apiError, forbidden, notFound } from '@common/errors/api-error';
+import {
+  apiError,
+  conflict,
+  forbidden,
+  notFound,
+} from '@common/errors/api-error';
 import type { GeoPoint } from '@common/utils/geo.util';
 import { CountersService } from '@modules/counters/services/counters.service';
 import { SettingsService } from '@modules/settings/services/settings.service';
 
 import {
+  CALLABLE_STAGES,
   STAGES,
   TRANSITIONS,
   stageRefusal,
+  type CallOutcome,
   type RefusedAction,
   type Stage,
   type StageAction,
@@ -23,6 +30,8 @@ import type {
   AgentPreview,
   AgentProfile,
   EarningCohortRef,
+  NameChangeResult,
+  VerificationCall,
 } from '../schemas/agent.schema';
 
 export type {
@@ -30,7 +39,26 @@ export type {
   AgentListFilter,
   EarningPartnerRecord,
 } from '../repositories/agent.repository';
-export type { EarningCohortRef } from '../schemas/agent.schema';
+export type {
+  EarningCohortRef,
+  NameChangeResult,
+  PendingName,
+  VerificationCall,
+} from '../schemas/agent.schema';
+
+/** What the partner may change on their own profile (the app's Edit Profile). */
+export interface ProfileEdit {
+  email?: string;
+  language_pref?: string;
+  village?: string;
+  district?: string;
+  state?: string;
+  pincode?: string;
+  photo?: string;
+}
+
+/** Fields mirrored to `preview`, which the HO list filters and searches on. */
+const PREVIEW_KEYS = ['district', 'state', 'pincode'] as const;
 
 /** A partner as a list row names them. */
 export interface PartnerCard {
@@ -347,6 +375,127 @@ export class AgentsService {
     const updated = await this.agents.setOwner(agent._id, ownerAgentId, by);
     if (!updated) throw notFound('This partner could not be found.');
     return updated;
+  }
+
+  /** HO logs a verification call; refused once the partner is decided. */
+  async logVerificationCall(
+    agentId: string,
+    outcome: CallOutcome,
+    note: string | undefined,
+    by: string,
+  ): Promise<{ agent_id: string; verification_calls: VerificationCall[] }> {
+    const agent = await this.requireByAgentId(agentId);
+    if (!CALLABLE_STAGES.includes(agent.stage)) {
+      throw this.stageError('verification_call', agent.stage);
+    }
+    const updated = await this.agents.addVerificationCall(
+      agent._id,
+      CALLABLE_STAGES,
+      { at: new Date(), by, outcome, note: note?.trim() || null },
+    );
+    if (!updated) {
+      const fresh = await this.require(agent._id);
+      throw this.stageError('verification_call', fresh.stage);
+    }
+    return {
+      agent_id: updated.agent_id ?? agentId,
+      verification_calls: updated.verification_calls ?? [],
+    };
+  }
+
+  /**
+   * Writes only the keys sent, as dotted `$set`s, so nothing else on the
+   * profile moves; a new name only waits in `pending_name` for HO. 403
+   * `PARTNER_NOT_APPROVED` when the partner stopped being approved meanwhile.
+   */
+  /** The profile's copy of the bank account, after HO approved a change; no profile = nothing to keep. */
+  async setProfileBankAccount(
+    agent: AgentRecord,
+    account: { account_holder: string; account_number: string; ifsc: string },
+  ): Promise<void> {
+    if (!agent.profile?.details) return;
+    await this.agents.editProfile(agent._id, {
+      'profile.details.bank_account': account,
+    });
+  }
+
+  async editProfile(
+    agent: AgentRecord,
+    edit: ProfileEdit,
+    pendingName: string | null,
+  ): Promise<AgentRecord> {
+    const set: Record<string, unknown> = {};
+    const { language_pref, ...rest } = edit;
+    const flat = Object.fromEntries(
+      Object.entries(rest).filter(([, v]) => v !== undefined),
+    );
+    const profile = agent.profile;
+    if (!profile) {
+      // Dotted paths cannot be written under a `null` profile.
+      if (Object.keys(flat).length > 0 || language_pref !== undefined)
+        set.profile = {
+          ...flat,
+          ...(language_pref !== undefined
+            ? { details: { language_pref } }
+            : {}),
+        };
+    } else {
+      for (const [key, value] of Object.entries(flat))
+        set[`profile.${key}`] = value;
+      if (language_pref !== undefined) {
+        if (profile.details)
+          set['profile.details.language_pref'] = language_pref;
+        else set['profile.details'] = { language_pref };
+      }
+    }
+    for (const key of PREVIEW_KEYS)
+      if (edit[key] !== undefined) set[`preview.${key}`] = edit[key];
+    if (pendingName)
+      set.pending_name = { value: pendingName, requested_at: new Date() };
+    if (Object.keys(set).length === 0) return agent;
+
+    const updated = await this.agents.editProfile(agent._id, set);
+    if (!updated) {
+      throw forbidden(
+        'PARTNER_NOT_APPROVED',
+        'You can edit your profile once your account is approved.',
+      );
+    }
+    return updated;
+  }
+
+  /** HO approves or refuses the name the partner asked for. 409 when none waits. */
+  async decideNameChange(
+    agentId: string,
+    approved: boolean,
+    by: string,
+    reason?: string,
+  ): Promise<AgentRecord> {
+    const agent = await this.requireByAgentId(agentId);
+    const value = agent.pending_name?.value;
+    if (!value) throw this.noPendingName();
+    const result: NameChangeResult = {
+      value,
+      approved,
+      reason: approved ? null : (reason?.trim() ?? null),
+      by,
+      at: new Date(),
+    };
+    const updated = await this.agents.decideNameChange(agent._id, value, {
+      pending_name: null,
+      name_change: result,
+      updated_by: by,
+      ...(approved ? { 'profile.name': value, 'preview.name': value } : {}),
+    });
+    if (!updated) throw this.noPendingName();
+    return updated;
+  }
+
+  private noPendingName() {
+    return conflict(
+      'NAME_CHANGE_NOT_PENDING',
+      'This partner has no name change waiting. Please refresh the page.',
+    );
   }
 
   /** A partner's own monthly target; `null` puts them back on the settings default. */

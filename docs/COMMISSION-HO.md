@@ -139,6 +139,13 @@ behind `payouts.manage` and do not store it in the browser.
 **Batch paid** answers `{ paid, results: [ { id, ok, error } ] }` — each line succeeds or
 fails on its own (e.g. already paid).
 
+**Bank account change** (ONBOARDING-HO.md §3): while a partner's new account waits for HO,
+the partner cannot ask for a new withdrawal (`409 BANK_CHANGE_PENDING`). Withdrawals already
+requested or approved are not touched, and approve and the bank file still work. Approve
+and the bank file read the account on the form at that moment: once a change is approved,
+the bank file pays the new account, even for a withdrawal approved before it (its
+`account_last4` still shows the old one).
+
 ## 3. TDS and Form 16A
 
 | Method | Path | |
