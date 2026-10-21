@@ -233,8 +233,10 @@ export class EarningCohortsService {
         ref = { id: done.cohort_id, since: done.since };
       }
     }
+    // An archived cohort pays nothing from the moment it is archived, not
+    // only once the recompute it starts has moved its partners.
     const cohort =
-      cohorts.find((c) => c._id === (ref?.id ?? DEFAULT_COHORT_ID)) ??
+      cohorts.find((c) => c._id === ref?.id && c.status === 'active') ??
       cohorts.find((c) => c._id === DEFAULT_COHORT_ID);
     // `all()` writes the default when it is missing; this is a broken database.
     if (!cohort) throw new Error('The default earning cohort is missing.');

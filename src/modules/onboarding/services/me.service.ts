@@ -14,6 +14,7 @@ import {
   type PendingName,
   type ProfileEdit,
 } from '@modules/agents/services/agents.service';
+import { EarningCohortsService } from '@modules/earning/services/earning-cohorts.service';
 import {
   EarningRulesService,
   type AppEarningCohort,
@@ -90,6 +91,9 @@ const NEXT: Record<Stage, NextAction> = {
   blocked: 'blocked',
 };
 
+/** The profile keys an earning cohort's conditions test. */
+const PLACE_KEYS = ['state', 'district', 'pincode'] as const;
+
 /** Same rule as onboarding files: the person's own folder, nothing clever in the path. */
 const ownPath = (path: string, piiId: string | null): boolean =>
   !!piiId &&
@@ -109,6 +113,7 @@ export class MeService {
     private readonly access: AccessService,
     private readonly pincodes: PincodeService,
     private readonly storage: StorageService,
+    private readonly cohorts: EarningCohortsService,
   ) {}
 
   async get(agentRef: string): Promise<MeView> {
@@ -212,6 +217,17 @@ export class MeService {
     const pendingName = name && name !== current ? name : null;
 
     await this.agents.editProfile(agent, edit, pendingName);
+    // Cohorts test the profile's state / district / pincode, so a move can
+    // change what the partner earns; the answer then carries the new cohort.
+    if (PLACE_KEYS.some((key) => edit[key] !== undefined)) {
+      await this.cohorts
+        .recompute(agentId, 'profile_changed')
+        .catch((error: unknown) =>
+          this.logger.warn(
+            `Earning cohort of ${agentId} not recomputed after a profile edit: ${error instanceof Error ? error.message : String(error)}`,
+          ),
+        );
+    }
     return this.get(agentRef);
   }
 

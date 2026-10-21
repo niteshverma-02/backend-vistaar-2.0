@@ -40,8 +40,11 @@ saved (worked out right after the answer; a few seconds for 10,000 partners).
   no conditions, is always looked at last and catches everyone else. It cannot
   be archived and its conditions cannot be set; its name, description,
   meeting-gig payout and rules can.
-- Only approved partners are placed. A partner is looked at again when: HO approves or
-  unblocks them; they add a farmer (or take one over); a lead moves into or out of
+- Only approved partners are placed, and only placed partners earn: a partner not
+  approved yet earns nothing from any rule (not even `ec_default`'s). An archived
+  cohort pays nothing from the moment it is archived — its partners earn from
+  `ec_default` until the recompute moves them. A partner is looked at again when: HO approves or
+  unblocks them; they change their state / district / pincode (`PATCH /me`); they add a farmer (or take one over); a lead moves into or out of
   `lost`; a lead is won (first order); they remove a lead; HO transfers a farmer (both
   partners); HO adds, edits conditions of, reorders or archives a cohort (everyone).
 - A lapsed hold still counts (the farmer stays the partner's until another partner
@@ -203,10 +206,11 @@ seen after this feature shipped) · `recompute` (HO's button). A partner approve
 this feature is placed on their first app open, on this route, or on the recompute
 button — run it once after deploy.
 
-`profile_changed` is written only by the `backfill-partner-place` script. A partner's own
-place edit (`PATCH /me`, ONBOARDING-APP.md §6) does not re-place them today: they move on
-the next holdings change, cohort change or recompute — press recompute after a batch of
-place edits if a place-based cohort must follow at once.
+`profile_changed` is written by the `backfill-partner-place` script and by a partner's own
+place edit: a `PATCH /me` that sends state, district or pincode (ONBOARDING-APP.md §6)
+re-places them before it answers, so `earning_cohort` on that answer is already the new
+one. A failed re-place is logged and the edit still saves; the next holdings change,
+cohort change or recompute fixes it.
 
 ## Commission per cohort
 
@@ -369,6 +373,11 @@ this table:
 Every reward an event earns is recorded **at that moment** in `vistaar_v2_rewards` —
 the rule, its name, the amount and the partner's cohort then — as **`pending`**. HO
 approves or rejects it here. Nothing is paid before approval.
+
+A reward's id is `<trigger>:<1–3 key parts>:<kind>` — `lead_created:PII-1620070:coin`,
+`event_registered:<event id>:VST-000006:coin`, `reorder:KSK-341382:gig`. Every
+trigger's rewards can be approved and rejected (before 2026-10-21 only lead and
+follow-up ids passed the `:id` check; the rest answered `400`).
 
 - **Coins** are points: approved coins add to the partner's balance in the app. There
   is no redeem or spend yet, and coins never reach the wallet.

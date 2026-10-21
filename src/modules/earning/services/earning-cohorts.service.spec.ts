@@ -535,4 +535,19 @@ describe('EarningCohortsService — HO', () => {
       'first_assignment',
     );
   });
+
+  it('pays from the default once the partner’s cohort is archived', async () => {
+    const { service } = setup({
+      partners: [
+        partner('VST-000001', { earning_cohort: { id: 'ec_big', since: OLD } }),
+      ],
+      cohorts: [
+        cohort(DEFAULT_COHORT_ID),
+        cohort('ec_big', { status: 'archived', archived_at: OLD }),
+      ],
+    });
+    const now = await service.current('VST-000001');
+    expect(now.cohort._id).toBe(DEFAULT_COHORT_ID);
+    expect(now.since).toEqual(OLD);
+  });
 });

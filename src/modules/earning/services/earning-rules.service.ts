@@ -107,7 +107,10 @@ export class EarningRulesService {
     trigger: EarningTrigger,
     facts: Facts,
   ): Promise<EarnedReward[]> {
-    const { cohort } = await this.cohorts.current(agentId);
+    const { cohort, since } = await this.cohorts.current(agentId);
+    // Not placed = not approved yet: no cohort, so nothing to earn — the app
+    // shows such a partner no "How to earn" either.
+    if (!since) return [];
     const rules = await this.rules.active(cohort._id, trigger);
     return pickRewards(rules, trigger, facts).map((r) => ({
       rule_id: r._id,

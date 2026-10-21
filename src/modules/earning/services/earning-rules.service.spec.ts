@@ -106,6 +106,18 @@ describe('EarningRulesService.evaluate', () => {
       },
     ]);
   });
+
+  it('pays nothing to a partner not placed yet (not approved)', async () => {
+    const { service, repo, cohorts } = setup([rule('coin-any')]);
+    cohorts.current.mockResolvedValue({
+      cohort: { _id: 'ec_default', name: 'Everyone else' },
+      since: null,
+    });
+    expect(await service.evaluate('VST-000001', 'lead_created', {})).toEqual(
+      [],
+    );
+    expect(repo.active).not.toHaveBeenCalled();
+  });
 });
 
 describe('EarningRulesService — HO', () => {
