@@ -37,6 +37,11 @@ export interface PartnerPaymentOptionView {
   provider: PaymentProvider;
   label: string;
   hint: string | null;
+  /**
+   * Razorpay only: the live Key ID HO approved (public — it opens the
+   * checkout sheet). KO Utils creates the Razorpay order with its own secret.
+   */
+  key_id?: string;
 }
 
 export interface AdminPaymentOptionView {
@@ -89,19 +94,27 @@ export class PaymentOptionsService {
 
   async forPartner(agentRef: string): Promise<PartnerPaymentOptionView[]> {
     if (!this.onlineEnabled) return [];
-    const [cohort, rows, modes] = await Promise.all([
+    const [cohort, rows, modes, publicIds] = await Promise.all([
       this.agents.cohortById(agentRef),
       this.cachedRows(),
       this.credentials.activeModes(),
+      this.credentials.activePublicIds(),
     ]);
     return withDefaults(rows, modes)
       .filter((o) => o.configured && isShownTo(o, cohort))
-      .map((o) => ({
-        id: o.id,
-        provider: o.provider,
-        label: o.label,
-        hint: o.hint,
-      }));
+      .map((o) => {
+        const keyId =
+          o.provider === 'razorpay'
+            ? publicIds.get('razorpay')?.key_id
+            : undefined;
+        return {
+          id: o.id,
+          provider: o.provider,
+          label: o.label,
+          hint: o.hint,
+          ...(keyId ? { key_id: keyId } : {}),
+        };
+      });
   }
 
   async list(): Promise<AdminPaymentOptionsView> {

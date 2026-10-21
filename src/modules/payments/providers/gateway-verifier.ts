@@ -16,7 +16,8 @@ const TIMEOUT_MS = 10_000;
  * check cannot be pointed at another server to collect them.
  */
 const ENDPOINTS = {
-  razorpay: 'https://api.razorpay.com/v1/payments?count=1',
+  /** Public and key-only: answers for a Key ID with no secret. */
+  razorpay: 'https://api.razorpay.com/v1/preferences',
   cashfree: {
     live: 'https://api.cashfree.com/pg/orders/vistaar-credential-check',
     test: 'https://sandbox.cashfree.com/pg/orders/vistaar-credential-check',
@@ -63,13 +64,10 @@ export class GatewayVerifier {
   private async razorpay(
     fields: Record<string, string>,
   ): Promise<VerifyResult> {
-    const auth = Buffer.from(`${fields.key_id}:${fields.key_secret}`).toString(
-      'base64',
-    );
-    const res = await fetch(ENDPOINTS.razorpay, {
-      headers: { authorization: `Basic ${auth}` },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
+    // Key ID only: Razorpay's public preferences call says whether the key
+    // exists and is active — the same check My Mali's checkout preflight uses.
+    const url = `${ENDPOINTS.razorpay}?key_id=${encodeURIComponent(fields.key_id)}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
     return this.read('razorpay', res.status, res.ok);
   }
 

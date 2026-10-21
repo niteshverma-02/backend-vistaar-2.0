@@ -27,8 +27,6 @@ const MODE: CredentialMode = 'test';
 const DUMMY: Record<PaymentProvider, Record<string, string>> = {
   razorpay: {
     key_id: 'rzp_test_VistaarSeed01',
-    key_secret: 'SeedSecretOnlyForLocal01',
-    webhook_secret: 'seed-webhook-local',
   },
   cashfree: {
     app_id: 'TESTVistaarSeed01',

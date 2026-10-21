@@ -17,10 +17,11 @@ import type { Env } from '@config/env.schema';
 import type { SubmitCredentialsDto } from '../dto/payment-credential.dto';
 import {
   CREDENTIAL_FIELDS,
+  CREDENTIAL_MODES,
   PENDING_TTL_MS,
   approvalRefusal,
   mask,
-  modeAllowed,
+  defaultMode,
   splitFields,
   type CredentialMode,
   type CredentialStatus,
@@ -65,7 +66,13 @@ export interface CredentialView {
 export interface ProviderCredentialsView {
   provider: PaymentProvider;
   /** The form to draw: what to ask for, which ones are secret. */
-  fields: { key: string; label: string; secret: boolean; hint: string }[];
+  fields: {
+    key: string;
+    label: string;
+    secret: boolean;
+    hint: string;
+    optional: boolean;
+  }[];
   active: CredentialView | null;
   pending: CredentialView | null;
 }
@@ -73,8 +80,9 @@ export interface ProviderCredentialsView {
 export interface CredentialsOverview {
   /** Off: the server has no encryption key, nothing can be submitted. */
   storage_ready: boolean;
-  /** The only mode this server accepts. */
+  /** The mode the form starts on (live in production, else test); both are accepted. */
   required_mode: CredentialMode;
+  modes: readonly CredentialMode[];
   providers: ProviderCredentialsView[];
 }
 
@@ -95,6 +103,8 @@ export class PaymentCredentialsService {
   private active: {
     at: number;
     modes: Map<PaymentProvider, CredentialMode>;
+    /** The live keys' non-secret ids (Razorpay Key ID …), never a secret. */
+    publicIds: Map<PaymentProvider, Record<string, string>>;
   } | null = null;
 
   constructor(
@@ -112,7 +122,8 @@ export class PaymentCredentialsService {
     const rows = await this.liveRows();
     return {
       storage_ready: this.cipher.configured,
-      required_mode: this.production ? 'live' : 'test',
+      required_mode: defaultMode(this.production),
+      modes: CREDENTIAL_MODES,
       providers: PAYMENT_PROVIDERS.map((provider) => {
         const mine = rows.filter((r) => r.provider === provider);
         const active = mine.find((r) => r.status === 'active');
@@ -122,7 +133,13 @@ export class PaymentCredentialsService {
         return {
           provider,
           fields: CREDENTIAL_FIELDS[provider].map(
-            ({ key, label, secret, hint }) => ({ key, label, secret, hint }),
+            ({ key, label, secret, hint, optional }) => ({
+              key,
+              label,
+              secret,
+              hint,
+              optional: optional === true,
+            }),
           ),
           active: active ? toView(active) : null,
           pending: pending ? toView(pending) : null,
@@ -149,8 +166,7 @@ export class PaymentCredentialsService {
     by: string,
   ): Promise<CredentialView> {
     this.requireStorage();
-    this.checkMode(dto.mode);
-    const split = splitFields(provider, dto.mode, dto.fields);
+    const split = splitFields(provider, dto.fields);
     if ('errors' in split) {
       throw badRequest('VALIDATION_FAILED', split.errors[0], split.errors);
     }
@@ -237,7 +253,6 @@ export class PaymentCredentialsService {
     const resuming = row.status === 'approved' && row.submitted_by !== by;
     if (!resuming) {
       this.refuseApproval(row, by);
-      this.checkMode(row.mode);
       if (!(await this.credentials.claimApproval(id, by, new Date()))) {
         throw this.notPending();
       }
@@ -315,17 +330,35 @@ export class PaymentCredentialsService {
   async activeModes(
     fresh = false,
   ): Promise<Map<PaymentProvider, CredentialMode>> {
+    return (await this.activeSet(fresh)).modes;
+  }
+
+  /**
+   * The live keys' public ids per provider (Razorpay `key_id`, …) — the ones HO
+   * sees in full; secrets are never in here. At most a minute old.
+   */
+  async activePublicIds(
+    fresh = false,
+  ): Promise<Map<PaymentProvider, Record<string, string>>> {
+    return (await this.activeSet(fresh)).publicIds;
+  }
+
+  private async activeSet(fresh: boolean): Promise<{
+    modes: Map<PaymentProvider, CredentialMode>;
+    publicIds: Map<PaymentProvider, Record<string, string>>;
+  }> {
     if (!fresh && this.active && Date.now() - this.active.at < ACTIVE_TTL_MS) {
-      return this.active.modes;
+      return this.active;
     }
-    const rows = await this.credentials.current();
-    const modes = new Map(
-      rows
-        .filter((r) => r.status === 'active')
-        .map((r) => [r.provider, r.mode]),
+    const live = (await this.credentials.current()).filter(
+      (r) => r.status === 'active',
     );
-    this.active = { at: Date.now(), modes };
-    return modes;
+    this.active = {
+      at: Date.now(),
+      modes: new Map(live.map((r) => [r.provider, r.mode])),
+      publicIds: new Map(live.map((r) => [r.provider, { ...r.public_fields }])),
+    };
+    return this.active;
   }
 
   /**
@@ -365,10 +398,12 @@ export class PaymentCredentialsService {
 
   /** Public ids plus the opened secrets. */
   private open(row: PaymentCredential): Record<string, string> {
-    if (!row.secrets) throw this.notPending();
+    // null = wiped (replaced, revoked, rejected). Missing = a Key-ID-only set:
+    // Mongo does not store the empty object, so it has no secrets to open.
+    if (row.secrets === null) throw this.notPending();
     const fields = { ...row.public_fields };
     try {
-      for (const [key, sealed] of Object.entries(row.secrets)) {
+      for (const [key, sealed] of Object.entries(row.secrets ?? {})) {
         fields[key] = this.cipher.open(
           sealed,
           sealContext(row._id, row.provider, key),
@@ -445,11 +480,6 @@ export class PaymentCredentialsService {
     }
   }
 
-  private checkMode(mode: CredentialMode): void {
-    const error = modeAllowed(mode, this.production);
-    if (error) throw badRequest('VALIDATION_FAILED', error, [error]);
-  }
-
   private notPending() {
     return conflict(
       'CREDENTIALS_NOT_PENDING',
@@ -490,6 +520,8 @@ export class PaymentCredentialsService {
   }
 }
 
+// Mongo drops an empty object on save, so a Key-ID-only set (no secrets)
+// comes back with `masked` missing; every reader treats that as {}.
 function toView(r: PaymentCredential): CredentialView {
   return {
     id: r._id,
@@ -497,7 +529,7 @@ function toView(r: PaymentCredential): CredentialView {
     mode: r.mode,
     status: r.status,
     public_fields: r.public_fields,
-    masked: r.masked,
+    masked: r.masked ?? {},
     note: r.note,
     submitted_by: r.submitted_by,
     submitted_at: r.created_at,
@@ -518,12 +550,15 @@ function summary(r: PaymentCredential): Record<string, unknown> {
     id: r._id,
     mode: r.mode,
     public_fields: r.public_fields,
-    masked: r.masked,
+    masked: r.masked ?? {},
   };
 }
 
 function describe(r: PaymentCredential): string {
-  return [...Object.entries(r.public_fields), ...Object.entries(r.masked)]
+  return [
+    ...Object.entries(r.public_fields ?? {}),
+    ...Object.entries(r.masked ?? {}),
+  ]
     .map(([k, v]) => `${k} ${v}`)
     .join(', ');
 }

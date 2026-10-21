@@ -19,15 +19,14 @@ import { PaymentCredentialsService } from './payment-credentials.service';
 const A = 'a@katyayaniorganics.com';
 const B = 'b@katyayaniorganics.com';
 const C = 'c@katyayaniorganics.com';
-const SECRET = 'AbCdEfGh12345678ZZ';
-const WEBHOOK = 'whsec-9f8e7d';
+const SECRET = 'cfsk_ma_test_abcdef1234567890';
 const RZP = {
   mode: 'test' as const,
-  fields: {
-    key_id: 'rzp_test_AbCdEf123456',
-    key_secret: SECRET,
-    webhook_secret: WEBHOOK,
-  },
+  fields: { key_id: 'rzp_test_AbCdEf123456' },
+};
+const CF = {
+  mode: 'test' as const,
+  fields: { app_id: 'TEST1234567890', secret_key: SECRET },
 };
 
 /** The repository's contract, kept in memory: conditional writes included. */
@@ -183,36 +182,51 @@ describe('PaymentCredentialsService — submit', () => {
   it('stores secrets sealed and returns them only masked', async () => {
     const s = setup();
 
-    const view = await s.service.submit('razorpay', RZP, A);
+    const view = await s.service.submit('cashfree', CF, A);
 
     expect(view.status).toBe('pending');
-    expect(view.public_fields).toEqual({ key_id: RZP.fields.key_id });
-    expect(view.masked).toEqual({
-      key_secret: '••••78ZZ',
-      webhook_secret: '••••8e7d',
-    });
+    expect(view.public_fields).toEqual({ app_id: CF.fields.app_id });
+    expect(view.masked).toEqual({ secret_key: '••••7890' });
     const stored = s.rows.get(view.id)!;
     expect(JSON.stringify(stored)).not.toContain(SECRET);
-    expect(JSON.stringify(stored)).not.toContain(WEBHOOK);
     expect(everythingSent(s, view)).not.toContain(SECRET);
-    expect(everythingSent(s, view)).not.toContain(WEBHOOK);
     expect(s.alerts.send).toHaveBeenCalledWith(expect.stringContaining(A));
   });
 
-  it('refuses live keys on a test server and test keys in production', async () => {
-    await expect(
-      setup().service.submit(
-        'razorpay',
-        {
-          mode: 'live',
-          fields: { ...RZP.fields, key_id: 'rzp_live_AbCdEf123456' },
-        },
-        A,
-      ),
-    ).rejects.toMatchObject({ status: 400 });
-    await expect(
-      setup({ production: true }).service.submit('razorpay', RZP, A),
-    ).rejects.toMatchObject({ status: 400 });
+  it('takes live keys on a test server and test keys in production', async () => {
+    const live = await setup().service.submit(
+      'razorpay',
+      {
+        mode: 'live',
+        fields: { ...RZP.fields, key_id: 'rzp_live_AbCdEf123456' },
+      },
+      A,
+    );
+    expect(live.mode).toBe('live');
+    const test = await setup({ production: true }).service.submit(
+      'razorpay',
+      RZP,
+      A,
+    );
+    expect(test.mode).toBe('test');
+  });
+
+  it('takes a test Key ID under live and a live one under test', async () => {
+    const s = setup();
+    const view = await s.service.submit(
+      'razorpay',
+      { ...RZP, mode: 'live' },
+      A,
+    );
+    expect(view.mode).toBe('live');
+  });
+
+  it('starts the form on the server mode and offers both', async () => {
+    const dev = await setup().service.overview();
+    expect(dev.required_mode).toBe('test');
+    expect(dev.modes).toEqual(['test', 'live']);
+    const prod = await setup({ production: true }).service.overview();
+    expect(prod.required_mode).toBe('live');
   });
 
   it('answers 503 when the server has no encryption key', async () => {
@@ -349,6 +363,30 @@ describe('PaymentCredentialsService — test, approve', () => {
     // Any other admin can cancel it.
     await expect(s.service.reject(id, C, 'stuck')).resolves.toMatchObject({
       status: 'rejected',
+    });
+  });
+});
+
+describe('PaymentCredentialsService — Razorpay Key ID only', () => {
+  it('stores, checks, approves and hands out a Key ID with no secrets', async () => {
+    const s = setup();
+    const keyOnly = {
+      mode: 'test' as const,
+      fields: { key_id: RZP.fields.key_id },
+    };
+
+    const sent = await s.service.submit('razorpay', keyOnly, A);
+    expect(sent.masked).toEqual({});
+    await s.service.test(sent.id, A);
+    expect(s.verifier.verify).toHaveBeenCalledWith('razorpay', 'test', {
+      key_id: RZP.fields.key_id,
+    });
+    await s.service.approve(sent.id, B);
+
+    await expect(s.service.usable('razorpay')).resolves.toEqual({
+      id: sent.id,
+      mode: 'test',
+      fields: { key_id: RZP.fields.key_id },
     });
   });
 });

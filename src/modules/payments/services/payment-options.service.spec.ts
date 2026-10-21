@@ -75,6 +75,16 @@ function setup(
     activeModes: jest
       .fn()
       .mockResolvedValue(new Map(keys.map((k) => [k, 'test']))),
+    activePublicIds: jest
+      .fn()
+      .mockResolvedValue(
+        new Map(
+          keys.map((k) => [
+            k,
+            k === 'razorpay' ? { key_id: 'rzp_test_abc123' } : { app_id: 'x' },
+          ]),
+        ),
+      ),
   };
   const config = { get: jest.fn().mockReturnValue(online) };
   const service = new PaymentOptionsService(
@@ -146,6 +156,21 @@ describe('PaymentOptionsService.forPartner — keys', () => {
     const list = await service.forPartner('a1');
 
     expect(list.map((o) => o.id)).toEqual(['phonepe']);
+  });
+
+  it('gives the Razorpay row its live Key ID, and no other row any id', async () => {
+    const { service } = setup([
+      row({ _id: 'razorpay' }),
+      row({ _id: 'cashfree', order: 1 }),
+    ]);
+
+    const list = await service.forPartner('a1');
+
+    expect(list.map((o) => [o.id, o.key_id])).toEqual([
+      ['razorpay', 'rzp_test_abc123'],
+      ['cashfree', undefined],
+    ]);
+    expect('key_id' in list[1]).toBe(false);
   });
 });
 
