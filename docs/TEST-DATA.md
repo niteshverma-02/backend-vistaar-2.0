@@ -121,6 +121,37 @@ is built and the gig counter is not used.
 deletes exactly these ten rows. Gig pay is off, so approving `GIG-900005` does not touch the
 wallet.
 
+## KKD & App activity — `seed-test-kkd-activity`
+
+Applied on beta 2026-10-21. KKD activity has no collection of its own, so — unlike the seeds
+above, and on the user's decision — this one writes into **other apps' collections**:
+`franchise_v2_walkins`, `franchise_v2_prescriptions`, `franchise_v2_pos_orders` (franchise
+backend), `orders_v2` (StockShip) and `kkd_events` (Katyayani app). Every row has a fixed
+`TEST-KKD-…` id (fixed `6b6b64…` ObjectIds in `orders_v2` / `kkd_events`), `source: 'test'`
+and `test_seed: 'seed-test-kkd-activity'`; the StockShip orders are only `delivered` /
+`cancelled` and say "TEST DATA" in `notes`. Dates are set 0–6 days back from the day it
+runs (after the farmers' hold began on 2026-10-13/14) — re-run to move them.
+
+`GET /kkd-activity` as **VST-000006** then shows 12 rows; the tiles read walk-ins 3, store
+orders 1 · ₹1,240, app orders 2 · ₹2,230, open app carts 2 · ₹3,749.
+
+| Farmer | Row | Test |
+|---|---|---|
+| Ramesh Patel (101) | walk-in, Raisen (FR-100), nothing bought | "Plan a visit"; follow-up flag |
+| Ramesh Patel (101) | app cart ₹2,450 | open cart — "Call to close" / "Order for farmer" |
+| Suresh Yadav (102, customer) | walk-in + POS store order ₹1,240, same day, Raisen | store order; the walk-in is not flagged |
+| Suresh Yadav (102) | app cart ₹899, then an app order ₹1,450 (MKTP-3, delivered) | the cart is **not** open (ordered after) |
+| Mahesh Kushwaha (103, customer) | crop advice, Bhopal (FS-1): Soybean — yellow mosaic — spray, 2 products | `advisory` note + items |
+| Mahesh Kushwaha (103) | website order ₹780 (MKTP-2, delivered); app open today | "Katyayani website"; `app_open` |
+| Kamla Bai (105, lost lead) | walk-in, Bhopal | lost leads still count |
+| Rajendra Singh (106) | two app opens yesterday; app cart ₹1,299 today | one `app_open` per IST day; open cart |
+| Vikram Chouhan (113) | walk-in `rejected`; app order `cancelled` | **never shown** |
+
+`node dist/scripts/seed-test-kkd-activity.js` = dry run, `--apply` writes (replaces only rows
+carrying the tag), `--remove` deletes every row with `test_seed: 'seed-test-kkd-activity'`
+from those five collections. Run `--remove` before anyone reads beta's franchise / StockShip
+reports for real numbers.
+
 ## Removing it
 
 Nothing deletes test data automatically: the farmers are also org records (`piis`,
