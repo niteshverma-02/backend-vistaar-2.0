@@ -26,7 +26,11 @@ import {
   type CredentialMode,
   type CredentialStatus,
 } from '../payment-credentials.domain';
-import { PAYMENT_PROVIDERS, type PaymentProvider } from '../payments.domain';
+import {
+  PAYMENT_PROVIDERS,
+  needsKeys,
+  type PaymentProvider,
+} from '../payments.domain';
 import {
   CredentialCipher,
   sealContext,
@@ -124,7 +128,8 @@ export class PaymentCredentialsService {
       storage_ready: this.cipher.configured,
       required_mode: defaultMode(this.production),
       modes: CREDENTIAL_MODES,
-      providers: PAYMENT_PROVIDERS.map((provider) => {
+      // A keyless gateway has no form to draw, so the portal offers no keys for it.
+      providers: PAYMENT_PROVIDERS.filter(needsKeys).map((provider) => {
         const mine = rows.filter((r) => r.provider === provider);
         const active = mine.find((r) => r.status === 'active');
         const pending = mine.find(
@@ -165,6 +170,12 @@ export class PaymentCredentialsService {
     dto: SubmitCredentialsDto,
     by: string,
   ): Promise<CredentialView> {
+    if (!needsKeys(provider)) {
+      throw badRequest(
+        'CREDENTIALS_NOT_USED',
+        'KO Utils keeps the keys for this payment option. Just switch it on or off.',
+      );
+    }
     this.requireStorage();
     const split = splitFields(provider, dto.fields);
     if ('errors' in split) {

@@ -12,6 +12,10 @@ SSO token. Read routes need `payments.read`, write routes `payments.write`
   switch them on/off but never add one — a gateway needs code before it can take money.
 - **An option can be switched on only with approved keys** (`configured: true`);
   without them it is `400 CREDENTIALS_MISSING`, and the app never shows it.
+- **Cashfree is ON/OFF only** (`keys_required: false`, user's decision 2026-10-21):
+  KO Utils holds its App ID and secret and creates the order (`POST /cashfree/order`
+  on Utils), so it is always `configured: true`, `mode: null`, has no keys form, and
+  keys sent for it are `400 CREDENTIALS_NOT_USED`.
 - **Keys are entered by company admins only** (see *Merchant keys* below), never
   by the Offline Head; gateway URLs are fixed in code, never entered.
 - **Server kill switch** `PAYMENTS_ONLINE_ENABLED`: off, the app shows no online
@@ -29,10 +33,10 @@ SSO token. Read routes need `payments.read`, write routes `payments.write`
     { "id": "razorpay", "provider": "razorpay", "label": "Razorpay", "hint": "UPI, cards, net banking",
       "is_active": true, "order": 0, "cohorts": [], "version": 3,
       "updated_by": "ho@katyayaniorganics.com", "updated_at": "2026-10-14T09:12:00.000Z",
-      "configured": true, "mode": "test" },
+      "keys_required": true, "configured": true, "mode": "test" },
     { "id": "cashfree", "provider": "cashfree", "label": "Cashfree", "hint": "UPI, cards, net banking",
       "is_active": false, "order": 1, "cohorts": [], "version": 0, "updated_by": null, "updated_at": null,
-      "configured": false, "mode": null }
+      "keys_required": false, "configured": true, "mode": null }
   ] }
 ```
 
@@ -55,7 +59,7 @@ All three always come back, in display order. `version: 0` = never saved (off).
 | `cohorts` | cohort keys (inactive allowed); `[]` = every partner |
 
 Returns the option with its new `version`. Errors: `400 VALIDATION_FAILED`,
-`400 COHORT_NOT_FOUND`, `400 CREDENTIALS_MISSING` (switching on without keys),
+`400 COHORT_NOT_FOUND`, `400 CREDENTIALS_MISSING` (switching on without keys; never Cashfree),
 `409 VERSION_CONFLICT`.
 
 ## `PUT /api/v2/admin/payment-options/order`
@@ -91,8 +95,8 @@ from `robinsingh@` (user's decision, 2026-10-14 — `WITHHELD` in
    (AES-256-GCM, key only in the server env, bound to the row and field) and
    wait as `pending` for 24 hours. One waiting set per provider.
 2. **Gateway check** — the server calls the gateway with the keys (no money
-   moves): Razorpay looks up the Key ID (public preferences), Cashfree reads a
-   made-up order, PhonePe mints a token. Approval needs a pass.
+   moves): Razorpay looks up the Key ID (public preferences), PhonePe mints a
+   token. Approval needs a pass. Cashfree takes no keys here (see above).
 3. **Approve** — admin **B, not A** (`403 APPROVER_IS_SUBMITTER`). The keys go
    live; the previous live keys are **wiped**, not kept. If the server stops
    half-way, the set stays `approved`: any admin but A presses Approve again to
@@ -108,7 +112,7 @@ Every step is in the audit log and sent to Slack (`PAYMENTS_ALERT_WEBHOOK_URL`).
 
 | Method | Route | Body | Returns |
 |---|---|---|---|
-| GET | `/admin/payment-credentials` | — | `{ storage_ready, required_mode, modes, providers: [{ provider, fields[], active, pending }] }` |
+| GET | `/admin/payment-credentials` | — | `{ storage_ready, required_mode, modes, providers: [{ provider, fields[], active, pending }] }` — Razorpay and PhonePe only; Cashfree is never listed |
 | GET | `/admin/payment-credentials/:provider/history` | `?page&limit` | `PageResult<CredentialView>` |
 | POST | `/admin/payment-credentials/:provider` | `{ mode, fields, note? }` | `CredentialView` (pending) |
 | POST | `/admin/payment-credentials/requests/:id/test` | — | `CredentialView` with `test` |
@@ -121,7 +125,7 @@ Every step is in the audit log and sent to Slack (`PAYMENTS_ALERT_WEBHOOK_URL`).
 | Provider | Ids (shown) | Secrets (masked) |
 |---|---|---|
 | razorpay | `key_id` (`rzp_test_…` / `rzp_live_…`, under either `mode`) | none — **the Key ID is the only field**: KO Utils registers the Razorpay order with its own secret (as for My Mali); the check uses Razorpay's public `GET /v1/preferences?key_id=` |
-| cashfree | `app_id` | `secret_key` |
+| cashfree | none — **no keys here**: KO Utils holds the App ID and secret; submit is `400 CREDENTIALS_NOT_USED` | none |
 | phonepe | `client_id`, `client_version` | `client_secret` |
 
 `CredentialView`: `{ id, provider, mode, status, public_fields, masked, note,
@@ -130,7 +134,8 @@ decided_by, decided_at, reason, activated_at, retired_at, retired_by }`.
 `status`: `pending` → `approved` (a moment) → `active` → `superseded` / `revoked`;
 or `rejected` / `expired`. Reject works on `pending` and on a stuck `approved`.
 
-Errors: `400 VALIDATION_FAILED` (`details[]` lists each bad field), `403
+Errors: `400 VALIDATION_FAILED` (`details[]` lists each bad field), `400
+CREDENTIALS_NOT_USED` (keys for Cashfree), `403
 APPROVER_IS_SUBMITTER`, `409 CREDENTIALS_PENDING` / `CREDENTIALS_NOT_PENDING` /
 `CREDENTIALS_EXPIRED` / `CREDENTIALS_NOT_TESTED`, `503
 CREDENTIALS_NOT_CONFIGURED` (no `PAYMENTS_CREDENTIALS_KEY`) /

@@ -19,14 +19,18 @@ import { PaymentCredentialsService } from './payment-credentials.service';
 const A = 'a@katyayaniorganics.com';
 const B = 'b@katyayaniorganics.com';
 const C = 'c@katyayaniorganics.com';
-const SECRET = 'cfsk_ma_test_abcdef1234567890';
+const SECRET = 'pe-secret-test-abcdef1234567890';
 const RZP = {
   mode: 'test' as const,
   fields: { key_id: 'rzp_test_AbCdEf123456' },
 };
-const CF = {
+const PE = {
   mode: 'test' as const,
-  fields: { app_id: 'TEST1234567890', secret_key: SECRET },
+  fields: {
+    client_id: 'TESTCLIENT',
+    client_version: '1',
+    client_secret: SECRET,
+  },
 };
 
 /** The repository's contract, kept in memory: conditional writes included. */
@@ -182,11 +186,14 @@ describe('PaymentCredentialsService — submit', () => {
   it('stores secrets sealed and returns them only masked', async () => {
     const s = setup();
 
-    const view = await s.service.submit('cashfree', CF, A);
+    const view = await s.service.submit('phonepe', PE, A);
 
     expect(view.status).toBe('pending');
-    expect(view.public_fields).toEqual({ app_id: CF.fields.app_id });
-    expect(view.masked).toEqual({ secret_key: '••••7890' });
+    expect(view.public_fields).toEqual({
+      client_id: PE.fields.client_id,
+      client_version: '1',
+    });
+    expect(view.masked).toEqual({ client_secret: '••••7890' });
     const stored = s.rows.get(view.id)!;
     expect(JSON.stringify(stored)).not.toContain(SECRET);
     expect(everythingSent(s, view)).not.toContain(SECRET);
@@ -227,6 +234,27 @@ describe('PaymentCredentialsService — submit', () => {
     expect(dev.modes).toEqual(['test', 'live']);
     const prod = await setup({ production: true }).service.overview();
     expect(prod.required_mode).toBe('live');
+  });
+
+  it('draws no form for Cashfree and refuses keys for it — KO Utils holds them', async () => {
+    const s = setup();
+
+    const overview = await s.service.overview();
+    expect(overview.providers.map((p) => p.provider)).toEqual([
+      'razorpay',
+      'phonepe',
+    ]);
+    await expect(
+      s.service.submit(
+        'cashfree',
+        { mode: 'test', fields: { app_id: 'TEST1234567890' } },
+        A,
+      ),
+    ).rejects.toMatchObject({
+      status: 400,
+      response: { error: 'CREDENTIALS_NOT_USED' },
+    });
+    expect(s.rows.size).toBe(0);
   });
 
   it('answers 503 when the server has no encryption key', async () => {
@@ -420,7 +448,7 @@ describe('PaymentCredentialsService — reject, revoke', () => {
 
   it('answers 404 when there is nothing live to revoke', async () => {
     await expect(
-      setup().service.revoke('cashfree', B, 'Just in case'),
+      setup().service.revoke('phonepe', B, 'Just in case'),
     ).rejects.toMatchObject({ status: 404 });
   });
 });

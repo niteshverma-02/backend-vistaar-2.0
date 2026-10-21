@@ -6,18 +6,25 @@ import {
 } from './payment-credentials.domain';
 
 const RZP = { key_id: 'rzp_test_AbCdEf123456' };
-const CF = {
-  app_id: 'TEST1234567890',
-  secret_key: 'cfsk_ma_test_abcdef1234567890',
+const PE = {
+  client_id: 'TESTCLIENT',
+  client_version: '1',
+  client_secret: 'abcd-1234-efgh-5678',
 };
 
 describe('splitFields', () => {
   it('splits ids from secrets', () => {
-    expect(splitFields('cashfree', CF)).toEqual({
+    expect(splitFields('phonepe', PE)).toEqual({
       ok: {
-        public_fields: { app_id: CF.app_id },
-        secrets: { secret_key: CF.secret_key },
+        public_fields: { client_id: PE.client_id, client_version: '1' },
+        secrets: { client_secret: PE.client_secret },
       },
+    });
+  });
+
+  it('has no Cashfree field to take — KO Utils holds its keys', () => {
+    expect(splitFields('cashfree', { app_id: 'TEST1234567890' })).toEqual({
+      errors: ['"app_id" is not a cashfree field.'],
     });
   });
 
@@ -43,9 +50,9 @@ describe('splitFields', () => {
     expect(splitFields('razorpay', {})).toEqual({
       errors: ['Please enter the Key ID.'],
     });
-    expect('errors' in splitFields('cashfree', { app_id: CF.app_id })).toBe(
-      true,
-    );
+    expect(
+      'errors' in splitFields('phonepe', { client_id: PE.client_id }),
+    ).toBe(true);
   });
 
   it('takes a live Razorpay key as well as a test one', () => {

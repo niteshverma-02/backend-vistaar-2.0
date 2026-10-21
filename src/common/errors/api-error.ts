@@ -129,8 +129,10 @@ export const API_ERROR_CODES = [
   'ORDER_EVENTS_NOT_CONFIGURED',
   // feedback: a partner's answers or product suggestions for the IST day are used up (429).
   'FEEDBACK_LIMIT',
-  // payments: an option cannot be switched on without live keys (400).
+  // payments: an option cannot be switched on without live keys (400); a keyless
+  // one (Cashfree — KO Utils holds its keys) takes none (400).
   'CREDENTIALS_MISSING',
+  'CREDENTIALS_NOT_USED',
   // payment keys. No encryption key on the server (503); a set already waiting,
   // or this one no longer waiting / past its day / not checked yet (409).
   'CREDENTIALS_NOT_CONFIGURED',
