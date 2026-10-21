@@ -172,6 +172,24 @@ describe('PaymentOptionsService.forPartner — keys', () => {
     ]);
     expect('key_id' in list[1]).toBe(false);
   });
+
+  it('shows a switched-on Cashfree with no keys — KO Utils holds them', async () => {
+    const { service } = setup(
+      [row({ _id: 'razorpay' }), row({ _id: 'cashfree', order: 1 })],
+      { keys: [] },
+    );
+
+    const list = await service.forPartner('a1');
+
+    expect(list).toEqual([
+      {
+        id: 'cashfree',
+        provider: 'cashfree',
+        label: 'Razorpay',
+        hint: 'UPI, cards, net banking',
+      },
+    ]);
+  });
 });
 
 describe('PaymentOptionsService.list', () => {
@@ -185,6 +203,20 @@ describe('PaymentOptionsService.list', () => {
       ['razorpay', 2, true],
       ['cashfree', 0, false],
       ['phonepe', 0, false],
+    ]);
+  });
+
+  it('marks Cashfree keyless and ready, ignoring any keys left from before', async () => {
+    const { service } = setup([row()], { keys: ['razorpay', 'cashfree'] });
+
+    const view = await service.list();
+
+    expect(
+      view.items.map((o) => [o.id, o.keys_required, o.configured, o.mode]),
+    ).toEqual([
+      ['razorpay', true, true, 'test'],
+      ['cashfree', false, true, null],
+      ['phonepe', true, false, null],
     ]);
   });
 });
@@ -279,6 +311,22 @@ describe('PaymentOptionsService.update — keys', () => {
     });
     expect(credentials.activeModes).toHaveBeenCalledWith(true);
     expect(repo.save).not.toHaveBeenCalled();
+  });
+
+  it('switches Cashfree on with no keys at all', async () => {
+    const { service, repo } = setup(
+      [row({ _id: 'cashfree', is_active: false })],
+      { keys: [] },
+    );
+
+    await expect(
+      service.update('cashfree', dto({ is_active: true }), HO),
+    ).resolves.toMatchObject({
+      is_active: true,
+      keys_required: false,
+      configured: true,
+    });
+    expect(repo.save).toHaveBeenCalled();
   });
 
   it('still lets HO switch off or rename an option without keys', async () => {

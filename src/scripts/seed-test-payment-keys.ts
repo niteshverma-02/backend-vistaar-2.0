@@ -28,10 +28,8 @@ const DUMMY: Record<PaymentProvider, Record<string, string>> = {
   razorpay: {
     key_id: 'rzp_test_VistaarSeed01',
   },
-  cashfree: {
-    app_id: 'TESTVistaarSeed01',
-    secret_key: 'cfsk_ma_test_seed_only_local_0001',
-  },
+  // Keyless (KO Utils holds its keys): not in the overview, so never submitted.
+  cashfree: {},
   phonepe: {
     client_id: 'TESTVISTAARSEED',
     client_version: '1',

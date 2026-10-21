@@ -22,6 +22,9 @@ Partner token. No query.
 - `key_id` — **Razorpay row only**: the live Razorpay Key ID HO approved in the portal (public; it opens the
   checkout sheet). No other row carries an id, and no secret is ever sent. A key change reaches the app within a
   minute. KO Utils creates the Razorpay order with its own secret, so the Key ID must be of that same account.
+- A **`cashfree`** row carries no id at all: KO Utils holds Cashfree's App ID and secret. The app sends the order to
+  Utils `POST /cashfree/order` and opens the Cashfree checkout with the `payment_session_id` it answers. HO only
+  switches Cashfree on or off (user's decision, 2026-10-21).
 - **Empty list = online payment is off.** Keep "Online (UPI)" disabled, as today on a failed load. It is empty while the server's kill switch is off, whatever HO set.
 - HO changes reach the app within a minute. Load once per Checkout, as `PaymentGatewaysCubit` does.
 

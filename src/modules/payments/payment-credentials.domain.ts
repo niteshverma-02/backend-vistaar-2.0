@@ -61,22 +61,9 @@ export const CREDENTIAL_FIELDS: Record<
     // its own secret (as for My Mali, RAZORPAY_ORDER_SOURCE=ko_utils) and the
     // app opens the sheet with the Key ID alone. User's decision, 2026-10-16.
   ],
-  cashfree: [
-    {
-      key: 'app_id',
-      label: 'App ID',
-      secret: false,
-      pattern: TOKEN(8, 128),
-      hint: 'from Cashfree Dashboard → Developers → API Keys',
-    },
-    {
-      key: 'secret_key',
-      label: 'Secret key',
-      secret: true,
-      pattern: TOKEN(16, 256),
-      hint: 'from Cashfree Dashboard → Developers → API Keys',
-    },
-  ],
+  // No fields: KO Utils holds Cashfree's App ID and secret, and keys for it are
+  // refused on submit (`KEYLESS_PROVIDERS`). User's decision, 2026-10-21.
+  cashfree: [],
   phonepe: [
     {
       key: 'client_id',

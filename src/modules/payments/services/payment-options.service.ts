@@ -18,6 +18,7 @@ import {
   PAYMENT_PROVIDERS,
   PROVIDER_DEFAULTS,
   isShownTo,
+  needsKeys,
   orderError,
   textError,
   type PaymentProvider,
@@ -56,8 +57,11 @@ export interface AdminPaymentOptionView {
   version: number;
   updated_by: string | null;
   updated_at: Date | null;
-  /** Live keys are approved; without them it cannot be switched on or shown. */
+  /** False: KO Utils holds this gateway's keys (Cashfree), HO only switches it on or off. */
+  keys_required: boolean;
+  /** Live keys are approved (always, when no keys are required); without them it cannot be switched on or shown. */
   configured: boolean;
+  /** Null when no keys are required. */
   mode: CredentialMode | null;
 }
 
@@ -141,7 +145,7 @@ export class PaymentOptionsService {
     if (dto.is_active !== undefined) set.is_active = dto.is_active;
     // Fresh, not the minute-old copy: keys revoked a moment ago must block this.
     const modes = await this.credentials.activeModes(true);
-    if (set.is_active === true && !modes.has(id)) {
+    if (set.is_active === true && needsKeys(id) && !modes.has(id)) {
       throw badRequest(
         'CREDENTIALS_MISSING',
         'This payment option has no approved keys yet. An admin must add and approve them first.',
@@ -263,10 +267,24 @@ function withDefaults(
       version: 0,
       updated_by: null,
       updated_at: null,
-      configured: modes.has(id),
-      mode: modes.get(id) ?? null,
+      ...keyState(id, modes),
     };
   }).sort((a, b) => a.order - b.order);
+}
+
+/** Keys left over from before a gateway went keyless are not shown as its mode. */
+function keyState(
+  id: PaymentProvider,
+  modes: Modes,
+): Pick<AdminPaymentOptionView, 'keys_required' | 'configured' | 'mode'> {
+  if (!needsKeys(id)) {
+    return { keys_required: false, configured: true, mode: null };
+  }
+  return {
+    keys_required: true,
+    configured: modes.has(id),
+    mode: modes.get(id) ?? null,
+  };
 }
 
 function toAdminView(row: PaymentOption, modes: Modes): AdminPaymentOptionView {
@@ -281,8 +299,7 @@ function toAdminView(row: PaymentOption, modes: Modes): AdminPaymentOptionView {
     version: row.version,
     updated_by: row.updated_by ?? null,
     updated_at: row.updated_at ?? null,
-    configured: modes.has(row._id),
-    mode: modes.get(row._id) ?? null,
+    ...keyState(row._id, modes),
   };
 }
 

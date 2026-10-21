@@ -25,6 +25,17 @@ export const PROVIDER_DEFAULTS: Record<
   phonepe: { label: 'PhonePe', hint: 'PhonePe or any UPI app', order: 2 },
 };
 
+/**
+ * Gateways whose merchant keys live in KO Utils, not here: Utils creates the
+ * gateway order with its own secret (Cashfree: `POST /cashfree/order`) and the
+ * app opens the checkout with the session it answers, so HO only switches these
+ * on or off. User's decision, 2026-10-21.
+ */
+export const KEYLESS_PROVIDERS: readonly PaymentProvider[] = ['cashfree'];
+
+export const needsKeys = (provider: PaymentProvider): boolean =>
+  !KEYLESS_PROVIDERS.includes(provider);
+
 export interface PaymentOptionRule {
   is_active: boolean;
   cohorts: readonly string[];
