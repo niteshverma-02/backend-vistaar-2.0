@@ -39,38 +39,59 @@ export type OrderStage = (typeof ORDER_STAGES)[number];
  * the warehouse, 2 shipped, 3 out for delivery, 4 delivered. Cancelled and
  * returned are off the line.
  *
- * Taken from the values in `orders_v2` on 2026-10-12. A status not listed
- * here reads as `placed`: a new stage Stockship adds must not hide an order.
+ * Taken from the values in `orders_v2` on 2026-10-12, plus Stockship's V2
+ * names (`status_v2`; `OLD_TO_V2_STATUS` and the dashboard stage groups in
+ * Stockship's `src/common/constants/order-status.const.ts`, checked
+ * 2026-10-21) — Stockship now writes `manifested`, `sent_to_xd`, `merge`, …
+ * instead of the old names, and those orders read as "placed". A status not
+ * listed here still reads as `placed`: a new stage Stockship adds must not
+ * hide an order.
  */
 /** Cancelled and returned are not steps on the line. */
 const OFF_LINE = -1;
 
 const RAW_STATUS: Record<string, { stage: OrderStage; step: number }> = {
   created: { stage: 'placed', step: 0 },
+  new_order: { stage: 'placed', step: 0 },
+  ready_to_confirm: { stage: 'placed', step: 0 },
   pending: { stage: 'placed', step: 0 },
+  // V2 of `pending`: waiting for stock before the warehouse confirms.
+  inventory_short: { stage: 'placed', step: 0 },
   processing: { stage: 'placed', step: 0 },
-  failed: { stage: 'placed', step: 0 },
+  // V2 of `ready_to_hod`: waiting for a head-of-department approval.
+  hod_pending: { stage: 'placed', step: 0 },
   blocked: { stage: 'placed', step: 0 },
+  blocked_order: { stage: 'placed', step: 0 },
+  blocked_orders: { stage: 'placed', step: 0 },
   pseudo: { stage: 'placed', step: 0 },
+  pseudo_order: { stage: 'placed', step: 0 },
   split: { stage: 'placed', step: 0 },
   nsz: { stage: 'placed', step: 0 },
   non_servicable_zone: { stage: 'placed', step: 0 },
-  ready_to_confirm: { stage: 'placed', step: 0 },
-  ready_to_check: { stage: 'placed', step: 0 },
+  ambiguous: { stage: 'placed', step: 0 },
 
   confirmed: { stage: 'punched', step: 1 },
+  ready_to_invoice: { stage: 'punched', step: 1 },
+  ready_to_book: { stage: 'punched', step: 1 },
   outbound_pending: { stage: 'punched', step: 1 },
   ready_to_outbound: { stage: 'punched', step: 1 },
-  picklist_assigned: { stage: 'punched', step: 1 },
+  booked: { stage: 'punched', step: 1 },
   ready_to_pick: { stage: 'punched', step: 1 },
+  picklist_assigned: { stage: 'punched', step: 1 },
+  picking: { stage: 'punched', step: 1 },
+  picked: { stage: 'punched', step: 1 },
   ready_to_pack: { stage: 'punched', step: 1 },
   packed: { stage: 'punched', step: 1 },
+  // Packed and checked: V2 `sent_to_xd` / `received_from_xd` (cross-dock).
+  ready_to_check: { stage: 'punched', step: 1 },
+  sent_to_xd: { stage: 'punched', step: 1 },
+  ready_to_racked: { stage: 'punched', step: 1 },
+  received_from_xd: { stage: 'punched', step: 1 },
   ready_to_rack: { stage: 'punched', step: 1 },
   racked: { stage: 'punched', step: 1 },
-  ready_to_book: { stage: 'punched', step: 1 },
-  booked: { stage: 'punched', step: 1 },
   booking_cancelled: { stage: 'punched', step: 1 },
   ready_to_manifest: { stage: 'punched', step: 1 },
+  manifested: { stage: 'punched', step: 1 },
   ready_to_dispatch: { stage: 'punched', step: 1 },
 
   dispatched: { stage: 'shipped', step: 2 },
@@ -83,10 +104,15 @@ const RAW_STATUS: Record<string, { stage: OrderStage; step: number }> = {
 
   cancel: { stage: 'cancelled', step: OFF_LINE },
   cancelled: { stage: 'cancelled', step: OFF_LINE },
+  // The order did not go through (e.g. its payment failed): not on its way.
+  failed: { stage: 'cancelled', step: OFF_LINE },
+  // V2 of `outbound_pending` as Stockship renamed it: cancelled on the confirmation call.
+  outbound_cancelled: { stage: 'cancelled', step: OFF_LINE },
   destroy: { stage: 'cancelled', step: OFF_LINE },
   destroyed: { stage: 'cancelled', step: OFF_LINE },
   lost: { stage: 'cancelled', step: OFF_LINE },
   merged: { stage: 'cancelled', step: OFF_LINE },
+  merge: { stage: 'cancelled', step: OFF_LINE },
 
   rto: { stage: 'returned', step: OFF_LINE },
   rto_initiated: { stage: 'returned', step: OFF_LINE },
@@ -97,6 +123,7 @@ const RAW_STATUS: Record<string, { stage: OrderStage; step: number }> = {
   rto_received: { stage: 'returned', step: OFF_LINE },
   rto_delivered: { stage: 'returned', step: OFF_LINE },
   partially_rto: { stage: 'returned', step: OFF_LINE },
+  partial_rto: { stage: 'returned', step: OFF_LINE },
 };
 
 const normalise = (status: string | null | undefined): string =>
@@ -112,8 +139,12 @@ export const BUSINESS_STATUSES: readonly string[] = [
 /** The app's `selfLabel`: whose name a shop-stock order shows. */
 export const SELF_LABEL = 'Self (shop stock)';
 
-/** Raw statuses read as "placed" that are not a live order: a failed payment, a placeholder. */
-export const NOT_AN_ORDER: ReadonlySet<string> = new Set(['failed', 'pseudo']);
+/** Raw statuses that are not a live order: a failed payment (shown as cancelled), a placeholder. */
+export const NOT_AN_ORDER: ReadonlySet<string> = new Set([
+  'failed',
+  'pseudo',
+  'pseudo_order',
+]);
 
 /**
  * Not an order of its own for sales and commission: besides `NOT_AN_ORDER`,
@@ -125,6 +156,7 @@ export const NOT_COUNTED: ReadonlySet<string> = new Set([
   ...NOT_AN_ORDER,
   'split',
   'merged',
+  'merge',
 ]);
 
 export const isCounted = (status: string | null | undefined): boolean =>
