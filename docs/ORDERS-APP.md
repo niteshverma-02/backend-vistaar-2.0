@@ -117,7 +117,12 @@ follows `KSV-n`.
 
 - `status` is the app's stage; `order_status` is Stockship's raw value (about
   50 of them, e.g. `in transit` / `in_transit`), for support only. An unknown
-  raw value reads as `placed`.
+  raw value reads as `placed`. Stockship's V2 names (`status_v2`) are mapped too
+  (2026-10-21): `inventory_short` / `hod_pending` → `placed`; `ready_to_invoice`,
+  `picking`, `sent_to_xd`, `received_from_xd`, `manifested` → `punched`;
+  `failed`, `outbound_cancelled`, `merge` → `cancelled`; `partial_rto` →
+  `returned`. `out_for_delivery` stays `shipped` with the "Out for delivery"
+  tracking step done — the app labels it "Out for delivery".
 - `customer_id: null` = the partner's own shop stock; `customer_name` is then
   `"Self (shop stock)"`.
 - `tracking_steps` are the app's `initialTrackingSteps`. A step is done when

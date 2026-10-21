@@ -29,6 +29,25 @@ describe('stageOf', () => {
     expect(stageOf(raw)).toBe(stage);
   });
 
+  // Stockship's V2 names (status_v2), which used to read as "placed".
+  it.each([
+    ['new_order', 'placed'],
+    ['inventory_short', 'placed'],
+    ['hod_pending', 'placed'],
+    ['ready_to_invoice', 'punched'],
+    ['picking', 'punched'],
+    ['ready_to_check', 'punched'],
+    ['sent_to_xd', 'punched'],
+    ['received_from_xd', 'punched'],
+    ['manifested', 'punched'],
+    ['failed', 'cancelled'],
+    ['outbound_cancelled', 'cancelled'],
+    ['merge', 'cancelled'],
+    ['partial_rto', 'returned'],
+  ])('V2 %s → %s', (raw, stage) => {
+    expect(stageOf(raw)).toBe(stage);
+  });
+
   it('reads an unknown or missing status as placed, so the order stays visible', () => {
     expect(stageOf('status_99')).toBe('placed');
     expect(stageOf(undefined)).toBe('placed');
@@ -36,6 +55,21 @@ describe('stageOf', () => {
 });
 
 describe('statusesFor', () => {
+  it('a stage filter also finds the V2 names (Confirmed tab: manifested, sent_to_xd …)', () => {
+    expect(statusesFor('punched')).toEqual(
+      expect.arrayContaining([
+        'manifested',
+        'sent_to_xd',
+        'picking',
+        'ready_to_invoice',
+      ]),
+    );
+    expect(statusesFor('cancelled')).toEqual(
+      expect.arrayContaining(['failed', 'outbound_cancelled', 'merge']),
+    );
+    expect(statusesFor('placed')).not.toContain('failed');
+  });
+
   it('gives every spelling of a stage, for the $in', () => {
     expect(statusesFor('shipped')).toEqual(
       expect.arrayContaining(['in transit', 'in_transit', 'out_for_delivery']),
@@ -69,6 +103,31 @@ describe('trackingSteps', () => {
     expect(steps[1].timestamp).toEqual(at(2));
     expect(steps[2].timestamp).toEqual(at(4));
     expect(steps[3].timestamp).toBeNull();
+  });
+
+  it('V2 history: manifested is a warehouse step, out_for_delivery is step 4 of 5', () => {
+    const steps = trackingSteps(
+      'out_for_delivery',
+      [
+        { stage_name: 'created', timestamp: at(1) },
+        { stage_name: 'manifested', timestamp: at(2) },
+        { stage_name: 'in_transit', timestamp: at(3) },
+        { stage_name: 'out_for_delivery', timestamp: at(4) },
+      ],
+      at(0),
+    );
+    expect(steps.map((s) => s.completed)).toEqual([
+      true,
+      true,
+      true,
+      true,
+      false,
+    ]);
+    expect(steps[1].timestamp).toEqual(at(2));
+    expect(steps[3]).toMatchObject({
+      status: 'Out for delivery',
+      timestamp: at(4),
+    });
   });
 
   it('falls back to the order date when the history is empty', () => {
