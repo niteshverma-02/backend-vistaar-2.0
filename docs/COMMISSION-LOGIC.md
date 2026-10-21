@@ -146,7 +146,7 @@ payout made while it was off stays on the orders it paid. A withdrawal carries t
 ## How it is built
 
 Nothing is stored per order. Each read works the book out from `orders_v2` (read-only,
-source vistaar): a status change at the warehouse needs no job, no sync and no month-end
+marketplace MKTP-5): a status change at the warehouse needs no job, no sync and no month-end
 fix-up, and there is nothing to drift.
 
 | Piece | Where |

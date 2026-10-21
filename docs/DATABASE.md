@@ -299,7 +299,7 @@ with the next number, up to 3 times.
 
 | Collection | Why |
 |---|---|
-| `orders_v2` (owner: Stockship) | the partner's orders: `{ source: 'vistaar', agent: <VST id> }`, newest by `date`; status filter is `order_status $in`, `?customer=` adds `pii_id`. Customers: each farmer's confirmed business (count, Σ `total_amount`, latest) grouped by `pii_id` over the same filter, for the lists. Rides Stockship's `{ agent, order_status, date }` index. Never written here |
+| `orders_v2` (owner: Stockship) | the partner's orders: `{ marketplace: 'MKTP-5', agent: <VST id> }` (Stockship rewrites `source` on create), newest by `date`; status filter is `order_status $in`, `?customer=` adds `pii_id`. Customers: each farmer's confirmed business (count, Σ `total_amount`, latest) grouped by `pii_id` over the same filter, for the lists. Rides Stockship's `{ agent, order_status, date }` index. Never written here |
 | `orders_v2` — commission | the partner's whole book for commission, wallet and My Performance: one aggregation on `{ agent, source }` (the `{ agent, order_status, date }` index), `order_status $nin` failed / pseudo / split / merged; projects lines (`sku, qty, total_price, is_free`), Σ discounts, coins, and only the delivery / cancel / return entries of `order_status_map`. Cached 60 s per partner |
 | `products_v2` (owner: Stockship) | name, `hero_image`, `variant` of an order's skus, one `$in` per page, on its `sku` index. Also read **whole** (with `bulk_v2` → `gst_rate`, `category.cat_id`, and `categories_v2` → `name`) into memory hourly for commission's GST and My Performance's categories (~4,900 packs, 7 categories) |
 | `agents_v2` | HO role (`user_role`), owner names; the owner's phone (`contact.phone_number`) for the app's reporting officer |

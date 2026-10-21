@@ -1,7 +1,12 @@
 import type { OrderAddress, OrderStatusEntry } from './schemas/order.schema';
 
-/** `orders_v2.source` on every order a Vistaar partner places. */
-export const VISTAAR_ORDER_SOURCE = 'vistaar';
+/**
+ * `orders_v2.marketplace` on every order a Vistaar partner places. The app's
+ * orders reach Stockship with `source: 'MKTP-5'`; Stockship keeps that id in
+ * `marketplace` but rewrites `source` / `sub_source` from its
+ * `marketplaces_v2` row, so `source` never reads `vistaar`.
+ */
+export const VISTAAR_MARKETPLACE = 'MKTP-5';
 
 /**
  * Vistaar's order numbers, `KSV-n`, from `app_counters._id = 'vistaar_orders'`.

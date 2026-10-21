@@ -34,7 +34,7 @@ const ORDER_ID_LIMIT = { default: { limit: 10, ttl: 60_000 } };
 
 /**
  * The partner's placed orders, read from Stockship's `orders_v2`
- * (`source: 'vistaar'`, partner in `agent`). Nothing in a path or query says
+ * (`marketplace: 'MKTP-5'`, partner in `agent`). Nothing in a path or query says
  * whose they are.
  */
 @ApiTags('orders')

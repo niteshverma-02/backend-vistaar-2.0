@@ -2,7 +2,7 @@
 
 Every Vistaar partner's placed orders, for the HO portal's **Vistaar → Orders**
 screen. The same rows and the same mapping as the app's `/orders`
-(`ORDERS-APP.md`): Stockship's `orders_v2` with `source: 'vistaar'`. Read-only;
+(`ORDERS-APP.md`): Stockship's `orders_v2` with `marketplace: 'MKTP-5'`. Read-only;
 orders are placed in the app and moved in Stockship.
 
 Capability: `orders.read` (head roles: USR-1037, USR-1000, USR-1001). Others get

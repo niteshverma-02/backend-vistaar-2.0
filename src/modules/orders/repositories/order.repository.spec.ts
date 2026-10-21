@@ -54,7 +54,7 @@ describe('orders search (GET /orders?q=)', () => {
   ])('%s: id exact, phone end or name contains', async (q, part) => {
     expect(await filterFor(q)).toEqual({
       agent: 'VST-1',
-      source: 'vistaar',
+      marketplace: 'MKTP-5',
       ...part,
     });
   });
@@ -62,7 +62,7 @@ describe('orders search (GET /orders?q=)', () => {
   it('never reaches another partner’s orders, whatever is typed', async () => {
     for (const q of ['VST-2', 'KSK-1', '98260', 'Ramesh', '$or agent']) {
       const filter = await filterFor(q);
-      expect(Object.keys(filter).slice(0, 2)).toEqual(['agent', 'source']);
+      expect(Object.keys(filter).slice(0, 2)).toEqual(['agent', 'marketplace']);
       expect(filter.agent).toBe('VST-1');
       expect(filter).not.toHaveProperty('$or');
     }

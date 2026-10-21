@@ -5,8 +5,9 @@ details** and **Order tracking** screens. Replaces the device-local
 `OrdersRepository` seed.
 
 Orders live in Stockship's `orders_v2`, the same collection every channel
-sells through. A Vistaar order is one with `source: 'vistaar'` and the
-partner's `VST-` id in `agent`. This module reads orders and hands out
+sells through. A Vistaar order is one with `marketplace: 'MKTP-5'` and the
+partner's `VST-` id in `agent` (not `source`: Stockship rewrites it from its
+`marketplaces_v2` row when the order is created). This module reads orders and hands out
 order numbers; placing an order (checkout) is not built yet.
 
 All routes are under `/api/v2/orders` and answer `{ "success": true, "data": … }`.

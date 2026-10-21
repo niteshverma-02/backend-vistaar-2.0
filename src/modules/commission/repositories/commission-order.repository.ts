@@ -5,7 +5,7 @@ import type { Connection } from 'mongoose';
 import {
   MARK_STATUSES,
   NOT_COUNTED,
-  VISTAAR_ORDER_SOURCE,
+  VISTAAR_MARKETPLACE,
   markTimes,
   personName,
 } from '@modules/orders/orders.domain';
@@ -46,7 +46,7 @@ export class CommissionOrderRepository {
         {
           $match: {
             agent: agentId,
-            source: VISTAAR_ORDER_SOURCE,
+            marketplace: VISTAAR_MARKETPLACE,
             order_status: { $nin: [...NOT_COUNTED] },
           },
         },
