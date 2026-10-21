@@ -114,6 +114,38 @@ show "Add your pincode in Edit Profile to see stores near you". Only stores with
 point are placed; a store still being set up shows once it has one. Same store names as
 the Nearby radar (RADAR-APP.md).
 
+## Before production — no dummy data (must do)
+
+Today the app's server build still reads the **mock seed** for KKD activity:
+`RemoteCustomersRepositoryImpl.kkdActivity` → `_local.kkdActivity()`
+(`customers_seed.dart`). Every screen below shows fake farmers' walk-ins, orders and carts
+until it is moved to the API. Nothing from the seed may ship.
+
+| Where (app, `vistaar-2.0-ui`) | Today (mock) | Use instead |
+|---|---|---|
+| KKD & App activity page (`kkd_activity_page.dart`) — list, tabs, farmer filter | seed `kkdActivity` | `GET /kkd-activity` (`channel`, `customer`, paging) |
+| Same page — the 4 tiles | counted on the phone from the seed | `GET /kkd-activity/summary` |
+| Customers list — "Active at KKD/app" badge (`farmers_page.dart`, last 7 days) | seed | `GET /kkd-activity?from=<IST day 7 days ago>&limit=200` → the set of `customer_id`s |
+| Customer details — timeline, open app carts, pitch (`farmer_details_page.dart`, `customer_catalog.dart` `openAppCarts` / `buildPitch` `kkd ?? kkdActivity`) | seed | `GET /kkd-activity?customer=<pii_id>`; open carts = `app_cart` rows with no later `app_order` (same rule as the tile) |
+| Home Today's tasks — "left an app cart" | demo build only; the server build uses `GET /today`, which has **no** KKD cart task | nothing — do not add it from the seed. (A backend KKD cart task in `/today` is not built; ask if wanted) |
+| Nearby radar stores | demo build only (`kkdStores` seed); the server build uses `GET /radar` `stores` | already real — keep the seed out of the server build |
+
+Rules:
+
+- **No seed fallback.** When a call fails, show the error / retry state. When it returns
+  nothing, show an empty state ("No KKD or app activity from your farmers yet"). Never fill
+  with seed rows.
+- **Hide what has no data:**
+  - `soil_test` — never returned (no source anywhere). Remove its chip, filter and icon
+    from the screen and the farmer timeline.
+  - Store **services** and **opening hours** — not on record. Leave those lines out.
+  - `amount: null` (walk-ins, advice, app opens) — show no ₹ line, never "₹0".
+  - `note: null`, `items: []` — leave the line out.
+  - `stores: []` / `centre: null` — show the empty line from `GET /kkd-activity/stores`
+    above, no sample store.
+- Remove `kkdActivity` / `kkdStores` from `customers_seed.dart` (or keep them only behind
+  the demo flag, never reachable on the Vistaar API).
+
 ## Freshness and errors
 
 - Read from the other apps on each call, kept **one minute** per partner — a walk-in just
