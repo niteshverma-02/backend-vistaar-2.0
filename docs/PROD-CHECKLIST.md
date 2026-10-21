@@ -304,6 +304,13 @@ few thousand orders per partner; past that, ask Stockship for
 - [ ] HO reviews the testimonial-consent wording (`PUT /admin/settings { testimonial_consent_text }`) — the built-in v1 is a draft, not legal-approved.
 - [ ] App build on `/testimonials/*` shipped (see `TESTIMONIALS-APP.md`): farmer picked from **My farmers** only (a new farmer is added as a lead first), product = `bulk` SKU, a client UUID per testimonial.
 
+## KKD & App activity — before switching on
+
+- [ ] Nothing to build and nothing written: the module owns no collection and writes none — it only reads `orders_v2`, `franchise_v2_walkins`, `franchise_v2_prescriptions`, `franchise_v2_pos_orders`, `kkd_events`, `franchises`, `franchise_v2_franchises`, `employees` (`email` + `franchiseId` only) and `vistaar_v2_leads` / `vistaar_v2_agents`
+- [ ] `orders_v2` rides StockShip's existing `{ pii_id: 1, date: -1 }`
+- [ ] **At scale (owed by other teams, not ours to build):** the franchise backend's `franchise_v2_walkins`, `franchise_v2_prescriptions`, `franchise_v2_pos_orders` have no `pii_id` / `phone` index (48 / 11 / 507 rows on 2026-10-21 — a scan is fine today); ask for `{ pii_id: 1 }` and `{ phone: 1 }` once they grow. `kkd_events` has only `_id` (43 test rows); ask the Katyayani app team for `{ user_id: 1, event_name: 1, created_at: -1 }` before its event volume goes live
+- [ ] App build on `/kkd-activity` shipped (KKD-ACTIVITY-APP.md); `soil_test` chip hidden (no source)
+
 ## Run
 
 Build `pnpm install --frozen-lockfile && pnpm build`, then either:
