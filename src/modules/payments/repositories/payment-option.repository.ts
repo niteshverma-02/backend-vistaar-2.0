@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, mongo, type QueryFilter } from 'mongoose';
+import { Model, type QueryFilter } from 'mongoose';
+
+import { isDuplicateKey } from '@common/utils/mongo-error.util';
 
 import { PROVIDER_DEFAULTS, type PaymentProvider } from '../payments.domain';
 import {
@@ -15,9 +17,6 @@ import {
 export type PaymentOptionPatch = Partial<
   Pick<PaymentOption, 'label' | 'hint' | 'is_active' | 'cohorts'>
 >;
-
-const isDuplicateKey = (error: unknown): boolean =>
-  error instanceof mongo.MongoServerError && error.code === 11000;
 
 @Injectable()
 export class PaymentOptionRepository {

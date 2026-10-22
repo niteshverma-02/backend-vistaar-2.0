@@ -7,6 +7,10 @@ records are fake and what each one is for. Test farmers use the mobile series
 
 ## Before seeding
 
+Every test seed (`seed-test-*`, `seed-feedback`, `seed-banners`) refuses unless every host in
+`MONGODB_URI` is listed in **`SEED_ALLOW_HOSTS`** (comma-separated) in your `.env` — set it to
+the beta Mongo host, never to production's.
+
 New farmers need an owner: **one active Offline Head (USR-1037)** in `agents_v2`, or
 `settings.lead_owner_agent_id`. On beta the Offline Head is **A0-2691**
 (manavbarodiya@katyayaniorganics.com, moved from USR-1001 Admin on 2026-10-14, at his

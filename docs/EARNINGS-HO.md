@@ -61,10 +61,10 @@ saved (worked out right after the answer; a few seconds for 10,000 partners).
   dates stays **active** (it is not archived when it ends); archive it when it is over
   for good.
 - **How partners move on the day** (there is no scheduler): the first read of the
-  cohorts on a new IST day in each server process notices a cohort that started or
-  ended since the last look, and recomputes every partner once in the background
-  (`reason: "cohort_window"`). A process that gets no traffic looks once an hour; a
-  process that just started (or woke) recomputes once if any active cohort has dates.
+  cohorts on a new IST day notices a cohort that started or ended since the last look,
+  and recomputes every partner once in the background (`reason: "cohort_window"`) —
+  one server process per day, the first to mark the day in `vistaar_v2_earning_window`.
+  A process that gets no traffic looks once an hour; a restart does not run it again.
   So the move lands within minutes of the first request after IST midnight, at most an
   hour later. Commission follows the stretch the partner was in when an order was
   placed, so an order placed in those first minutes after midnight stays with the old

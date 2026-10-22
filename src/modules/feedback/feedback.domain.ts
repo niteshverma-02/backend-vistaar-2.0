@@ -1,3 +1,4 @@
+import { istDate } from '@common/utils/ist-day.util';
 /**
  * The app's Feedback screen (`/feedback`): an NPS score with reason chips, a
  * comment and an app rating, plus "Suggest a product" for what farmers ask
@@ -134,11 +135,6 @@ export const FOLLOW_UP_WORKING_DAYS = 2;
 const IST_OFFSET_MS = 330 * 60_000;
 const DAY_MS = 86_400_000;
 
-/** `YYYY-MM-DD` of the IST day `at` falls on. */
-export function istDate(at: Date): string {
-  return new Date(at.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
-}
-
 /**
  * End of the Nth working day after `from` (IST): Monday to Saturday count,
  * Sunday does not — the field week. Due at 23:59:59.999 IST that day.
@@ -195,14 +191,5 @@ export function istRange(
   if (end <= start || end - start > RANGE_DAYS_MAX * DAY_MS) return null;
   return { start: new Date(start), end: new Date(end) };
 }
-
-/** Start of the IST day `at` falls on, as a UTC instant. */
-export function istDayStart(at: Date): Date {
-  return new Date(Date.parse(`${istDate(at)}T00:00:00Z`) - IST_OFFSET_MS);
-}
-
-/** `q` is matched literally. */
-export const escapeRegex = (s: string): string =>
-  s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export const OBJECT_ID = /^[0-9a-f]{24}$/i;

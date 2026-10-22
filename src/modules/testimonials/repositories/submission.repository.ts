@@ -2,11 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Types, mongo, type Connection } from 'mongoose';
 
+import { isDuplicateKey } from '@common/utils/mongo-error.util';
+import { escapeRegex } from '@common/utils/regex.util';
+
 import {
   PRODUCT_REVIEWS_COLLECTION,
   SUBMISSION_STATUSES,
   VISTAAR_SOURCE,
-  escapeRegex,
   reviewIdOf,
   sharedFlagsOf,
   type SubmissionKind,
@@ -181,9 +183,6 @@ const byId = (id: string): Query => ({
 
 /** The DTO's sort keys that live under `vistaar`. */
 const SORT_PATHS: Record<string, string> = { shares: 'vistaar.shares' };
-
-const isDuplicateKey = (error: unknown): boolean =>
-  error instanceof mongo.MongoServerError && error.code === 11000;
 
 /**
  * Partner testimonials, kept on Stockship's shared `product_reviews` through

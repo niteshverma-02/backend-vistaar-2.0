@@ -19,6 +19,7 @@ import type { CredentialMode } from '../modules/payments/payment-credentials.dom
 import type { PaymentProvider } from '../modules/payments/payments.domain';
 import { PaymentCredentialRepository } from '../modules/payments/repositories/payment-credential.repository';
 import { PaymentCredentialsService } from '../modules/payments/services/payment-credentials.service';
+import { refuseUnlessTestDb } from './test-db-guard';
 
 const SUBMITTER = 'seed:payment-keys-submit';
 const APPROVER = 'seed:payment-keys-approve';
@@ -40,11 +41,8 @@ const DUMMY: Record<PaymentProvider, Record<string, string>> = {
 async function main(): Promise<void> {
   const apply = process.argv.includes('--apply');
   const log = (line: string) => console.log(`[seed-test-payment-keys] ${line}`);
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error(
-      'Refused: dummy payment keys are never seeded in production.',
-    );
-  }
+  process.loadEnvFile?.('.env');
+  refuseUnlessTestDb();
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
   });

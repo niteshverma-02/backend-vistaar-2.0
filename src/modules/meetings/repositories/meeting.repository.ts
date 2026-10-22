@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, type PipelineStage, type QueryFilter } from 'mongoose';
 
+import { isDuplicateKey } from '@common/utils/mongo-error.util';
+
 import type {
   Attendee,
   MeetingCounts,
@@ -28,10 +30,6 @@ export interface MeetingTotals {
 }
 
 const BRIEF = { attendees: 0 } as const;
-const isDuplicateKey = (e: unknown) =>
-  typeof e === 'object' &&
-  e !== null &&
-  (e as { code?: unknown }).code === 11000;
 
 /** `$size` of the attendees with `field` true — counts recomputed in the same write. */
 const countOf = (field: keyof Attendee) => ({

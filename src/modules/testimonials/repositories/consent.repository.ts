@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, mongo } from 'mongoose';
+import { Model } from 'mongoose';
+
+import { isDuplicateKey } from '@common/utils/mongo-error.util';
 
 import {
   TestimonialConsent,
@@ -18,9 +20,6 @@ export type NewConsent = Omit<
   | 'created_at'
   | 'updated_at'
 >;
-
-const isDuplicateKey = (error: unknown): boolean =>
-  error instanceof mongo.MongoServerError && error.code === 11000;
 
 /** Insert and withdraw only — a consent is never edited or deleted. */
 @Injectable()

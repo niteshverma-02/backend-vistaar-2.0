@@ -71,6 +71,18 @@ export class DraftOrderRepository {
       .exec();
   }
 
+  /** Every open draft under the key, oldest first — one, unless two saves raced. */
+  findAllOpen(
+    partnerId: string,
+    key: CustomerKey,
+  ): Promise<DraftOrderRecord[]> {
+    return this.model
+      .find({ ...this.openFilter(partnerId), ...key })
+      .sort({ created_at: 1, _id: 1 })
+      .lean<DraftOrderRecord[]>()
+      .exec();
+  }
+
   findOne(partnerId: string, id: string): Promise<DraftOrderRecord | null> {
     return this.model
       .findOne({ ...this.openFilter(partnerId), draft_order_id: id })

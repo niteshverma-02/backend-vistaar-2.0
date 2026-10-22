@@ -5,8 +5,9 @@
  */
 import {
   DAY_MS,
-  istDayStart,
+  istDate,
   istDaysBetween,
+  istDayStart,
 } from '@common/utils/ist-day.util';
 import {
   FOLLOW_UP_ACTIVITIES,
@@ -26,12 +27,6 @@ export const LEAD_REMOVED_REASON = 'lead removed';
 
 /** HO approves or rejects at most this many in one go. */
 export const BULK_MAX = 200;
-
-const IST_OFFSET_MS = 5.5 * 3600 * 1000;
-
-/** `YYYY-MM-DD` of the IST day `at` falls in. */
-export const istDayKey = (at: Date): string =>
-  new Date(at.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
 
 /**
  * The row's `_id` — one per event and reward kind, so the same event can
@@ -64,7 +59,7 @@ export function dueFollowUp(
   const today = istDayStart(now).getTime();
   if (nextFollowUp.getTime() >= today + DAY_MS) return null;
   return {
-    due_day: istDayKey(nextFollowUp),
+    due_day: istDate(nextFollowUp),
     days_overdue: Math.max(0, istDaysBetween(nextFollowUp, now)),
   };
 }

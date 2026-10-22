@@ -31,7 +31,7 @@ import {
   distanceKm,
   isMissed,
   istDayOf,
-  isForPartner,
+  mayTake,
   payoutOnRelease,
   payoutOnTake,
   payoutSourceOf,
@@ -210,10 +210,7 @@ export class GigsService {
       this.agents.requireByAgentId(agentId),
     ]);
     const own = row?.agent_id === agentId;
-    if (
-      !row ||
-      (!own && !(row.status === 'open' && isForPartner(row, agent)))
-    ) {
+    if (!row || (!own && !(row.status === 'open' && mayTake(row, agent)))) {
       throw notFound(NOT_FOUND);
     }
     const rate = row.payout === null ? await this.takerRate(agentId) : null;
@@ -227,7 +224,7 @@ export class GigsService {
     const agent = await this.requireWorkingPartner(agentId);
     const now = new Date();
     const row = await this.gigs.find(id);
-    if (!row || !(row.agent_id === agentId || isForPartner(row, agent))) {
+    if (!row || !(row.agent_id === agentId || mayTake(row, agent))) {
       throw notFound(NOT_FOUND);
     }
     // A double tap, or a later step already done, answers with the gig as it is.
@@ -458,14 +455,9 @@ export class GigsService {
 
   /** Open gigs this partner may take: cohort and earning cohort, same state when both are known; nearest first. */
   private async available(agent: AgentRecord, now: Date): Promise<ListedGig[]> {
-    const state =
-      (agent.profile?.state ?? agent.preview.state)?.toUpperCase() ?? null;
     const at = pointOf(agent);
     const rows = (await this.openRows()).filter(
-      (g) =>
-        g.starts_at > now &&
-        isForPartner(g, agent) &&
-        (!state || !g.state || g.state === state),
+      (g) => g.starts_at > now && mayTake(g, agent),
     );
     if (!at) return rows;
     // Stable: unknown distances keep the soonest-first order, after the known ones.

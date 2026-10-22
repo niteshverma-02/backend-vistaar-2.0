@@ -116,9 +116,11 @@ Example — Ravi (Vistaar Agent) in `ec_paddy` (fixed 8 %, minimum ₹2,000) fro
 | Earned | Σ confirmed + paid amounts, at today's rates, + approved meeting gigs and follow-up gig rewards (when gig pay is on) |
 | Paid | Σ withdrawals marked paid |
 | On hold | Σ withdrawals requested or approved |
-| **Withdrawable** | earned − paid − on hold (never below 0) |
+| **Withdrawable** | confirmed amounts not yet covered by a payout − on hold (never below 0) |
 
-Payouts cover confirmed orders oldest-confirmed first; an order is **paid** once covered.
+Payouts cover confirmed orders oldest-confirmed first; an order is **paid** once covered. A
+payout covers only what had confirmed by its paid date; what is left of it (a rate that fell
+after it) is not netted from later orders, which stay unpaid and withdrawable in full.
 
 **Withdrawal:** ≥ `min_withdrawal` (₹500), ≤ withdrawable, one open at a time, partner
 approved, bank proof verified by HO. **TDS** at request, fixed at approval: 2% with a

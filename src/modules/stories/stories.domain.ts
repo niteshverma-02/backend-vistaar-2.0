@@ -25,12 +25,7 @@ export type StoryLang = (typeof STORY_LANGS)[number];
 const LANG_NAMES: Record<string, string> = { en: 'English', hi: 'Hindi' };
 export const langName = (lang: string): string => LANG_NAMES[lang] ?? lang;
 
-/**
- * A story's look is a design `key` from `vistaar_v2_story_content` (HO adds
- * and recolours them). The four below are the app's bundled ones, which it
- * draws even when the server's list is not loaded.
- */
-export const BUILT_IN_DESIGNS = ['green', 'harvest', 'earth', 'sky'] as const;
+/** A story's look is a design `key` from `vistaar_v2_story_content` (HO adds and recolours them). */
 export type StoryTheme = string;
 
 export const PHOTO_MODES = ['background', 'inset'] as const;
@@ -252,26 +247,15 @@ export interface FestivalText {
   body: string;
 }
 
-export const FESTIVAL_STATUSES = [
-  'live',
-  'scheduled',
-  'expired',
-  'inactive',
-] as const;
-export type FestivalStatus = (typeof FESTIVAL_STATUSES)[number];
-
-export interface FestivalWindow {
-  is_active: boolean;
-  starts_at: Date | null;
-  ends_at: Date | null;
-}
-
-export function festivalStatus(f: FestivalWindow, now: Date): FestivalStatus {
-  if (!f.is_active) return 'inactive';
-  if (f.ends_at && f.ends_at <= now) return 'expired';
-  if (f.starts_at && f.starts_at > now) return 'scheduled';
-  return 'live';
-}
+export {
+  WINDOW_STATUSES as FESTIVAL_STATUSES,
+  windowError,
+  windowStatus as festivalStatus,
+} from '@common/utils/schedule-window.util';
+export type {
+  ScheduleWindow as FestivalWindow,
+  WindowStatus as FestivalStatus,
+} from '@common/utils/schedule-window.util';
 
 /**
  * The app opens My Story in English and falls back to it, so `en` is
@@ -285,16 +269,6 @@ export function festivalTextError(
     if (!t.headline?.trim() || !t.body?.trim()) {
       return `The ${langName(lang)} greeting needs both a headline and a message.`;
     }
-  }
-  return null;
-}
-
-export function windowError(
-  startsAt: Date | null,
-  endsAt: Date | null,
-): string | null {
-  if (startsAt && endsAt && endsAt <= startsAt) {
-    return 'The end date must be after the start date.';
   }
   return null;
 }
@@ -549,11 +523,6 @@ export const MAX_TEMPLATE_EMOJIS = 24;
 // ── Stats ───────────────────────────────────────────────────────────────
 
 /** Partners work in India; a share counts on the IST day it was made. */
-const IST_OFFSET_MS = 330 * 60_000;
-
-export function istDate(at: Date): string {
-  return new Date(at.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
-}
 
 /** `YYYY-MM-DD` `n` days before `date`. */
 export function shiftDate(date: string, n: number): string {

@@ -8,6 +8,7 @@ import {
   AgentsService,
   type AgentRecord,
 } from '@modules/agents/services/agents.service';
+import { addedRange } from '@modules/leads/leads.domain';
 import { EarningCohortsService } from '@modules/earning/services/earning-cohorts.service';
 import type { AssignmentReason } from '@modules/earning/earning.domain';
 import { RewardsService } from '@modules/rewards/services/rewards.service';
@@ -105,9 +106,6 @@ export class DeskService {
         'This list cannot be sorted that way. Please sort by created, updated, decided or last login date.',
       );
     }
-    const to = query.to ? new Date(query.to) : undefined;
-    if (to && query.to?.length === 10) to.setUTCHours(23, 59, 59, 999);
-
     const { items, total } = await this.agents.list(
       {
         stage: query.stage,
@@ -116,8 +114,7 @@ export class DeskService {
         district: query.district,
         owner_agent_id: query.owner_agent_id,
         q: query.q,
-        from: query.from ? new Date(query.from) : undefined,
-        to,
+        ...addedRange(query.from, query.to),
         include_unverified: query.include_unverified,
       },
       { skip: query.skip, limit: query.limit, sort: query.sortSpec },

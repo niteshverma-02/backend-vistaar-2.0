@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
-import { mongo } from 'mongoose';
 
 import { badRequest, conflict, notFound } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
+import { isDuplicateKey } from '@common/utils/mongo-error.util';
+import { checkWindow, toDate } from '@common/utils/schedule-window.util';
 import { TtlCache } from '@common/utils/ttl-cache';
 import type { Localized } from '@modules/onboarding/form.domain';
 
@@ -18,7 +19,6 @@ import type { StoryFestival } from '../schemas/story-festival.schema';
 import {
   festivalStatus,
   festivalTextError,
-  windowError,
   type FestivalStatus,
   type FestivalText,
 } from '../stories.domain';
@@ -37,9 +37,6 @@ export interface PartnerFestivalView {
 export type AdminFestivalView = StoryFestival & { status: FestivalStatus };
 
 const ACTIVE_TTL_MS = 60_000;
-
-const isDuplicateKey = (error: unknown): boolean =>
-  error instanceof mongo.MongoServerError && error.code === 11000;
 
 /** HO's festival greetings for My Story's Festival template. */
 @Injectable()
@@ -170,15 +167,6 @@ export class StoryFestivalsService {
 
 function toAdminView(f: StoryFestival, now: Date): AdminFestivalView {
   return { ...f, status: festivalStatus(f, now) };
-}
-
-function toDate(value: string | null | undefined): Date | null {
-  return value ? new Date(value) : null;
-}
-
-function checkWindow(startsAt: Date | null, endsAt: Date | null): void {
-  const error = windowError(startsAt, endsAt);
-  if (error) throw badRequest('VALIDATION_FAILED', error, [error]);
 }
 
 function checkTexts(dto: UpdateStoryFestivalDto): void {

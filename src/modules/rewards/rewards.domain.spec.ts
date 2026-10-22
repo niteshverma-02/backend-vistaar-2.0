@@ -1,9 +1,5 @@
-import {
-  bulkOutcome,
-  dueFollowUp,
-  istDayKey,
-  rewardIdOf,
-} from './rewards.domain';
+import { istDate } from '@common/utils/ist-day.util';
+import { bulkOutcome, dueFollowUp, rewardIdOf } from './rewards.domain';
 
 /** 16 Oct 2026, 11:00 IST. */
 const NOW = new Date('2026-10-16T05:30:00Z');
@@ -76,7 +72,7 @@ describe('dueFollowUp', () => {
   });
 
   it('keys the day in IST', () => {
-    expect(istDayKey(new Date('2026-10-15T19:00:00Z'))).toBe('2026-10-16');
+    expect(istDate(new Date('2026-10-15T19:00:00Z'))).toBe('2026-10-16');
   });
 });
 

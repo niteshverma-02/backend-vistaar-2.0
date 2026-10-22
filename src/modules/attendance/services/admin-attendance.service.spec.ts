@@ -1,6 +1,7 @@
+import { istDate } from '@common/utils/ist-day.util';
 import type { AgentsService } from '@modules/agents/services/agents.service';
 
-import { istDate, shiftDate } from '../attendance.domain';
+import { shiftDate } from '../attendance.domain';
 import type { AttendanceRepository } from '../repositories/attendance.repository';
 import type { AttendanceDay } from '../schemas/attendance-day.schema';
 import { AdminAttendanceService } from './admin-attendance.service';

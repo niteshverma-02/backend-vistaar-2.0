@@ -96,6 +96,9 @@ export class SettingsService {
     }
     const { farmer_consent_text, testimonial_consent_text, ...rest } = dto;
     const set: Partial<SettingsRecord> = { ...rest, updated_by: by };
+    // Another worker may have saved since this one cached: a stale consent
+    // version here would hand two different texts the same number.
+    this.cached = null;
     const current = await this.get();
     if (dto.gig_pay_enabled && !current.gig_pay_enabled_at) {
       set.gig_pay_enabled_at = new Date();

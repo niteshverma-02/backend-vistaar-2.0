@@ -140,37 +140,48 @@ export class BankChangeService {
   async approve(agentId: string, by: string): Promise<AdminBankChangeView> {
     const agent = await this.agents.requireByAgentId(agentId);
     const doc = await this.requireDoc(agent);
-    const change = pendingOf(doc);
+    // Approved already: HO retries the copies below after one failed (both are plain $sets).
+    const retry = doc.bank_change?.status === 'approved';
+    const change = retry ? (doc.bank_change as BankChange) : pendingOf(doc);
     const { account, proof } = await this.fieldsOf(doc);
     const values = bankValues(doc.raw_data[account.key], change);
-    const at = new Date();
-    const audit: AdminEdit[] = [
-      { field: account.key, new_value: values.account },
-      { field: proof.key, new_value: values.proof },
-    ].map((edit) => ({
-      ...edit,
-      old_value: doc.raw_data[edit.field] ?? null,
-      by,
-      at,
-    }));
-    const saved = await this.close(
-      doc,
-      by,
-      {
-        'bank_change.status': 'approved',
-        [`raw_data.${account.key}`]: values.account,
-        [`raw_data.${proof.key}`]: values.proof,
-        [`documents_review.${proof.key}`]: this.forms.reviewEntry(
-          'verified',
-          null,
-          by,
-          values.proof,
-          at,
-        ),
-      },
-      audit,
-      at,
-    );
+    // Only while the form still holds that change, so a retry never copies an older proof.
+    if (
+      retry &&
+      JSON.stringify(doc.raw_data[proof.key]) !== JSON.stringify(values.proof)
+    )
+      throw notPending();
+    let saved = doc;
+    if (!retry) {
+      const at = new Date();
+      const audit: AdminEdit[] = [
+        { field: account.key, new_value: values.account },
+        { field: proof.key, new_value: values.proof },
+      ].map((edit) => ({
+        ...edit,
+        old_value: doc.raw_data[edit.field] ?? null,
+        by,
+        at,
+      }));
+      saved = await this.close(
+        doc,
+        by,
+        {
+          'bank_change.status': 'approved',
+          [`raw_data.${account.key}`]: values.account,
+          [`raw_data.${proof.key}`]: values.proof,
+          [`documents_review.${proof.key}`]: this.forms.reviewEntry(
+            'verified',
+            null,
+            by,
+            values.proof,
+            at,
+          ),
+        },
+        audit,
+        at,
+      );
+    }
     await this.forms.mirrorReviewed(
       agent.pii_id as string,
       proof,

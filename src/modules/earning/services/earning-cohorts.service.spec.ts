@@ -13,6 +13,7 @@ import {
 import { DEFAULT_COHORT_ID, NO_FILTERS } from '../earning.domain';
 import type { EarningAssignmentRepository } from '../repositories/earning-assignment.repository';
 import type { EarningRuleRepository } from '../repositories/earning-rule.repository';
+import type { EarningWindowRepository } from '../repositories/earning-window.repository';
 import type {
   EarningCohortRecord,
   EarningCohortRepository,
@@ -67,12 +68,27 @@ const partner = (
   ...extra,
 });
 
+/** `vistaar_v2_earning_window` as the repository answers: the first to move it to a day wins. */
+function windowRow() {
+  let day: string | null = null;
+  return {
+    claimDay: jest.fn((today: string) => {
+      if (day === today) return Promise.resolve(null);
+      const since = day;
+      day = today;
+      return Promise.resolve({ since });
+    }),
+  };
+}
+
 function setup(
   opts: {
     partners?: EarningPartnerRecord[];
     open?: { _id: string; agent_id: string; cohort_id: string; from: Date }[];
     held?: Record<string, Holdings>;
     cohorts?: EarningCohortRecord[];
+    /** The shared window row; pass one to two setups for two processes. */
+    window?: ReturnType<typeof windowRow>;
   } = {},
 ) {
   const partners = opts.partners ?? [partner('VST-000001')];
@@ -125,6 +141,7 @@ function setup(
     repo as unknown as EarningCohortRepository,
     assignments as unknown as EarningAssignmentRepository,
     agents as unknown as AgentsService,
+    (opts.window ?? windowRow()) as unknown as EarningWindowRepository,
   );
   service.useHoldings(() => Promise.resolve(held));
   const later = jest
@@ -890,6 +907,46 @@ describe('EarningCohortsService — start and end dates', () => {
     await service.all();
     await service.all();
     expect(later).toHaveBeenCalledTimes(1);
+  });
+
+  it('one process a day runs it: the one whose write moves the shared day', async () => {
+    const cohorts = [
+      cohort(DEFAULT_COHORT_ID),
+      cohort('ec_big', { ends_on: '2026-11-16' }),
+    ];
+    const window = windowRow();
+    const a = setup({ cohorts, window });
+    const b = setup({ cohorts, window });
+    await Promise.all([a.service.all(), b.service.all()]);
+    expect(a.later.mock.calls.length + b.later.mock.calls.length).toBe(1);
+
+    // 17 Nov: B asks first, and runs it from the day A wrote (crossed).
+    jest.setSystemTime(new Date('2026-11-17T06:30:00Z'));
+    a.later.mockClear();
+    b.later.mockClear();
+    await b.service.all();
+    await a.service.all();
+    expect(b.later).toHaveBeenCalledWith('cohort_window');
+    expect(a.later).not.toHaveBeenCalled();
+    // Each process asks once a day.
+    await a.service.all();
+    expect(window.claimDay).toHaveBeenCalledTimes(4);
+  });
+
+  it('a failed write is asked again on the next read, and fails no read', async () => {
+    const window = windowRow();
+    window.claimDay.mockRejectedValueOnce(new Error('down'));
+    const { service, later } = setup({
+      cohorts: [
+        cohort(DEFAULT_COHORT_ID),
+        cohort('ec_big', { ends_on: '2026-11-16' }),
+      ],
+      window,
+    });
+    await expect(service.all()).resolves.toHaveLength(2);
+    expect(later).not.toHaveBeenCalled();
+    await service.all();
+    expect(later).toHaveBeenCalledWith('cohort_window');
   });
 
   it('cohorts without dates never start a bulk recompute on a new day', async () => {

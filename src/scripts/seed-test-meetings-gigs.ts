@@ -15,6 +15,8 @@
  */
 import mongoose from 'mongoose';
 
+import { refuseUnlessTestDb } from './test-db-guard';
+
 const PARTNER = 'VST-000006';
 const BY = 'seed:test-meetings-gigs';
 const HOUR = 3600 * 1000;
@@ -289,11 +291,7 @@ function gigs() {
 
 async function main(): Promise<void> {
   process.loadEnvFile?.('.env');
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error(
-      'Test data is for beta and local only — not run in production.',
-    );
-  }
+  refuseUnlessTestDb();
   const apply = process.argv.includes('--apply');
   const remove = process.argv.includes('--remove');
   const log = (line: string) =>
