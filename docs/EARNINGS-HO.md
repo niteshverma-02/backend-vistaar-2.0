@@ -422,6 +422,14 @@ this table:
 - The switch is a `PATCH` too: `{ "version": 3, "enabled": false }` alone is a valid
   edit (same `version` check, `version` +1, `updated_by` = HO). The toggle in the list
   sends the row's `version` and replaces the row with the answer. `null` is `400`.
+- A rule's `version` is **its own**. Editing, switching on / off, archiving or
+  reordering a rule never changes its cohort's `version` (nor `updated_at`), and a
+  cohort edit (conditions, dates, commission on / off …) never changes a rule's — so
+  an HO editing a cohort and another editing one of its rules never get a
+  `VERSION_CONFLICT` from each other. Only a stale read of the same rule
+  (or the same cohort) conflicts.
+- A cohort holds at most **100** rules, archived ones too (archive is not a delete
+  there either) — the next add is `400 VALIDATION_FAILED`.
 - Archive = the delete: the rule stops paying; rewards it already gave stay.
 - `PUT /order { cohort_id, ids }` takes every **active** rule of that cohort once
   (all triggers together, **off ones included**); otherwise `409 EARNING_ORDER_CHANGED`.

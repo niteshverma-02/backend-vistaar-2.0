@@ -66,6 +66,7 @@ export class EarningCohortRepository {
               ends_on: null,
               commission_off: [],
               meeting_gig_payout: null,
+              rules: [],
               version: 1,
               created_by: 'system',
               updated_by: 'system',

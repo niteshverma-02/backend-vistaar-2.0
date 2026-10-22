@@ -39,6 +39,7 @@ const cohort = (
   priority: 0,
   status: 'active',
   meeting_gig_payout: null,
+  rules: [],
   version: 1,
   created_by: HO,
   updated_by: HO,
@@ -521,6 +522,45 @@ describe('EarningCohortsService — HO', () => {
     expect(fallback.summary).toBe('Every partner');
   });
 
+  it('keeps the embedded rules off the cohort view; the rules routes serve them', async () => {
+    const withRules = cohort('ec_big', {
+      priority: 1,
+      filters: { ...NO_FILTERS, min_leads: 10 },
+      rules: [
+        {
+          _id: 'r1',
+          name: 'r1',
+          trigger: 'lead_created',
+          conditions: [],
+          reward: { kind: 'coin', amount: 5 },
+          order: 1,
+          status: 'active',
+          version: 1,
+          created_by: HO,
+          updated_by: HO,
+          archived_by: null,
+          archived_at: null,
+          created_at: OLD,
+          updated_at: OLD,
+        },
+      ],
+    });
+    const { service } = setup({
+      cohorts: [cohort(DEFAULT_COHORT_ID), withRules],
+    });
+    const view = await service.adminGet('ec_big');
+    expect(view).not.toHaveProperty('rules');
+    expect(view.id).toBe('ec_big');
+  });
+
+  it('reads a cohort not migrated yet (no rules field) as having none', async () => {
+    const { rules: _gone, ...legacy } = cohort('ec_big', { priority: 1 });
+    const { service } = setup({
+      cohorts: [cohort(DEFAULT_COHORT_ID), legacy as EarningCohortRecord],
+    });
+    expect((await service.get('ec_big')).rules).toEqual([]);
+  });
+
   it('refuses a reorder that is not the whole active list', async () => {
     const { service, repo } = setup();
     expect(await codeOf(service.reorder([], HO))).toBe('EARNING_ORDER_CHANGED');
@@ -781,43 +821,45 @@ describe('EarningCohortsService — start and end dates', () => {
   });
 
   it('the ended cohort’s rules pay nothing: the default’s rules are read', async () => {
+    const rule = (id: string, kind: 'coin' | 'gig') => ({
+      _id: id,
+      name: id,
+      trigger: 'lead_created' as const,
+      conditions: [],
+      reward: { kind, amount: 5 },
+      order: 1,
+      status: 'active' as const,
+      version: 1,
+      created_by: HO,
+      updated_by: HO,
+      archived_by: null,
+      archived_at: null,
+      created_at: OLD,
+      updated_at: OLD,
+    });
     const { service: cohorts } = setup({
       partners: [inBig],
       cohorts: [
-        cohort(DEFAULT_COHORT_ID),
-        cohort('ec_big', { ends_on: '2026-11-14' }),
+        cohort(DEFAULT_COHORT_ID, { rules: [rule('r-default', 'gig')] }),
+        cohort('ec_big', {
+          ends_on: '2026-11-14',
+          rules: [rule('r1', 'coin')],
+        }),
       ],
     });
     jest.spyOn(cohorts, 'recomputeLater').mockImplementation(() => undefined);
-    const ruleRepo = {
-      active: jest.fn((cohortId: string) =>
-        Promise.resolve(
-          cohortId === 'ec_big'
-            ? [
-                {
-                  _id: 'r1',
-                  cohort_id: 'ec_big',
-                  name: 'Lead bonus',
-                  trigger: 'lead_created',
-                  conditions: [],
-                  reward: { kind: 'coin', amount: 5 },
-                  order: 1,
-                  status: 'active',
-                },
-              ]
-            : [],
-        ),
-      ),
-    };
+    // The rules come inside the cohort read: the rule repository is never asked.
+    const ruleRepo = {};
     const rules = new EarningRulesService(
       ruleRepo as unknown as EarningRuleRepository,
       cohorts,
     );
-    expect(await rules.evaluate(ID, 'lead_created', {})).toEqual([]);
-    expect(ruleRepo.active).toHaveBeenCalledWith(
-      DEFAULT_COHORT_ID,
-      'lead_created',
-    );
+    expect(await rules.evaluate(ID, 'lead_created', {})).toEqual([
+      expect.objectContaining({
+        rule_id: 'r-default',
+        cohort_id: DEFAULT_COHORT_ID,
+      }),
+    ]);
   });
 
   it('a new IST day with a start or end since the last look runs one bulk recompute', async () => {

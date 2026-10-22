@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { SchemaTypes, type HydratedDocument } from 'mongoose';
+import { SchemaTypes } from 'mongoose';
 
 import {
   COHORT_STATUSES,
@@ -11,20 +11,16 @@ import {
 } from '../earning.domain';
 
 /**
- * One coin / gig rule of an earning cohort: when `trigger` happens and every
- * condition holds, the partner earns `reward`. Archived, never deleted —
- * rewards already earned name it.
+ * One coin / gig rule of an earning cohort, kept inside the cohort's
+ * document (`rules[]`) — an event reads the cohort and has its rules with
+ * it. When `trigger` happens and every condition holds, the partner earns
+ * `reward`. Archived, never removed — rewards already earned name it.
+ * Its own `version` and timestamps: a rule edit never touches the cohort's.
  */
-@Schema({
-  collection: 'vistaar_v2_earning_rules',
-  timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
-  versionKey: false,
-  minimize: false,
-})
+@Schema({ versionKey: false, minimize: false })
 export class EarningRule {
-  /** UUID. */
-  @Prop({ type: String }) _id!: string;
-  @Prop({ type: String, required: true }) cohort_id!: string;
+  /** UUID, unique across every cohort. */
+  @Prop({ type: String, required: true }) _id!: string;
   @Prop({ type: String, required: true }) name!: string;
   @Prop({ type: String, enum: EARNING_TRIGGERS, required: true })
   trigger!: EarningTrigger;
@@ -47,12 +43,10 @@ export class EarningRule {
   @Prop({ type: String, required: true }) updated_by!: string;
   @Prop({ type: String, default: null }) archived_by!: string | null;
   @Prop({ type: Date, default: null }) archived_at!: Date | null;
-  created_at!: Date;
-  updated_at!: Date;
+  // Set by the repository: rule writes skip schema timestamps, which would
+  // stamp the cohort's own `updated_at` too.
+  @Prop({ type: Date, required: true }) created_at!: Date;
+  @Prop({ type: Date, required: true }) updated_at!: Date;
 }
 
-export type EarningRuleDocument = HydratedDocument<EarningRule>;
 export const EarningRuleSchema = SchemaFactory.createForClass(EarningRule);
-
-// An event: the partner's cohort's active rules for the trigger, in order.
-EarningRuleSchema.index({ cohort_id: 1, trigger: 1, status: 1, order: 1 });
