@@ -29,6 +29,12 @@ export const API_ERROR_CODES = [
   'IDENTITY_UNAVAILABLE',
   'ACCOUNT_BLOCKED',
   'SESSION_INVALID',
+  // ko-sales customer pass (POST /auth/customer-session). OFF / UNAVAILABLE
+  // are 503s the app tries again later; MISMATCH (409) needs support.
+  'CUSTOMER_SESSION_OFF',
+  'CUSTOMER_SESSION_UNAVAILABLE',
+  'CUSTOMER_SESSION_BUSY',
+  'CUSTOMER_SESSION_MISMATCH',
   // Stages. Every stage move is conditional on the stage it starts from.
   'STAGE_NOT_ALLOWED',
   'STAGE_CHANGED',

@@ -48,6 +48,7 @@ India (+91) numbers only for now.
 | POST | `/auth/logout` | bearer | `{ refresh_token }` | `{ signed_out: true }` — this device only |
 | GET | `/me` | bearer | — | status (below) |
 | PATCH | `/me` | bearer | profile edit (ONBOARDING-APP.md §6) | status (below) |
+| POST | `/auth/customer-session` | bearer | `{ device_id?, device_name? }` | the partner's ko-sales customer pass (CUSTOMER-SESSION-APP.md) |
 
 `phone` is 10 digits (`+91 98765 43210`, `09876543210` are accepted and cleaned).
 `country_code` defaults to `+91`.
@@ -148,6 +149,7 @@ the same value, usable for the first screen right after login):
 | `IDENTITY_UNAVAILABLE` | 503 | could not create the account — retry |
 | `ACCOUNT_BLOCKED` | 403 | blocked by Katyayani |
 | `SESSION_INVALID` | 401 | refresh token spent/expired — log in again |
+| `CUSTOMER_SESSION_*` | 503 / 429 / 409 | `/auth/customer-session` only — CUSTOMER-SESSION-APP.md §3 |
 | `VALIDATION_FAILED` | 400 | body shape; `details` lists the fields |
 
 ## 4. Testing without an SMS
