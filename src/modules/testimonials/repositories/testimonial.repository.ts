@@ -32,6 +32,8 @@ export interface TestimonialRow {
   /** The HO email that approved / removed it, as Stockship's own desk writes. */
   verified_by?: string | null;
   deleted_by?: string | null;
+  /** On a partner's only: which submission it shows (its review row has the rest). */
+  vistaar?: { id: string; agent_id: string };
   created_at: Date;
   updated_at: Date;
   __v?: number;
@@ -41,7 +43,8 @@ export interface TestimonialRow {
 export type TestimonialContent = Pick<
   TestimonialRow,
   'type' | 'bulk' | 'family' | 'media' | 'review' | 'pii_id' | 'user'
->;
+> &
+  Required<Pick<TestimonialRow, 'vistaar'>>;
 
 export interface TestimonialFilter {
   status?: TestimonialStatus;
@@ -131,7 +134,7 @@ export class TestimonialRepository {
     by: string,
   ): Promise<void> {
     const now = new Date();
-    const { media, ...rest } = content;
+    const { media, vistaar, ...rest } = content;
     await this.rows.updateOne(
       { _id: id, source: VISTAAR_SOURCE },
       {
@@ -144,6 +147,7 @@ export class TestimonialRepository {
         },
         $set: {
           media,
+          vistaar,
           verified: true,
           deleted: false,
           verified_by: by,
@@ -166,6 +170,22 @@ export class TestimonialRepository {
   /** For good — a withdrawn consent leaves no copy of the farmer's face or words. */
   async erase(id: Types.ObjectId): Promise<void> {
     await this.rows.deleteOne({ _id: id, source: VISTAAR_SOURCE });
+  }
+
+  /** Which of these rows a partner sent in — rides `_id`. */
+  async fromPartners(ids: readonly Types.ObjectId[]): Promise<Set<string>> {
+    if (ids.length === 0) return new Set();
+    const rows = await this.rows
+      .find(
+        {
+          _id: { $in: [...ids] },
+          source: VISTAAR_SOURCE,
+          'vistaar.id': { $type: 'string' },
+        },
+        { projection: { _id: 1 } },
+      )
+      .toArray();
+    return new Set(rows.map((r) => r._id.toHexString()));
   }
 
   /** `combos_v2.name` for one family; `null` when there is none. */

@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 /**
  * Vistaar's product testimonials. They live in `product_testimonials`, the
  * collection Stockship v3 owns for every app, told apart by `source`. This API
@@ -107,12 +109,27 @@ export const MEDIA_URL = /^https:\/\/\S+$/i;
 
 // ---------------------------------------------------------------------------
 // Partner submissions — what a partner sends from the app, before and after
-// HO's decision. The submission itself is `vistaar_v2_testimonials`; the
-// shared Stockship rows are written only on approval, so Stockship's own
-// queues and the product's average rating never see an undecided one.
+// HO's decision. No collection of our own (user's decision, 2026-10-22): a
+// submission is its `product_reviews` row, Stockship's fields plus a
+// `vistaar` sub-document for what Stockship has no field for. Undecided it is
+// `verified: false` (Stockship's lists hide it) with `rating: null` (its
+// averages count every row not deleted). The `product_testimonials` row of a
+// video or photo is written on approval only, marked with its own `vistaar`.
 // ---------------------------------------------------------------------------
 
 export const PRODUCT_REVIEWS_COLLECTION = 'product_reviews';
+
+/**
+ * The review row's `_id` for the app's submission UUID. Derived, not stored:
+ * a retried submit lands on the same `_id` (the duplicate key is the retry
+ * guard), and a lookup by the app's id needs no index on a collection we may
+ * not index. 96 bits of SHA-256 — no clash with Stockship's own ObjectIds.
+ */
+export const reviewIdOf = (submissionId: string): string =>
+  createHash('sha256')
+    .update(`vistaar-testimonial:${submissionId.toLowerCase()}`)
+    .digest('hex')
+    .slice(0, 24);
 
 /** The app's three kinds. `text` is a quote only — a review row, no media. */
 export const SUBMISSION_KINDS = ['video', 'photo', 'text'] as const;
@@ -152,6 +169,18 @@ export const ACTION_TO: Record<HoAction, SubmissionStatus> = {
 
 export const canAct = (action: HoAction, from: SubmissionStatus): boolean =>
   ACTION_FROM[action].includes(from);
+
+/**
+ * Stockship's flags on the review row for each status. Only an approved one
+ * is shown or carries its stars; a decided-against one sits in Stockship's
+ * deleted tray, where no product page reads.
+ */
+export const sharedFlagsOf = (
+  status: SubmissionStatus,
+): { verified: boolean; deleted: boolean } => ({
+  verified: status === 'approved',
+  deleted: status === 'rejected' || status === 'removed',
+});
 
 /** Upload rules per kind. A minute of phone video at 720p is ~20–40 MB. */
 export const UPLOAD_RULES: Record<
