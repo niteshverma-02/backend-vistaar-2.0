@@ -11,13 +11,15 @@ import {
 export type EarningRuleRecord = EarningRule;
 
 export type EarningRulePatch = Partial<
-  Pick<EarningRule, 'name' | 'conditions' | 'reward'>
+  Pick<EarningRule, 'name' | 'conditions' | 'reward' | 'enabled'>
 >;
 
 export interface EarningRuleFilter {
   cohort_id?: string;
   trigger?: EarningTrigger;
   status?: EarningStatus;
+  /** `true` also takes rules from before the switch (no field = on). */
+  enabled?: boolean;
 }
 
 /** Far above what HO would write; only a bound on a runaway read. */
@@ -35,6 +37,9 @@ export class EarningRuleRepository {
     if (filter.cohort_id) query.cohort_id = filter.cohort_id;
     if (filter.trigger) query.trigger = filter.trigger;
     if (filter.status) query.status = filter.status;
+    if (filter.enabled !== undefined) {
+      query.enabled = filter.enabled ? { $ne: false } : false;
+    }
     return this.model
       .find(query)
       .sort({ cohort_id: 1, order: 1, _id: 1 })

@@ -77,6 +77,12 @@ export class Gig {
   @Prop({ type: [String], default: [] }) requirements!: string[];
   /** Cohort keys that see it; empty means every partner. */
   @Prop({ type: [String], default: [] }) cohorts!: string[];
+  /**
+   * Earning cohort ids (`ec_…`) that see it; empty means every earning
+   * cohort. A partner must match this list and `cohorts`. Rows from before
+   * 2026-10-22 have none: read it through `earningCohortsOf`.
+   */
+  @Prop({ type: [String], default: [] }) earning_cohorts?: string[];
   @Prop({ type: String, enum: GIG_STATUSES, default: 'open' })
   status!: GigStatus;
   @Prop({ type: String, default: null }) agent_id!: string | null;

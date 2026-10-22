@@ -85,13 +85,45 @@ earlier state, oldest first: `at`, `by`, `action: "created" | "updated"`, `kind`
 `rate` alone changes a fixed plan, `slabs` alone a slab plan.
 
 **In effect** rows: the plan fields + `cohort`, `label` (cohort name), `plan_id`,
-`effective_from`, and `inherits`:
+`effective_from`, `inherits` and `inherits_reason`:
 
 | `inherits` | Meaning | Show |
 |---|---|---|
 | `null` | the cohort's own plan | its rates |
-| `"ec_default"` | no plan of its own by that month: `ec_default`'s (`plan_id` is `ec_default@…`) | "As Everyone else" + the rates |
+| `"ec_default"` | no plan of its own by that month, or its commission is switched off that month: `ec_default`'s (`plan_id` is `ec_default@…`) | "As Everyone else" + the rates |
 | `"partner_type"` | no plan here or on `ec_default`: each partner earns their partner type's plan (`slabs: []`) | "Each partner's partner-type rates — save a plan to set one" |
+
+| `inherits_reason` | Meaning |
+|---|---|
+| `null` | its own plan (`inherits: null`), and every partner-type row |
+| `"commission_off"` | HO switched the cohort's commission **off** for that month (below) — say "Commission off" |
+| `"no_plan"` | it has no plan of its own by that month |
+
+### Commission ON/OFF per earning cohort (2026-10-22)
+
+`PATCH /admin/earning-cohorts/:id` with `{ "version": 3, "commission_enabled": false }`
+(EARNINGS-HO.md). **Off** = the cohort's own plan stops from **this IST month** and its
+partners earn `ec_default`'s plan instead — never nothing (with no `ec_default` plan
+either: their partner-type plan). **On** again = its own plan back from the month it is
+switched on. Past months never change (they are paid on).
+
+- Stored on the cohort as `commission_off: [{ from: "2026-11", to: null }]` — IST months,
+  both included, `to: null` = still off. Off pushes `{ from: <this month>, to: null }`;
+  on in the **same** month removes that range (it never covered a paid month), on in a
+  **later** month sets its `to` to the month before.
+- A switch in the current month works this month's commission out again on the new
+  rates — the whole month, orders already placed in it included — exactly as a plan
+  edit in the current month does: commission is worked out on every read, and the
+  switch drops this server's cached plan view at once (other servers within a minute).
+- Every place a cohort's rates for a month are picked reads it: each order's rate
+  (ledger, summary, statements, wallet, payouts, the partners table and board), the
+  month's headline rate, these in-effect rows and the app's "My plan". A plan saved for
+  an off month stays saved and applies again when the cohort is switched on.
+- `ec_default` cannot be switched off (`400 EARNING_COHORT_LOCKED`); an archived cohort
+  is refused as any edit (`409 EARNING_ARCHIVED`). Sending the state it already has
+  writes nothing and answers the cohort as it is (`200`, `version` unchanged).
+- **Show:** an ON/OFF toggle on the cohort's Commission tab, from `commission_enabled`;
+  a past range from `commission_off` as "Commission off Nov 2026 – Dec 2026".
 
 **Editor:** per earning cohort (Earnings → cohort → Commission tab): fixed / slabs switch,
 a rate or a slab table, optional minimum order value, month picker, notes, "Signed off"

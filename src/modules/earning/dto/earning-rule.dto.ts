@@ -115,6 +115,15 @@ export class CreateEarningRuleDto {
   @ValidateNested()
   @Type(() => RuleRewardDto)
   reward!: RuleRewardDto;
+
+  @ApiPropertyOptional({
+    default: true,
+    description:
+      'ON/OFF. false = never pays and is not shown in the app; the next matching rule of its kind pays instead',
+  })
+  @IsOptional()
+  @IsBoolean()
+  enabled?: boolean;
 }
 
 /** Only what is sent changes. The trigger and cohort never change. */
@@ -152,6 +161,15 @@ export class UpdateEarningRuleDto {
   @ValidateNested()
   @Type(() => RuleRewardDto)
   reward?: RuleRewardDto;
+
+  @ApiPropertyOptional({
+    example: false,
+    description:
+      'Switch the rule on / off; `{ version, enabled }` alone is a valid edit',
+  })
+  @ValidateIf((_, v) => v !== undefined)
+  @IsBoolean()
+  enabled?: boolean;
 }
 
 export class ReorderEarningRulesDto {
@@ -195,4 +213,13 @@ export class EarningRulesQueryDto extends PageQueryDto {
   @Transform(toBool)
   @IsBoolean()
   include_archived?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Only rules switched on (true) or off (false); left out = both',
+  })
+  @IsOptional()
+  @Transform(toBool)
+  @IsBoolean()
+  enabled?: boolean;
 }

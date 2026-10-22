@@ -29,6 +29,9 @@ import {
   HELD,
   REPEAT_PHONE_DAYS,
   cohortPayout,
+  earningCohortsOf,
+  forCohort,
+  forEarningCohort,
   isMissed,
   payoutOnRelease,
   payoutOnTake,
@@ -43,8 +46,10 @@ import type { Gig } from '../schemas/gig.schema';
 
 const GIG_NOT_FOUND = 'This gig could not be found.';
 
-export type AdminGigRow = Omit<Gig, '_id'> & {
+export type AdminGigRow = Omit<Gig, '_id' | 'earning_cohorts'> & {
   id: string;
+  /** `[]` = every earning cohort (also on gigs posted before the field). */
+  earning_cohorts: string[];
   partner_name: string | null;
   missed: boolean;
 };
@@ -57,8 +62,10 @@ export interface RepeatPhone {
   gigs: { gig_id: string; agent_id: string | null; starts_at: Date }[];
 }
 
-export type AdminGigView = Omit<Gig, 'photos' | '_id'> & {
+export type AdminGigView = Omit<Gig, 'photos' | '_id' | 'earning_cohorts'> & {
   id: string;
+  /** `[]` = every earning cohort (also on gigs posted before the field). */
+  earning_cohorts: string[];
   missed: boolean;
   partner: { agent_id: string; name: string | null; phone: string } | null;
   /** `url` is signed for an hour; `null` when the file cannot be signed. */
@@ -96,6 +103,7 @@ export class AdminGigsService {
       rows.map(({ _id, ...r }) => ({
         id: _id,
         ...r,
+        earning_cohorts: earningCohortsOf(r),
         payout_source: payoutSourceOf(r),
         partner_name: r.agent_id ? (names.get(r.agent_id)?.name ?? null) : null,
         missed: isMissed(r, now),
@@ -124,6 +132,10 @@ export class AdminGigsService {
     const starts_at = new Date(dto.starts_at);
     const ends_at = new Date(dto.ends_at);
     timeCheck(starts_at, ends_at, true);
+    // Before the id is taken: a refused gig spends no GIG- number.
+    const earning_cohorts = await this.checkEarningCohorts(
+      dto.earning_cohorts ?? [],
+    );
     const rules = await this.settings.get();
     const saved = await this.gigs.create({
       _id: await this.counters.nextGigId(),
@@ -148,6 +160,7 @@ export class AdminGigsService {
       products: dto.products ?? [],
       requirements: dto.requirements ?? [],
       cohorts: [...new Set(dto.cohorts ?? [])],
+      earning_cohorts,
       status: 'open',
       agent_id: null,
       accepted_at: null,
@@ -181,7 +194,15 @@ export class AdminGigsService {
         'A partner holds this gig, or it is closed, so it can no longer be edited.',
       );
     }
-    const { starts_at, ends_at, venue_point, cohorts, payout, ...rest } = dto;
+    const {
+      starts_at,
+      ends_at,
+      venue_point,
+      cohorts,
+      earning_cohorts,
+      payout,
+      ...rest
+    } = dto;
     // A validated DTO carries every declared field, `undefined` when not sent.
     const set: Partial<Gig> = {
       ...(Object.fromEntries(
@@ -206,6 +227,9 @@ export class AdminGigsService {
         : null;
     }
     if (cohorts !== undefined) set.cohorts = [...new Set(cohorts)];
+    if (earning_cohorts !== undefined) {
+      set.earning_cohorts = await this.checkEarningCohorts(earning_cohorts);
+    }
     if (payout !== undefined) {
       set.payout = payout;
       set.payout_source = payout === null ? 'cohort' : 'gig';
@@ -245,10 +269,16 @@ export class AdminGigsService {
         'This gig has already started — post a new one.',
       );
     }
-    if (gig.cohorts.length > 0 && !gig.cohorts.includes(agent.cohort ?? '')) {
+    if (!forCohort(gig, agent.cohort)) {
       throw badRequest(
         'VALIDATION_FAILED',
         'This gig is not for this partner’s cohort. Change the gig’s cohorts first.',
+      );
+    }
+    if (!forEarningCohort(gig, agent.earning_cohort?.id ?? null)) {
+      throw badRequest(
+        'VALIDATION_FAILED',
+        'This gig is not for this partner’s earning cohort. Change the gig’s earning cohorts first.',
       );
     }
     const now = new Date();
@@ -358,6 +388,28 @@ export class AdminGigsService {
     );
   }
 
+  /**
+   * De-duplicated, and each one active now. An archived cohort has no
+   * partners left (they move on when it is archived), so a gig for it would
+   * be seen by nobody.
+   */
+  private async checkEarningCohorts(ids: readonly string[]): Promise<string[]> {
+    const unique = [...new Set(ids)];
+    if (unique.length === 0) return [];
+    const active = new Set(
+      (await this.earning.all())
+        .filter((c) => c.status === 'active')
+        .map((c) => c._id),
+    );
+    const problems = unique
+      .filter((id) => !active.has(id))
+      .map((id) => `Earning cohort ${id} does not exist or is archived.`);
+    if (problems.length > 0) {
+      throw badRequest('EARNING_COHORT_NOT_FOUND', problems[0], problems);
+    }
+    return unique;
+  }
+
   /** What a cohort-paid gig pays this partner: their cohort's rate, else settings. */
   private async takerRate(agentId: string): Promise<number> {
     const [{ cohort }, settings] = await Promise.all([
@@ -413,6 +465,7 @@ export class AdminGigsService {
     return {
       id: _id,
       ...rest,
+      earning_cohorts: earningCohortsOf(gig),
       payout_source: payoutSourceOf(gig),
       missed: isMissed(gig, new Date()),
       partner:

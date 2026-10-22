@@ -1,6 +1,9 @@
 import type { HttpException } from '@nestjs/common';
 
-import { CreateEarningRuleDto } from '../dto/earning-rule.dto';
+import {
+  CreateEarningRuleDto,
+  type EarningRulesQueryDto,
+} from '../dto/earning-rule.dto';
 import { NO_FILTERS } from '../earning.domain';
 import type {
   EarningRuleRecord,
@@ -35,6 +38,7 @@ const rule = (
 
 function setup(rules: EarningRuleRecord[] = [], status = 'active') {
   const repo = {
+    list: jest.fn().mockResolvedValue(rules),
     active: jest.fn().mockResolvedValue(rules),
     find: jest.fn().mockResolvedValue(rules[0] ?? null),
     maxOrder: jest.fn().mockResolvedValue(3),
@@ -107,6 +111,25 @@ describe('EarningRulesService.evaluate', () => {
     ]);
   });
 
+  it('skips a switched-off rule, so the next matching one of its kind pays', async () => {
+    const { service } = setup([
+      rule('coin-bonus', { order: 1, enabled: false }),
+      rule('coin-any', { order: 2, reward: { kind: 'coin', amount: 2 } }),
+    ]);
+    const earned = await service.evaluate('VST-000001', 'lead_created', {});
+    expect(earned.map((e) => [e.rule_id, e.amount])).toEqual([['coin-any', 2]]);
+  });
+
+  it('the app’s "how to earn" leaves out switched-off rules', async () => {
+    const { service } = setup([
+      rule('on', { order: 1, enabled: true }),
+      rule('off', { order: 2, enabled: false }),
+      rule('from-before', { order: 3 }),
+    ]);
+    const app = await service.appCohort('VST-000001');
+    expect(app.rules.map((r) => r.name)).toEqual(['on', 'from-before']);
+  });
+
   it('pays nothing to a partner not placed yet (not approved)', async () => {
     const { service, repo, cohorts } = setup([rule('coin-any')]);
     cohorts.current.mockResolvedValue({
@@ -156,6 +179,63 @@ describe('EarningRulesService — HO', () => {
       expect.objectContaining({ order: 4, status: 'active', version: 1 }),
     );
     expect(saved.summary).toBe('Acreage at least 2');
+  });
+
+  it('a new rule is on unless HO sends `enabled: false`', async () => {
+    const { service, repo } = setup();
+    expect((await service.create(dto(), HO)).enabled).toBe(true);
+    expect(repo.create).toHaveBeenLastCalledWith(
+      expect.objectContaining({ enabled: true }),
+    );
+    expect((await service.create(dto({ enabled: false }), HO)).enabled).toBe(
+      false,
+    );
+    expect(repo.create).toHaveBeenLastCalledWith(
+      expect.objectContaining({ enabled: false }),
+    );
+  });
+
+  it('`{ version, enabled }` alone switches a rule, under the version check', async () => {
+    const { service, repo } = setup([rule('r1')]);
+    repo.save.mockResolvedValue(rule('r1', { enabled: false, version: 2 }));
+    const off = await service.update('r1', { version: 1, enabled: false }, HO);
+    expect(repo.save).toHaveBeenLastCalledWith('r1', 1, { enabled: false }, HO);
+    expect(off).toMatchObject({ enabled: false, version: 2 });
+
+    repo.save.mockResolvedValue(null);
+    expect(
+      (await errorOf(service.update('r1', { version: 1, enabled: true }, HO)))
+        .error,
+    ).toBe('VERSION_CONFLICT');
+
+    const gone = setup([rule('r1', { status: 'archived' })]);
+    expect(
+      (
+        await errorOf(
+          gone.service.update('r1', { version: 1, enabled: true }, HO),
+        )
+      ).error,
+    ).toBe('EARNING_ARCHIVED');
+    expect(gone.repo.save).not.toHaveBeenCalled();
+  });
+
+  it('every view says `enabled`; a rule from before the switch reads on', async () => {
+    const old = rule('r1');
+    expect(old).not.toHaveProperty('enabled');
+    const { service, repo } = setup([old, rule('r2', { enabled: false })]);
+    expect((await service.get('r1')).enabled).toBe(true);
+    const page = await service.list({
+      skip: 0,
+      limit: 50,
+      enabled: false,
+    } as EarningRulesQueryDto);
+    expect(page.items.map((r) => [r.id, r.enabled])).toEqual([
+      ['r1', true],
+      ['r2', false],
+    ]);
+    expect(repo.list).toHaveBeenCalledWith(
+      expect.objectContaining({ enabled: false, status: 'active' }),
+    );
   });
 
   it('adds no rule to an archived cohort', async () => {

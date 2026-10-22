@@ -13,6 +13,8 @@
  * Everything here is pure: the services load rows and call these.
  */
 
+import { addMonths } from '@common/utils/ist-day.util';
+
 // ── Cohorts ──────────────────────────────────────────────────────────────
 
 /** The built-in cohort that catches everyone else: no filters, always last. */
@@ -70,7 +72,7 @@ export interface PartnerFacts {
   customers: number;
 }
 
-export interface CohortLike {
+export interface CohortLike extends CohortDates {
   _id: string;
   status: EarningStatus;
   priority: number;
@@ -89,6 +91,8 @@ export const ASSIGNMENT_REASONS = [
   'cohorts_changed',
   'first_assignment',
   'recompute',
+  // A cohort's start or end day came (or a stored one was found outside it).
+  'cohort_window',
 ] as const;
 export type AssignmentReason = (typeof ASSIGNMENT_REASONS)[number];
 
@@ -137,6 +141,175 @@ export const hasFilters = (f: EarningFilters): boolean =>
 
 // (Filter matching lives on as conditions: see "Cohort conditions" below.)
 
+// ── Commission switch (user, 2026-10-22) ─────────────────────────────────
+
+/**
+ * IST months `YYYY-MM`, both included, in which the cohort's own commission
+ * plan was switched off; `to: null` = still off. Its partners earn
+ * `ec_default`'s plan in those months — never nothing.
+ */
+export interface CommissionOffRange {
+  from: string;
+  to: string | null;
+}
+
+/** Is the cohort's own commission plan off in `month`? */
+export function commissionOffIn(
+  ranges: readonly CommissionOffRange[] | null | undefined,
+  month: string,
+): boolean {
+  return (ranges ?? []).some(
+    (r) => r.from <= month && (r.to === null || month <= r.to),
+  );
+}
+
+/**
+ * The ranges after HO switches the cohort's commission on or off in IST
+ * month `month`; `null` = it already stands as asked (nothing to write).
+ * Off and on both act from `month` itself, so a month already paid on never
+ * changes.
+ */
+export function switchCommission(
+  ranges: readonly CommissionOffRange[],
+  enabled: boolean,
+  month: string,
+): CommissionOffRange[] | null {
+  const open = ranges.findIndex((r) => r.to === null);
+  const before = addMonths(month, -1);
+  if (enabled) {
+    if (open < 0) return null;
+    // Opened this month: it never covered a month that is paid on, so it goes.
+    if (ranges[open].from >= month) return ranges.filter((_, i) => i !== open);
+    return ranges.map((r, i) =>
+      i === open ? { from: r.from, to: before } : r,
+    );
+  }
+  if (open >= 0) return null;
+  // Switched on earlier this month: off again simply carries that stretch on.
+  const last = ranges.findIndex((r) => r.to === before);
+  if (last >= 0) {
+    return ranges.map((r, i) => (i === last ? { from: r.from, to: null } : r));
+  }
+  return [...ranges, { from: month, to: null }];
+}
+
+// ── Cohort dates (user, 2026-10-22) ──────────────────────────────────────
+
+/**
+ * Optional dates on a cohort: IST calendar days `YYYY-MM-DD`, both included;
+ * `null` (or absent, on rows from before dates) = open on that side. A cohort
+ * takes partners only while running; `ec_default` never has dates.
+ */
+export interface CohortDates {
+  starts_on?: string | null;
+  ends_on?: string | null;
+}
+
+export const COHORT_WINDOWS = ['upcoming', 'running', 'ended'] as const;
+export type CohortWindow = (typeof COHORT_WINDOWS)[number];
+
+export const DAY_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/** `YYYY-MM-DD` that names a day on the calendar (no 31 February). */
+export function isCalendarDay(value: string): boolean {
+  if (!DAY_KEY_PATTERN.test(value)) return false;
+  const at = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(at.getTime()) && at.toISOString().slice(0, 10) === value;
+}
+
+/** Where IST `today` stands against the cohort's dates; `null` = it has none. */
+export function cohortWindow(
+  c: CohortDates,
+  today: string,
+): CohortWindow | null {
+  const from = c.starts_on ?? null;
+  const to = c.ends_on ?? null;
+  if (from === null && to === null) return null;
+  // Same-length `YYYY-MM-DD` strings order as the days do.
+  if (from !== null && today < from) return 'upcoming';
+  if (to !== null && today > to) return 'ended';
+  return 'running';
+}
+
+/** Takes partners on IST `today`: no dates, or `today` within them. */
+export function isRunning(c: CohortDates, today: string): boolean {
+  const state = cohortWindow(c, today);
+  return state === null || state === 'running';
+}
+
+/** Why these dates cannot be saved; `null` when they can. */
+export function windowError(
+  starts_on: string | null,
+  ends_on: string | null,
+): string | null {
+  if (starts_on !== null && !isCalendarDay(starts_on)) {
+    return 'The start date must be a real day, like 2026-11-01.';
+  }
+  if (ends_on !== null && !isCalendarDay(ends_on)) {
+    return 'The end date must be a real day, like 2026-11-30.';
+  }
+  if (starts_on !== null && ends_on !== null && ends_on < starts_on) {
+    return 'The end date must be on or after the start date.';
+  }
+  return null;
+}
+
+/**
+ * Did an active cohort start or end between `since` (the IST day the dates
+ * were last looked at) and `today`? A cohort ending on day D stops on D + 1.
+ * `since` = `null` (a process that just started, or woke) cannot know what it
+ * slept through, so any dated active cohort counts.
+ */
+export function windowsCrossed(
+  cohorts: readonly (CohortDates & { status: EarningStatus })[],
+  since: string | null,
+  today: string,
+): boolean {
+  if (since === today) return false;
+  return cohorts.some((c) => {
+    const from = c.starts_on ?? null;
+    const to = c.ends_on ?? null;
+    if (c.status !== 'active' || (from === null && to === null)) return false;
+    if (since === null) return true;
+    return (
+      (from !== null && from > since && from <= today) ||
+      (to !== null && to >= since && to < today)
+    );
+  });
+}
+
+const MONTHS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+const dayLabel = (day: string): string => {
+  const [y, m, d] = day.split('-').map(Number);
+  return `${d} ${MONTHS[m - 1]} ${y}`;
+};
+
+/** The dates in words for the cohort's summary line; `null` when it has none. */
+export function describeCohortWindow(c: CohortDates): string | null {
+  const from = c.starts_on ?? null;
+  const to = c.ends_on ?? null;
+  if (from !== null && to !== null) {
+    return `${dayLabel(from)} – ${dayLabel(to)}`;
+  }
+  if (from !== null) return `From ${dayLabel(from)}`;
+  if (to !== null) return `Until ${dayLabel(to)}`;
+  return null;
+}
+
 /** Active cohorts in HO's order, the default last; ties by id so every process agrees. */
 export function cohortOrder<T extends CohortLike>(cohorts: readonly T[]): T[] {
   const rank = (c: T) =>
@@ -146,14 +319,20 @@ export function cohortOrder<T extends CohortLike>(cohorts: readonly T[]): T[] {
     .sort((a, b) => rank(a) - rank(b) || a._id.localeCompare(b._id));
 }
 
-/** The partner's cohort: the first active one whose conditions hold, else the default. */
+/**
+ * The partner's cohort on IST `today`: the first active one running that day
+ * whose conditions hold, else the default. `today` is passed in, so this
+ * stays pure.
+ */
 export function pickCohort(
   cohorts: readonly CohortLike[],
   partner: PartnerFacts,
+  today: string,
 ): string {
   const facts: Facts = { ...partner };
   for (const c of cohortOrder(cohorts)) {
     if (c._id === DEFAULT_COHORT_ID) break;
+    if (!isRunning(c, today)) continue;
     if (matchesConditions(cohortConditionsOf(c), facts)) return c._id;
   }
   return DEFAULT_COHORT_ID;
@@ -601,7 +780,19 @@ export interface RuleLike {
   reward: RuleReward;
   order: number;
   status: EarningStatus;
+  /** HO's ON/OFF switch; absent on rules from before it (read as on). */
+  enabled?: boolean;
 }
+
+/** HO's ON/OFF switch (user, 2026-10-22); a rule saved before it existed is on. */
+export const ruleEnabled = (r: { enabled?: boolean }): boolean =>
+  r.enabled !== false;
+
+/** Active and switched on: the only rules that pay, and the only ones the app shows. */
+export const rulePays = (r: {
+  status: EarningStatus;
+  enabled?: boolean;
+}): boolean => r.status === 'active' && ruleEnabled(r);
 
 /**
  * What one event pays: the cohort's active rules for the trigger in HO's
@@ -615,8 +806,11 @@ export function pickRewards<T extends RuleLike>(
 ): T[] {
   const paid = new Set<RewardKind>();
   const out: T[] = [];
+  // A switched-off rule is left out as if it were not there, so the next
+  // matching rule of its kind in the cohort pays instead: turning off a
+  // bonus rule falls back to the catch-all after it, not to nothing.
   const ordered = rules
-    .filter((r) => r.status === 'active' && r.trigger === trigger)
+    .filter((r) => rulePays(r) && r.trigger === trigger)
     .sort((a, b) => a.order - b.order || a._id.localeCompare(b._id));
   for (const rule of ordered) {
     if (paid.has(rule.reward.kind)) continue;

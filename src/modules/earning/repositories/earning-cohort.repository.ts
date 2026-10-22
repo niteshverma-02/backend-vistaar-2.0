@@ -18,7 +18,14 @@ export type EarningCohortRecord = EarningCohort;
 export type EarningCohortPatch = Partial<
   Pick<
     EarningCohort,
-    'name' | 'description' | 'conditions' | 'filters' | 'meeting_gig_payout'
+    | 'name'
+    | 'description'
+    | 'conditions'
+    | 'filters'
+    | 'meeting_gig_payout'
+    | 'starts_on'
+    | 'ends_on'
+    | 'commission_off'
   >
 >;
 
@@ -55,6 +62,9 @@ export class EarningCohortRepository {
               filters: NO_FILTERS,
               priority: 0,
               status: 'active',
+              starts_on: null,
+              ends_on: null,
+              commission_off: [],
               meeting_gig_payout: null,
               version: 1,
               created_by: 'system',

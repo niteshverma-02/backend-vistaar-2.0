@@ -31,6 +31,7 @@ import {
   distanceKm,
   isMissed,
   istDayOf,
+  isForPartner,
   payoutOnRelease,
   payoutOnTake,
   payoutSourceOf,
@@ -132,9 +133,6 @@ const changed = () => closed('This gig changed — reload it and try again.');
 const photoFolder = (agentId: string, gigId: string) =>
   `vistaar/gigs/${agentId}/${gigId}/`;
 
-const forCohort = (g: { cohorts: string[] }, cohort: string | null) =>
-  g.cohorts.length === 0 || (cohort !== null && g.cohorts.includes(cohort));
-
 /**
  * The partner's side of gigs. Partners never create or delete a gig (HO's
  * desk does); accept / release is their take and give-back, the rest is the
@@ -214,7 +212,7 @@ export class GigsService {
     const own = row?.agent_id === agentId;
     if (
       !row ||
-      (!own && !(row.status === 'open' && forCohort(row, agent.cohort)))
+      (!own && !(row.status === 'open' && isForPartner(row, agent)))
     ) {
       throw notFound(NOT_FOUND);
     }
@@ -229,7 +227,7 @@ export class GigsService {
     const agent = await this.requireWorkingPartner(agentId);
     const now = new Date();
     const row = await this.gigs.find(id);
-    if (!row || !(row.agent_id === agentId || forCohort(row, agent.cohort))) {
+    if (!row || !(row.agent_id === agentId || isForPartner(row, agent))) {
       throw notFound(NOT_FOUND);
     }
     // A double tap, or a later step already done, answers with the gig as it is.
@@ -458,7 +456,7 @@ export class GigsService {
 
   // ── helpers ────────────────────────────────────────────────────────────
 
-  /** Open gigs this partner may take: cohort, same state when both are known; nearest first. */
+  /** Open gigs this partner may take: cohort and earning cohort, same state when both are known; nearest first. */
   private async available(agent: AgentRecord, now: Date): Promise<ListedGig[]> {
     const state =
       (agent.profile?.state ?? agent.preview.state)?.toUpperCase() ?? null;
@@ -466,7 +464,7 @@ export class GigsService {
     const rows = (await this.openRows()).filter(
       (g) =>
         g.starts_at > now &&
-        forCohort(g, agent.cohort) &&
+        isForPartner(g, agent) &&
         (!state || !g.state || g.state === state),
     );
     if (!at) return rows;

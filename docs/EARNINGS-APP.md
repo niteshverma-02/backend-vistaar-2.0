@@ -46,7 +46,8 @@ needs, and the coin / gig **rewards**; the full commission contract is `COMMISSI
 
 - `earning_cohort` is `null` before approval, and also if it could not be read at that
   moment (the rest of `/me` still answers) — show nothing then, never an error.
-- `rules` may be empty: the cohort pays nothing extra yet.
+- `rules` may be empty: the cohort pays nothing extra yet. A rule HO has switched off
+  is not in the list (it pays nothing until switched on again).
 - For one event, the **first** matching rule of each kind pays: a lead can earn one
   coin rule and one gig rule, not two coin rules. Show `rules` as a list of "how to
   earn" cards; `summary` is ready to show as is.

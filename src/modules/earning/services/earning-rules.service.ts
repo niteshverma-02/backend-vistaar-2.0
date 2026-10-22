@@ -23,6 +23,8 @@ import {
   opsOf,
   orderError,
   pickRewards,
+  ruleEnabled,
+  rulePays,
   type CatalogField,
   type EarningTrigger,
   type Facts,
@@ -50,8 +52,10 @@ export interface EarnedReward {
   amount: number;
 }
 
-export type EarningRuleView = Omit<EarningRuleRecord, '_id'> & {
+export type EarningRuleView = Omit<EarningRuleRecord, '_id' | 'enabled'> & {
   id: string;
+  /** HO's ON/OFF switch; `true` on rules from before it. */
+  enabled: boolean;
   /** The conditions in words. */
   summary: string;
 };
@@ -124,7 +128,8 @@ export class EarningRulesService {
   /** The partner's cohort and what it pays for, for the app. */
   async appCohort(agentId: string): Promise<AppEarningCohort> {
     const { cohort, since } = await this.cohorts.current(agentId);
-    const rules = await this.rules.active(cohort._id);
+    // A switched-off rule pays nothing, so it is no "how to earn" card either.
+    const rules = (await this.rules.active(cohort._id)).filter(rulePays);
     return {
       id: cohort._id,
       name: cohort.name,
@@ -164,6 +169,7 @@ export class EarningRulesService {
       cohort_id: query.cohort_id,
       trigger: query.trigger,
       status: query.include_archived ? undefined : 'active',
+      enabled: query.enabled,
     });
     return new PageResult(
       rows.slice(query.skip, query.skip + query.limit).map(viewOf),
@@ -198,6 +204,7 @@ export class EarningRulesService {
       reward: { kind: dto.reward.kind, amount: dto.reward.amount },
       order: (await this.rules.maxOrder(cohort._id)) + 1,
       status: 'active',
+      enabled: dto.enabled ?? true,
       version: 1,
       created_by: by,
       updated_by: by,
@@ -207,7 +214,10 @@ export class EarningRulesService {
     return viewOf(saved);
   }
 
-  /** Name, conditions, reward. The trigger and cohort stay — archive and add a new rule instead. */
+  /**
+   * Name, conditions, reward, the ON/OFF switch. The trigger and cohort stay —
+   * archive and add a new rule instead.
+   */
   async update(
     id: string,
     dto: UpdateEarningRuleDto,
@@ -226,6 +236,7 @@ export class EarningRulesService {
       set.conditions = checkConditions(current.trigger, dto.conditions);
     if (dto.reward !== undefined)
       set.reward = { kind: dto.reward.kind, amount: dto.reward.amount };
+    if (dto.enabled !== undefined) set.enabled = dto.enabled;
     if (Object.keys(set).length === 0) {
       throw badRequest('VALIDATION_FAILED', 'Nothing to change was sent.');
     }
@@ -290,6 +301,7 @@ function viewOf(r: EarningRuleRecord): EarningRuleView {
   return {
     id: _id,
     ...rest,
+    enabled: ruleEnabled(r),
     summary: describeConditions(r.trigger, r.conditions),
   };
 }

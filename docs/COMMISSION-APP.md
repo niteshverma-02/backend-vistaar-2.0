@@ -127,6 +127,7 @@ slabs instead of `current_rate`.
   "my_plan": {                             // NEW — "My plan": what my new orders earn on now
     "earning_cohort": { "id": "ec_paddy_belt", "name": "Paddy belt", "since": "…" },  // null before approval
     "inherits": null,                      // null = the cohort's own plan (or not approved yet) · "ec_default" = the default cohort's · "partner_type" = my partner type's
+    "inherits_reason": null,               // when inherits is set: "commission_off" = HO paused my cohort's own commission this month · "no_plan" = it has none yet
     "plan_id": "ec_paddy_belt@2026-10",    // null = built-in rates
     "kind": "fixed",                       // fixed · slabs
     "draft": false, "effective_from": "2026-10",
