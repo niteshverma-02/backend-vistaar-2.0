@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 import { badRequest, notFound } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
+import { istDate } from '@common/utils/ist-day.util';
 import { AgentsService } from '@modules/agents/services/agents.service';
 
 import type {
@@ -17,7 +18,7 @@ import {
   type PartnerTotals,
 } from '../repositories/story-stat.repository';
 import { StoryRepository } from '../repositories/story.repository';
-import { istDate, statsRange } from '../stories.domain';
+import { statsRange } from '../stories.domain';
 import { StoriesService, type StoryView } from './stories.service';
 
 const STORY_NOT_FOUND =

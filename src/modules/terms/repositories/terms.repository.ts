@@ -1,15 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, mongo, type QueryFilter } from 'mongoose';
+import { Model, type QueryFilter } from 'mongoose';
+
+import { isDuplicateKey } from '@common/utils/mongo-error.util';
 
 import { VISTAAR_PROFILE } from '../terms.domain';
 import {
   TermsAndConditions,
   type TermsHydrated,
 } from '../schemas/terms.schema';
-
-const isDuplicateKey = (error: unknown): boolean =>
-  error instanceof mongo.MongoServerError && error.code === 11000;
 
 /** Every read and write is held to Vistaar's rows; the other apps' are never touched. */
 const OURS = { profiles: VISTAAR_PROFILE };

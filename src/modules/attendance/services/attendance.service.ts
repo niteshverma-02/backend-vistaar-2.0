@@ -1,13 +1,12 @@
 import { Injectable } from '@nestjs/common';
 
 import { badRequest, conflict } from '@common/errors/api-error';
-import { DAY_MS } from '@common/utils/ist-day.util';
+import { DAY_MS, istDate } from '@common/utils/ist-day.util';
 import { RewardsService } from '@modules/rewards/services/rewards.service';
 
 import {
   MAX_SESSIONS_PER_DAY,
   dayStatus,
-  istDate,
   istMonth,
   locationError,
   monthBounds,

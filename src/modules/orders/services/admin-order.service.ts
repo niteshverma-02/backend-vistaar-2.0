@@ -1,7 +1,12 @@
 import { Injectable } from '@nestjs/common';
 
 import { badRequest, notFound } from '@common/errors/api-error';
-import { DAY_MS, istMonthKey, istMonthStart } from '@common/utils/ist-day.util';
+import {
+  DAY_MS,
+  istDate,
+  istMonthKey,
+  istMonthStart,
+} from '@common/utils/ist-day.util';
 import { PageResult } from '@common/http/page-result';
 import {
   AgentsService,
@@ -16,12 +21,13 @@ import type {
   AdminOrdersQueryDto,
   OrderPartner,
 } from '../dto/admin-order.dto';
-import { istDate } from '@modules/attendance/attendance.domain';
 import { ProductFactsService } from '@modules/spine/services/product-facts.service';
 
 import {
+  NOT_COUNTED,
   ORDER_STAGES,
   firstUrl,
+  isCounted,
   orderSearch,
   stageOf,
   statusesFor,
@@ -64,6 +70,8 @@ export class AdminOrderService {
     const raw = await this.orders.adminSummary(windowOf(query));
     const stages = new Map<OrderStage, { count: number; value: number }>();
     for (const s of raw.by_status) {
+      // A split parent / placeholder would count its children's lines twice.
+      if (!isCounted(s.status)) continue;
       const stage = stageOf(s.status);
       const acc = stages.get(stage) ?? { count: 0, value: 0 };
       acc.count += s.count;
@@ -89,11 +97,13 @@ export class AdminOrderService {
   /**
    * The sales panels (per day, partner, state, city, pack, category, repeat
    * buyers) for the same filters and window as the cards. Cancelled and
-   * returned orders are not sales, so they are left out.
+   * returned orders are not sales, and `NOT_COUNTED` ones not orders of
+   * their own, so they are left out.
    */
   async breakdown(query: AdminOrdersQueryDto): Promise<AdminOrderBreakdown> {
     const filter = windowOf(query);
     const raw = await this.orders.adminBreakdown(filter, [
+      ...NOT_COUNTED,
       ...statusesFor('cancelled'),
       ...statusesFor('returned'),
     ]);

@@ -5,6 +5,7 @@ import { Injectable } from '@nestjs/common';
 import { badRequest, conflict, notFound } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
 import { imageInfo } from '@common/utils/image-size.util';
+import { checkWindow, toDate } from '@common/utils/schedule-window.util';
 import { TtlCache } from '@common/utils/ttl-cache';
 import { AgentsService } from '@modules/agents/services/agents.service';
 import type { Localized } from '@modules/onboarding/form.domain';
@@ -19,7 +20,6 @@ import {
   imageSizeError,
   isShownTo,
   statusOf,
-  windowError,
   type BannerStatus,
   type BannerTone,
 } from '../banners.domain';
@@ -307,15 +307,6 @@ function toPartnerView(b: Banner): PartnerBannerView {
 
 function toAdminView(b: Banner, now: Date): AdminBannerView {
   return { ...b, status: statusOf(b, now) };
-}
-
-function toDate(value: string | null | undefined): Date | null {
-  return value ? new Date(value) : null;
-}
-
-function checkWindow(startsAt: Date | null, endsAt: Date | null): void {
-  const error = windowError(startsAt, endsAt);
-  if (error) throw badRequest('VALIDATION_FAILED', error, [error]);
 }
 
 function checkContent(content: Parameters<typeof contentError>[0]): void {

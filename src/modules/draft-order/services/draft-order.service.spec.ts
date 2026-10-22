@@ -100,6 +100,7 @@ describe('DraftOrderService', () => {
         Promise.resolve(counter === null ? null : ++counter),
       ),
       findOpen: jest.fn(() => Promise.resolve(open)),
+      findAllOpen: jest.fn(() => Promise.resolve([])),
       findOne: jest.fn(() => Promise.resolve(open)),
       insert: jest.fn((_p: string, id: string, data: DraftWrite) =>
         Promise.resolve(record(id, data)),
@@ -259,6 +260,46 @@ describe('DraftOrderService', () => {
       expect(a.id).toBe('DFT-96');
       expect(b.id).toBe('DFT-96');
       expect(drafts.insert).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('save — two instances', () => {
+    it('keeps the oldest when another instance started the same draft meanwhile', async () => {
+      const write = {
+        contact_id: 'C0-1',
+        customer_name: 'Mohan Rao',
+        contact_number: '8247554977',
+        form_data: formDataFor(CUSTOMER, []),
+        grand_total: 200,
+      };
+      drafts.findAllOpen.mockResolvedValueOnce([
+        record('DFT-95', write),
+        record('DFT-96', write),
+      ]);
+
+      const view = await service.save(OWNER, TOKEN);
+
+      expect(view.id).toBe('DFT-95');
+      expect(drafts.findAllOpen).toHaveBeenCalledWith(PARTNER, {
+        contact_number: '8247554977',
+        customer_name: 'Mohan Rao',
+      });
+      expect(drafts.delete).toHaveBeenCalledTimes(1);
+      expect(drafts.delete).toHaveBeenCalledWith(PARTNER, 'DFT-96');
+    });
+
+    it('deletes nothing when the draft is the only one', async () => {
+      drafts.findAllOpen.mockResolvedValueOnce([
+        record('DFT-96', {
+          contact_id: 'C0-1',
+          customer_name: 'Mohan Rao',
+          contact_number: '8247554977',
+          form_data: formDataFor(CUSTOMER, []),
+          grand_total: 200,
+        }),
+      ]);
+      expect((await service.save(OWNER, TOKEN)).id).toBe('DFT-96');
+      expect(drafts.delete).not.toHaveBeenCalled();
     });
   });
 

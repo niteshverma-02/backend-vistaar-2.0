@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { badRequest } from '@common/errors/api-error';
+import { istDate } from '@common/utils/ist-day.util';
 import { AgentsService } from '@modules/agents/services/agents.service';
 
 import {
@@ -9,7 +10,6 @@ import {
   boardSummary,
   dayStatus,
   daysInRange,
-  istDate,
   istMinutes,
   rangeError,
   rollup,

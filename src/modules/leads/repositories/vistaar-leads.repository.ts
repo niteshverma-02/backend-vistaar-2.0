@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, mongo, type PipelineStage, type UpdateQuery } from 'mongoose';
+import { Model, type PipelineStage, type UpdateQuery } from 'mongoose';
 
 import type { GeoPoint } from '@common/utils/geo.util';
 import { kmToRadians } from '@common/utils/geo.util';
+import { isDuplicateKey } from '@common/utils/mongo-error.util';
+import { escapeRegex } from '@common/utils/regex.util';
 
 import {
   CLOSED_STAGES,
@@ -34,7 +36,9 @@ export interface LeadListFilter {
   /** Any case. */
   district?: string;
   origin?: 'created' | 'linked';
+  /** Added at or after. */
   from?: Date;
+  /** Added before. */
   to?: Date;
   /** Contained in the name, village, district or a crop. */
   text?: string;
@@ -94,12 +98,6 @@ export type RadarRow = Pick<
   | 'location'
   | 'location_source'
 >;
-
-const escapeRegex = (value: string): string =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-const isDuplicateKey = (error: unknown): boolean =>
-  error instanceof mongo.MongoServerError && error.code === 11000;
 
 @Injectable()
 export class VistaarLeadsRepository {
@@ -773,7 +771,7 @@ export class VistaarLeadsRepository {
     if (filter.from || filter.to) {
       query.created_at = {
         ...(filter.from && { $gte: filter.from }),
-        ...(filter.to && { $lte: filter.to }),
+        ...(filter.to && { $lt: filter.to }),
       };
     }
     if (filter.phone) {

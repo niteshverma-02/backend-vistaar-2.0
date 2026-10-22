@@ -37,6 +37,7 @@ import type {
 import type { LeadStage } from '../modules/leads/leads.domain';
 import { leadOtpKey, signLeadOtp } from '../modules/leads/lead-otp.domain';
 import { LeadsService } from '../modules/leads/services/leads.service';
+import { refuseUnlessTestDb } from './test-db-guard';
 
 const BY = 'seed:test-leads';
 const DAY_MS = 24 * 3600 * 1000;
@@ -323,6 +324,8 @@ const FARMERS: TestFarmer[] = [
 ];
 
 async function main(): Promise<void> {
+  process.loadEnvFile?.('.env');
+  refuseUnlessTestDb();
   const apply = process.argv.includes('--apply');
   const app = await NestFactory.createApplicationContext(AppModule, {
     logger: ['error', 'warn'],
@@ -331,11 +334,6 @@ async function main(): Promise<void> {
 
   try {
     const env = app.get(ConfigService<Env, true>);
-    if (env.get('NODE_ENV', { infer: true }) === 'production') {
-      throw new Error(
-        'Test data is for beta and local only — not run in production.',
-      );
-    }
     const leads = app.get(LeadsService);
     const agents = app.get(AgentsService);
     const rows = app

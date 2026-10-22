@@ -10,7 +10,7 @@ What must exist in production before the matching feature is switched on.
 | `NODE_ENV` | `production` — otherwise index builds run at boot |
 | `MONGODB_URI` | Production `CRM-Database`. **Same region as the app**: a 28 ms round trip (beta, from outside) is most of every request's time |
 | `MONGODB_MAX_POOL_SIZE` / `MONGODB_MIN_POOL_SIZE` | `50` / `5` per process. Processes × max must fit the Mongo server's connection limit |
-| (OTP limits) | 3 SMS and 5 guesses per number per 10 min are counted in **`vistaar_v2_otp_attempts`** (Mongo), so they hold across every process. No Redis is used |
+| (OTP limits) | 3 SMS and 5 guesses per number per 10 min, and 15 guesses per number per 24 h, are counted in **`vistaar_v2_otp_attempts`** (Mongo), so they hold across every process. No Redis is used |
 | `WEB_CONCURRENCY` | `pnpm start:cluster` workers; `0` = one per CPU core |
 | `LOG_LEVEL` | `info`: one short line per request (id, method, URL, status, time); `/health` not logged |
 | `CORS_ORIGINS` | HO portal hosts only, never `*` |
@@ -154,7 +154,7 @@ Nothing to build: the lookups use the existing `pii_id`, `phone_number`,
 - [ ] `vistaar_v2_leads` indexes built — `{pii_id}` unique is what keeps one farmer with one partner
 - [ ] Optional: HO sets the farmer-consent wording (`PUT /admin/settings { farmer_consent_text }`); until then the app's own sentence is version 1
 - [ ] Sales-operation asked to add source `vistaar` to its cohort and profiled-router exclusions (offline channel — never telecaller-routed)
-- [ ] `app_counters` has `leads`, `contacts`, `addresses` rows in production (always true: ko-sales writes them)
+- [ ] `app_counters` has `leads`, `contacts`, `addresses`, `piis` rows in production (always true: ko-sales writes them)
 - [ ] ko-sales / sales-operation told: `source: 'vistaar'` leads are inserted directly (no pipeline, no LQS, no webhook), `created_by` = `VST-…`
 - [ ] Optional: a `lead_sources` row `{ source_code: 'vistaar', display_name: 'Vistaar Agent' }` so CRM source filters list it (ko-sales adds one itself only for leads it writes)
 
@@ -275,7 +275,7 @@ few thousand orders per partner; past that, ask Stockship for
 - [ ] The four `vistaar_v2_earning_*` indexes built (above; the rules are inside the cohorts, `{ 'rules._id' }` unique partial — `vistaar_v2_earning_rules` needs none) — the unique partial `{ agent_id }` (`open: true`) on assignments first: it keeps one current cohort per partner when two processes recompute at once
 - [ ] After deploy, `POST /api/v2/admin/earning-cohorts/recompute` once (any head): places every approved partner (the default cohort until HO adds others). Orders placed before a partner's first placing keep the onboarding-cohort commission plans
 - [ ] HO grants itself nothing new: `earning.read` / `earning.write` go to heads and admins like `gigs.*`
-- [ ] Nothing in shared collections: only `vistaar_v2_earning_cohorts` (rules in its `rules[]`), `vistaar_v2_earning_assignments` and `vistaar_v2_agents.earning_cohort` are written
+- [ ] Nothing in shared collections: only `vistaar_v2_earning_cohorts` (rules in its `rules[]`), `vistaar_v2_earning_assignments`, `vistaar_v2_earning_window` (one row, `_id` index only — which process runs the day's cohort-date recompute) and `vistaar_v2_agents.earning_cohort` are written
 - [ ] **Earning rules moved into the cohorts (2026-10-22)** — `vistaar_v2_earning_rules` → `vistaar_v2_earning_cohorts.rules[]`; the API is unchanged. Until a cohort has `rules[]` the new code sees no rules there (events pay nothing), so:
   1. Just **before** the deploy (the old code never reads `rules[]`): `node dist/scripts/migrate-earning-rules-into-cohorts.js` (dry run — check the per-cohort add / replace / keep lines and that no rule is reported without a cohort), then `--apply`.
   2. Build the `{ 'rules._id' }` index (above), then deploy.
@@ -319,6 +319,13 @@ Build `pnpm install --frozen-lockfile && pnpm build`, then either:
 
 - **Kubernetes / several hosts:** `node dist/main` — one process per pod, scale pods.
 - **One VM:** `pnpm start:cluster` — one worker per core on the same port, a dead worker is restarted.
+
+`main.ts` believes `X-Forwarded-For` only from private addresses (the load
+balancer, ingress) and Cloudflare's ranges (`core/http/trusted-proxies.ts`), so
+`req.ip` — which the per-IP limit on public routes keys on — is the real caller
+however many of those hops sit in front (beta: Cloudflare → Render). A new proxy
+in front with a **public** address (another CDN) must be added to that list, or
+every caller shares its IP.
 
 **No Redis.** Caching is in each server process's memory (lists ≤ 60 s,
 cohort ≤ 60 s, signed image URLs ≤ 45 min) — each process lags an HO edit by

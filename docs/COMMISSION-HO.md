@@ -147,7 +147,7 @@ requested ──approve──► approved ──paid (UTR)──► paid
 | GET | `/admin/withdrawals?status=&agent_id=&page=&limit=` | a queue (`requested`, `approved`) oldest first; anything else newest first |
 | GET | `/admin/withdrawals/totals` | cards: requested, approved (to pay), paid this month, paid this FY |
 | GET | `/admin/withdrawals/:id` | one |
-| POST | `/admin/withdrawals/:id/approve` | balance and bank proof checked again; TDS rate fixed |
+| POST | `/admin/withdrawals/:id/approve` | checked again as at request (partner approved and active, bank proof verified, no bank change waiting, balance); TDS rate fixed |
 | POST | `/admin/withdrawals/:id/reject` | `{ "reason": "…" }` (shown to the partner); requested or approved |
 | GET | `/admin/withdrawals/payout-file` | approved withdrawals as a bank CSV |
 | POST | `/admin/withdrawals/:id/paid` | `{ "utr": "SBIN526287123456", "paid_at": "…" }` (`paid_at` optional, not in the future) |
@@ -164,19 +164,20 @@ bank sends.
 content, skipped[] }` — save `content` as `file_name`. Columns: `withdrawal_id, agent_id,
 partner_name, account_holder, account_number, ifsc, amount, tds, net_amount, requested_at`
 (generic; send the bank's own template when Finance picks a bank and it is mapped). An
-approved withdrawal whose form has no account number / IFSC is in `skipped` with the
-reason, not in the file. At most 500 per file. The file holds full account numbers: keep it
+approved withdrawal is in `skipped` with the reason, not in the file, when the form has no
+account number / IFSC, the bank proof is not verified, a bank change is waiting, or the
+account's last 4 digits are no longer the withdrawal's `account_last4` (reject it; the
+partner asks again). At most 500 per file. The file holds full account numbers: keep it
 behind `payouts.manage` and do not store it in the browser.
 
 **Batch paid** answers `{ paid, results: [ { id, ok, error } ] }` — each line succeeds or
 fails on its own (e.g. already paid).
 
 **Bank account change** (ONBOARDING-HO.md §3): while a partner's new account waits for HO,
-the partner cannot ask for a new withdrawal (`409 BANK_CHANGE_PENDING`). Withdrawals already
-requested or approved are not touched, and approve and the bank file still work. Approve
-and the bank file read the account on the form at that moment: once a change is approved,
-the bank file pays the new account, even for a withdrawal approved before it (its
-`account_last4` still shows the old one).
+neither the partner can ask for a withdrawal nor HO approve one (`409 BANK_CHANGE_PENDING`),
+and the bank file leaves approved ones out. Approve fixes `account_last4` from the form;
+the bank file pays only that account, so a withdrawal approved before a change was approved
+stays in `skipped` until HO rejects it and the partner asks again.
 
 ## 3. TDS and Form 16A
 

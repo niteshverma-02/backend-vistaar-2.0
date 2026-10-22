@@ -61,7 +61,7 @@ Every answer is the envelope `{ success, data }`; lists are
 | `state` | full state name, any case — `madhya pradesh` |
 | `district` | any case — `bhopal` |
 | `due` | `true` = open leads whose follow-up is due by the end of today (IST), overdue included |
-| `from` / `to` | added on or after / on or before. Send **IST** date-times: `2026-10-13T00:00:00+05:30`, `2026-10-13T23:59:59.999+05:30` (a bare `YYYY-MM-DD` is read as a UTC day) |
+| `from` / `to` | added on or after / on or before. Send **IST** date-times: `2026-10-13T00:00:00+05:30`, `2026-10-13T23:59:59.999+05:30` (a bare `YYYY-MM-DD` is the whole IST day) |
 | `sort` | `-created_at` (default) · `created_at` · `±last_order_at` · `±next_follow_up` (anything else = 400). Sorting by `next_follow_up` lists only leads that have one |
 | `page`, `limit` | `limit` ≤ 200 |
 

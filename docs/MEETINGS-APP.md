@@ -110,7 +110,7 @@ exactly `POST /leads` (`LEADS-APP.md`): `phone` (must be the attendee's),
 - Already your lead or customer → `400`, nothing changes (capture is for new farmers;
   show the Customer / Lead badge from `stage` instead of the capture button).
 - Errors are the leads ones: `FARMER_TAKEN`, `NOT_A_FARMER`, `CONSENT_OUTDATED`,
-  `SELF_LEAD`, `INVALID_PHONE`, `LEADS_NOT_CONFIGURED`, …
+  `SELF_LEAD`, `PARTNER_NUMBER`, `INVALID_PHONE`, `LEADS_NOT_CONFIGURED`, …
 - `:phone` not on the meeting's list → `404`; body `phone` ≠ `:phone` → `400`.
 - If the meeting is cancelled at that moment, the lead still stands; `meeting`
   comes back as it is.

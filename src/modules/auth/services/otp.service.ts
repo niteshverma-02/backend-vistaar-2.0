@@ -11,6 +11,9 @@ const TEN_MINUTES = 10 * 60 * 1000;
 const SEND_LIMIT = 3;
 /** 5 guesses per number per 10 minutes — a 4-digit code has 10,000. */
 const VERIFY_LIMIT = 5;
+const ONE_DAY = 24 * 60 * 60 * 1000;
+/** 15 guesses per number per day — without it, 5 per 10 min is ~720 a day. */
+const VERIFY_DAILY_LIMIT = 15;
 const SUCCESS_MESSAGE = 'OTP verified successfully';
 
 /**
@@ -119,10 +122,28 @@ export class OtpService {
         [`retry_after_seconds=${wait}`],
       );
     }
+    const dayKey = `${key}:day`;
+    const dayWait = await this.attempts.take(
+      dayKey,
+      VERIFY_DAILY_LIMIT,
+      ONE_DAY,
+      new Date(),
+    );
+    if (dayWait) {
+      throw tooMany(
+        'OTP_LIMIT',
+        'Too many wrong tries today. Please try again later.',
+        [`retry_after_seconds=${dayWait}`],
+      );
+    }
+    const resetAll = () =>
+      Promise.all([this.attempts.reset(key), this.attempts.reset(dayKey)]);
 
     if (this.isTestNumber(phone)) {
-      if (this.testCode && otp === this.testCode)
-        return this.attempts.reset(key);
+      if (this.testCode && otp === this.testCode) {
+        await resetAll();
+        return;
+      }
       throw unauthorized(
         'OTP_INVALID',
         'The OTP is wrong. Please check it and try again.',
@@ -147,7 +168,7 @@ export class OtpService {
           `OTP verify passed on HTTP ${res.status} without an otp_verified flag: ${shapeOf(res.body)}`,
         );
       }
-      await this.attempts.reset(key);
+      await resetAll();
       return;
     }
     throw unauthorized(

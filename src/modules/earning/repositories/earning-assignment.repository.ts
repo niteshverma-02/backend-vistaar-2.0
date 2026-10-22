@@ -4,6 +4,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, mongo } from 'mongoose';
 
+import { isDuplicateKey } from '@common/utils/mongo-error.util';
+
 import type { AssignmentReason } from '../earning.domain';
 import {
   EarningAssignment,
@@ -23,9 +25,6 @@ export interface CohortMove {
 const DUPLICATE_KEY = 11000;
 /** Far above one partner's history; only a bound on a runaway read. */
 const HISTORY_CAP = 500;
-
-const isDuplicateKey = (error: unknown): boolean =>
-  error instanceof mongo.MongoServerError && error.code === DUPLICATE_KEY;
 
 @Injectable()
 export class EarningAssignmentRepository {
@@ -84,16 +83,6 @@ export class EarningAssignmentRepository {
           'agent_id' | 'cohort_id' | 'from' | 'to'
         >[]
       >()
-      .exec();
-  }
-
-  /** The stretch a partner was in at `at` (the latest that began by then). */
-  at(agentId: string, at: Date): Promise<{ cohort_id: string } | null> {
-    return this.model
-      .findOne({ agent_id: agentId, from: { $lte: at } })
-      .sort({ from: -1 })
-      .select({ _id: 0, cohort_id: 1 })
-      .lean<{ cohort_id: string } | null>()
       .exec();
   }
 

@@ -18,10 +18,6 @@ const TIMEOUT_MS = 10_000;
 const ENDPOINTS = {
   /** Public and key-only: answers for a Key ID with no secret. */
   razorpay: 'https://api.razorpay.com/v1/preferences',
-  cashfree: {
-    live: 'https://api.cashfree.com/pg/orders/vistaar-credential-check',
-    test: 'https://sandbox.cashfree.com/pg/orders/vistaar-credential-check',
-  },
   phonepe: {
     live: 'https://api.phonepe.com/apis/identity-manager/v1/oauth/token',
     test: 'https://api-preprod.phonepe.com/apis/pg-sandbox/v1/oauth/token',
@@ -47,7 +43,8 @@ export class GatewayVerifier {
         case 'razorpay':
           return await this.razorpay(fields);
         case 'cashfree':
-          return await this.cashfree(mode, fields);
+          // Keyless: `submit` refuses Cashfree keys, so none reach a check.
+          return { ok: false, message: 'Cashfree takes no keys here.' };
         case 'phonepe':
           return await this.phonepe(mode, fields);
       }
@@ -69,22 +66,6 @@ export class GatewayVerifier {
     const url = `${ENDPOINTS.razorpay}?key_id=${encodeURIComponent(fields.key_id)}`;
     const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
     return this.read('razorpay', res.status, res.ok);
-  }
-
-  private async cashfree(
-    mode: CredentialMode,
-    fields: Record<string, string>,
-  ): Promise<VerifyResult> {
-    const res = await fetch(ENDPOINTS.cashfree[mode], {
-      headers: {
-        'x-client-id': fields.app_id,
-        'x-client-secret': fields.secret_key,
-        'x-api-version': '2023-08-01',
-      },
-      signal: AbortSignal.timeout(TIMEOUT_MS),
-    });
-    // A made-up order id: 404 means the keys were accepted.
-    return this.read('cashfree', res.status, res.ok || res.status === 404);
   }
 
   private async phonepe(

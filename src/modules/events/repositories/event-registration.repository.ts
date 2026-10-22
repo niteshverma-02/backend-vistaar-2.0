@@ -1,15 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, mongo } from 'mongoose';
+import { Model } from 'mongoose';
+
+import { isDuplicateKey } from '@common/utils/mongo-error.util';
 
 import { registrationId } from '../events.domain';
 import {
   EventRegistration,
   type EventRegistrationDocument,
 } from '../schemas/event-registration.schema';
-
-const isDuplicateKey = (error: unknown): boolean =>
-  error instanceof mongo.MongoServerError && error.code === 11000;
 
 @Injectable()
 export class EventRegistrationRepository {

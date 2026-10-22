@@ -4,13 +4,14 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import {
   Model,
-  mongo,
   type QueryFilter,
   type UpdateQuery,
   type PipelineStage,
 } from 'mongoose';
 
 import { kmToRadians, type GeoPoint } from '@common/utils/geo.util';
+import { isDuplicateKey } from '@common/utils/mongo-error.util';
+import { escapeRegex } from '@common/utils/regex.util';
 
 import type { Stage } from '../agents.domain';
 import {
@@ -47,17 +48,13 @@ export interface AgentListFilter {
   agent_ids?: string[];
   /** Name (preview), phone prefix, `VST-` id or `PII-` id. */
   q?: string;
+  /** Signed up at or after. */
   from?: Date;
+  /** Signed up before. */
   to?: Date;
   /** Unverified numbers are noise for the desk; shown only when asked. */
   include_unverified?: boolean;
 }
-
-const isDuplicateKey = (error: unknown): boolean =>
-  error instanceof mongo.MongoServerError && error.code === 11000;
-
-const escapeRegex = (value: string): string =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 @Injectable()
 export class AgentRepository {
@@ -499,7 +496,7 @@ export class AgentRepository {
     if (filter.from || filter.to) {
       query.created_at = {
         ...(filter.from ? { $gte: filter.from } : {}),
-        ...(filter.to ? { $lte: filter.to } : {}),
+        ...(filter.to ? { $lt: filter.to } : {}),
       };
     }
     const q = filter.q?.trim();

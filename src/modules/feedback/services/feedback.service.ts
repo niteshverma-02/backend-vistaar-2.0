@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { tooMany } from '@common/errors/api-error';
+import { istDayStart } from '@common/utils/ist-day.util';
 import { AgentsService } from '@modules/agents/services/agents.service';
 import { CountersService } from '@modules/counters/services/counters.service';
 import { SettingsService } from '@modules/settings/services/settings.service';
@@ -17,7 +18,6 @@ import {
   cleanReasons,
   followUpDueAt,
   formatSuggestionRef,
-  istDayStart,
   npsBucket,
   productKey,
   withDefaults,

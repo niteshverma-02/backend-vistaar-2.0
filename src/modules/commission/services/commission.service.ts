@@ -4,10 +4,10 @@ import { PageResult } from '@common/http/page-result';
 import { TtlCache } from '@common/utils/ttl-cache';
 import {
   addMonths,
+  istDate,
   istMonthKey,
   istMonthStart,
 } from '@common/utils/ist-day.util';
-import { istDate } from '@modules/attendance/attendance.domain';
 import {
   AgentsService,
   type AgentRecord,
@@ -345,7 +345,15 @@ export class CommissionService {
     ]);
     const payouts = withdrawals
       .filter((w) => w.status === 'paid' && w.paid_at)
-      .map((w) => ({ id: w._id, amount: w.amount, paid_at: w.paid_at! }))
+      .map((w) => ({
+        id: w._id,
+        amount: w.amount,
+        paid_at: w.paid_at!,
+        covers_to:
+          w.approved_at && w.approved_at > w.paid_at!
+            ? w.approved_at
+            : undefined,
+      }))
       .sort((a, b) => a.paid_at.getTime() - b.paid_at.getTime());
     const open = withdrawals
       .filter((w) => OPEN_STATUSES.includes(w.status))
