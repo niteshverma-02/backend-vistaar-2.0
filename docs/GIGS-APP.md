@@ -7,7 +7,8 @@ tasks (`TODAY-APP.md`), My Story's invite picker (`STORIES-APP.md`) and My
 Performance (`MY-PERFORMANCE-APP.md`).
 
 Every route takes `Authorization: Bearer <Vistaar access token>`. A gig that is not
-open for your cohort and not yours answers `404`.
+open for you (your cohort and your earning cohort, see *Tabs*) and not yours answers
+`404`.
 
 | Method | Path | Body | Returns |
 |---|---|---|---|
@@ -57,7 +58,7 @@ reopens it; check-in (flagged `late`) and submit still work.
 
 | `tab` | Gigs | Order |
 |---|---|---|
-| `available` (default) | open, not started, for your cohort (a gig with no cohorts is for everyone), and in your state when both states are known | nearest venue first (from your registered location); gigs without a pinned venue after, soonest first |
+| `available` (default) | open, not started, for your cohort **and** your earning cohort (HO may target either list; an empty list is for everyone), and in your state when both states are known | nearest venue first (from your registered location); gigs without a pinned venue after, soonest first |
 | `mine` | yours: `accepted`, `checked_in`, `submitted` | soonest first |
 | `history` | yours: `approved`, `rejected`, `cancelled` | latest first |
 
@@ -223,7 +224,7 @@ be signed) — reload the gig for fresh ones. Empty on a gig that is not yours.
 | `FILE_TOO_LARGE` | 400 | Photo over 5 MB |
 | `MEDIA_NOT_FOUND` | 400 | Photo not uploaded (or wrong type / folder) |
 | `PARTNER_NOT_APPROVED` / `ACCOUNT_BLOCKED` | 403 | Accept before approval / when blocked. Accepting a gig you already hold (any later step) answers it as it is |
-| `NOT_FOUND` | 404 | Not your gig and not open for your cohort |
+| `NOT_FOUND` | 404 | Not your gig and not open for your cohort / earning cohort |
 | `GIG_TAKEN` | 409 | Another partner took it first |
 | `GIG_CLOSED` | 409 | The gig's status does not allow it (see *Status*), or it changed meanwhile — reload |
 | `TOO_MANY_REQUESTS` | 429 | More than 30 calls a minute to one write route |

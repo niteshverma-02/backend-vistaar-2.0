@@ -12,7 +12,10 @@ import {
   AgentsService,
   type AgentRecord,
 } from '@modules/agents/services/agents.service';
-import { DEFAULT_COHORT_ID } from '@modules/earning/earning.domain';
+import {
+  DEFAULT_COHORT_ID,
+  commissionOffIn,
+} from '@modules/earning/earning.domain';
 import {
   EarningCohortsService,
   type EarningAssignmentRow,
@@ -33,10 +36,12 @@ import { StorageService } from '@modules/uploads/services/storage.service';
 import {
   buildBook,
   earningPlanIn,
+  inheritReasonOf,
   quarterMonths,
   UNKNOWN_GST_RATE,
   type Book,
   type CommissionStatus,
+  type InheritReason,
   type LedgerRow,
   type OrderFact,
   type PlanInherit,
@@ -138,6 +143,8 @@ export interface MyPlan {
   earning_cohort: { id: string; name: string; since: Date } | null;
   /** The cohort has no plan of its own: whose rates apply (`null` = its own). */
   inherits: PlanInherit | null;
+  /** Why: HO switched the cohort's commission off this month, or it has no plan; `null` = its own. */
+  inherits_reason: InheritReason | null;
   plan_id: string | null;
   kind: PlanKind;
   draft: boolean;
@@ -435,7 +442,12 @@ export class CommissionService {
       this.plans.termsFor(partner.cohort),
     ]);
     if (!plans.some((p) => p.cohort === partner.cohort)) {
-      plans.unshift({ ...own(month), label: partner.cohort, inherits: null });
+      plans.unshift({
+        ...own(month),
+        label: partner.cohort,
+        inherits: null,
+        inherits_reason: null,
+      });
     }
     const cohort = current.since ? current.cohort : null;
     const plan = cohort ? earningPlanIn(cohort._id, month, saved) : null;
@@ -444,6 +456,13 @@ export class CommissionService {
       terms.min_order_value !== null
         ? (earningPlanIn(DEFAULT_COHORT_ID, month, saved) ?? own(month))
         : null;
+    const inherits: PlanInherit | null = !cohort
+      ? null
+      : !plan
+        ? 'partner_type'
+        : plan.cohort === cohort._id
+          ? null
+          : 'ec_default';
     return {
       my_cohort: partner.cohort,
       month,
@@ -452,13 +471,13 @@ export class CommissionService {
           cohort && current.since
             ? { id: cohort._id, name: cohort.name, since: current.since }
             : null,
-        inherits: !cohort
-          ? null
-          : !plan
-            ? 'partner_type'
-            : plan.cohort === cohort._id
-              ? null
-              : 'ec_default',
+        inherits,
+        inherits_reason: inheritReasonOf(
+          inherits,
+          !!cohort &&
+            cohort._id !== DEFAULT_COHORT_ID &&
+            commissionOffIn(cohort.commission_off, month),
+        ),
         plan_id: terms.plan_id,
         kind: terms.kind,
         draft: terms.draft,

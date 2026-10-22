@@ -48,7 +48,27 @@ saved (worked out right after the answer; a few seconds for 10,000 partners).
   `lost`; a lead is won (first order); they remove a lead; HO transfers a farmer (both
   partners); HO adds, edits conditions of, reorders or archives a cohort (everyone).
 - A lapsed hold still counts (the farmer stays the partner's until another partner
-  takes them over), so a partner does not drop out of a cohort just by time passing.
+  takes them over), so a partner does not drop out of a cohort just by time passing —
+  unless HO gave the cohort dates (next point).
+- **Dates (2026-10-22):** a cohort may have a `starts_on` and / or `ends_on` — IST
+  calendar days, **both included**; `null` = open on that side. It takes partners only
+  while **running** (`window: "running"`); `upcoming` and `ended` cohorts are skipped
+  in the priority order, so their partners fall to the next cohort that takes them
+  (often `ec_default`). From the boundary day on, an ended (or not yet started) cohort
+  pays nothing, exactly as an archived one: coin / gig rules, the meeting-gig payout and
+  the app's "my plan" come at once from `ec_default`; order commission follows the
+  partner's stretch, so it switches when they are moved (next point). A cohort with
+  dates stays **active** (it is not archived when it ends); archive it when it is over
+  for good.
+- **How partners move on the day** (there is no scheduler): the first read of the
+  cohorts on a new IST day in each server process notices a cohort that started or
+  ended since the last look, and recomputes every partner once in the background
+  (`reason: "cohort_window"`). A process that gets no traffic looks once an hour; a
+  process that just started (or woke) recomputes once if any active cohort has dates.
+  So the move lands within minutes of the first request after IST midnight, at most an
+  hour later. Commission follows the stretch the partner was in when an order was
+  placed, so an order placed in those first minutes after midnight stays with the old
+  cohort.
 - Every stretch a partner spends in a cohort is kept (`history`), because commission
   follows the cohort the partner was in **when the order was placed**.
 
@@ -88,6 +108,11 @@ saved (worked out right after the answer; a few seconds for 10,000 partners).
   "priority": 1,                    // 1 = looked at first; ec_default's (0) is ignored — always last
   "status": "active",               // active · archived
   "meeting_gig_payout": 300,        // ₹; null = settings gig_payout
+  "starts_on": "2026-11-01",        // IST day, included; null = open (always null on ec_default)
+  "ends_on": "2026-11-30",          // IST day, included; null = open
+  "window": "running",              // at IST today: upcoming · running · ended; null = no dates
+  "commission_enabled": true,       // its own commission plan is on this IST month (false = ec_default's)
+  "commission_off": [],             // months it was off: [{ "from": "2026-11", "to": null }], both included, to null = still off
   "version": 3,
   "is_default": false,
   "partners_count": 42,             // approved partners in it now
@@ -97,7 +122,10 @@ saved (worked out right after the answer; a few seconds for 10,000 partners).
 ```
 
 `ec_default`'s `conditions` is `[]` and its `summary` is "Every partner". A
-`summary` shortens a long list ("462001, … +1,994 more").
+`summary` shortens a long list ("462001, … +1,994 more"), and ends with the dates
+when there are any ("… · 1 Nov 2026 – 30 Nov 2026", "From 1 Nov 2026",
+"Until 30 Nov 2026"). Rows from before dates return `starts_on` / `ends_on` /
+`window` as `null`.
 
 ### `GET /admin/earning-cohorts/catalog`
 
@@ -139,7 +167,9 @@ case; `state` values kept upper case); `gte` / `lte` a number from 0.
     { "field": "state", "op": "any_of", "value": ["madhya pradesh"] },
     { "field": "open_leads", "op": "gte", "value": 10 }
   ],
-  "meeting_gig_payout": 300            // optional ₹ 0–1,00,000; null = settings gig_payout
+  "meeting_gig_payout": 300,           // optional ₹ 0–1,00,000; null = settings gig_payout
+  "starts_on": "2026-11-01",           // optional IST day YYYY-MM-DD, included; null / left out = open
+  "ends_on": "2026-11-30"              // optional, on or after starts_on; null / left out = open
 }
 ```
 
@@ -153,18 +183,31 @@ case; `state` values kept upper case); `gte` / `lte` a number from 0.
 - No condition at all is `400 VALIDATION_FAILED` — that cohort would take everyone.
 - Legacy: the old `filters` object is accepted **instead of** `conditions` (never
   both — `400 VALIDATION_FAILED`) and converted as above.
+- Dates: not `YYYY-MM-DD`, not a real day (`2026-02-30`), or `ends_on` before
+  `starts_on` → `400 VALIDATION_FAILED` ("The end date must be on or after the start
+  date."). A start in the past is allowed.
 
 ### `PATCH /admin/earning-cohorts/:id`
 
 `{ "version": 3, … }` plus any of `name`, `description` (`null` clears),
-`conditions`, `meeting_gig_payout` (`null` = settings). `conditions` is the
-**whole list** — it replaces what is stored, like a rule's conditions.
+`conditions`, `meeting_gig_payout` (`null` = settings), `starts_on`, `ends_on`
+(`null` clears; the one not sent stays, and the pair is checked together),
+`commission_enabled` (the cohort's own commission plan ON / OFF from this IST month —
+COMMISSION-HO.md, *Commission ON/OFF*; `{ version, commission_enabled }` alone is valid;
+the state it already has writes nothing and answers `200` with the cohort as it is).
+`conditions` is the **whole list** — it replaces what is stored, like a rule's
+conditions.
 
 - `version` is the one HO read; another screen saved meanwhile → `409 VERSION_CONFLICT`
   (reload and edit again).
-- `conditions` (or `filters`) on `ec_default` → `400 EARNING_COHORT_LOCKED`.
+- `conditions` (or `filters`) on `ec_default` → `400 EARNING_COHORT_LOCKED`; so is a
+  `starts_on` / `ends_on` date on it (`null` there is accepted and changes nothing, so
+  one form can send both fields for every cohort).
+- `commission_enabled: false` on `ec_default` → `400 EARNING_COHORT_LOCKED` (it is what
+  the others fall back to); `true` there changes nothing.
 - An archived cohort → `409 EARNING_ARCHIVED`.
-- Only a change to `conditions` moves partners; name, description and payout do not.
+- Only a change to `conditions` or the dates moves partners; name, description,
+  payout and the commission switch do not.
 - Legacy: `filters` is accepted when `conditions` is absent. Its keys **merge** over
   the stored legacy view (send only the filters that change; `[]` / `null` stops
   using one), and the merged result converts to conditions. A condition the legacy
@@ -176,6 +219,8 @@ case; `state` values kept upper case); `gte` / `lte` a number from 0.
 `POST /:id/archive` — nothing is deleted: past assignments and the commission of
 orders placed while partners were in it point at it. Its partners move to the next
 cohort that takes them (often the default). Its rules stay but never pay again.
+A gig that lists it in `earning_cohorts` keeps the id but nobody new matches it, and
+a new gig cannot name it (`400 EARNING_COHORT_NOT_FOUND`, GIGS-HO.md).
 `ec_default` → `400 EARNING_COHORT_LOCKED`; already archived → `409 EARNING_ARCHIVED`.
 An archived cohort cannot be restored (create a new one).
 
@@ -202,7 +247,8 @@ first looked at first (priority 1, 2, …). A list that misses one or names anot
 
 `reason`: `partner_approved` · `partner_unblocked` · `profile_changed` ·
 `holdings_changed` · `cohorts_changed` · `first_assignment` (an approved partner first
-seen after this feature shipped) · `recompute` (HO's button). A partner approved before
+seen after this feature shipped) · `recompute` (HO's button) · `cohort_window` (a
+cohort's start or end day came; see *Dates*). A partner approved before
 this feature is placed on their first app open, on this route, or on the recompute
 button — run it once after deploy.
 
@@ -263,6 +309,13 @@ the code knows; HO chooses its **conditions** and the **reward**.
   conditions all hold pays. So one event can pay a coin rule **and** a gig rule, never
   two coin rules (or two gig rules).
 - A rule with no conditions pays every time (put it last as a catch-all).
+- **ON/OFF (2026-10-22):** every rule has `enabled` (coin and gig ₹ alike). An **off**
+  rule never pays and is left out of the app's "how to earn" list, as if it were not
+  there — so the **next** matching rule of its kind in the cohort pays instead (switching
+  off a bonus rule falls back to the catch-all after it, not to nothing). It keeps its
+  place in the order and can be switched on again at any time; archive is the
+  permanent delete. Rewards an off rule already gave stay as they are on the desk.
+  Rules saved before the switch are on.
 - What a reward is worth is fixed when the event happens (amount and cohort then); it
   waits for HO on the rewards desk (below).
 - A new trigger needs code; conditions and rewards never do.
@@ -270,10 +323,10 @@ the code knows; HO chooses its **conditions** and the **reward**.
 | Method | Path | Capability | Body | Returns |
 |---|---|---|---|---|
 | `GET` | `/api/v2/admin/earning-rules/catalog` | `earning.read` | — | `Catalog` |
-| `GET` | `/api/v2/admin/earning-rules?cohort_id=&trigger=&include_archived=&page=&limit=` | `earning.read` | — | `PageResult<EarningRule>` — by cohort, then order |
+| `GET` | `/api/v2/admin/earning-rules?cohort_id=&trigger=&include_archived=&enabled=&page=&limit=` | `earning.read` | — | `PageResult<EarningRule>` — by cohort, then order; `enabled=true` / `false` = only on / only off, left out = both |
 | `GET` | `/api/v2/admin/earning-rules/:id` | `earning.read` | — | `EarningRule` |
 | `POST` | `/api/v2/admin/earning-rules` | `earning.write` | `CreateRule` | `201` `EarningRule` |
-| `PATCH` | `/api/v2/admin/earning-rules/:id` | `earning.write` | `{ version, name?, conditions?, reward? }` | `EarningRule` |
+| `PATCH` | `/api/v2/admin/earning-rules/:id` | `earning.write` | `{ version, name?, conditions?, reward?, enabled? }` | `EarningRule` |
 | `POST` | `/api/v2/admin/earning-rules/:id/archive` | `earning.write` | — | `EarningRule` — the delete |
 | `PUT` | `/api/v2/admin/earning-rules/order` | `earning.write` | `{ "cohort_id": "ec_…", "ids": [...] }` | `{ cohort_id, ids }` |
 
@@ -336,7 +389,8 @@ this table:
     { "field": "crops", "op": "any_of", "value": ["Paddy"] },
     { "field": "acreage", "op": "gte", "value": 2 }
   ],
-  "reward": { "kind": "coin", "amount": 20 }   // whole, 1–1,00,000 (coins, or ₹ for gig)
+  "reward": { "kind": "coin", "amount": 20 },  // whole, 1–1,00,000 (coins, or ₹ for gig)
+  "enabled": true                              // optional, default true — false = saved but off
 }
 ```
 
@@ -355,6 +409,7 @@ this table:
   "conditions": [ … ],
   "reward": { "kind": "coin", "amount": 20 },
   "order": 1, "status": "active", "version": 1,
+  "enabled": true,              // ON/OFF; always present (true on rules from before the switch)
   "summary": "Crops has any of Paddy · Acreage at least 2",
   "created_by": "…", "updated_by": "…", "archived_by": null, "archived_at": null,
   "created_at": "…", "updated_at": "…"
@@ -364,9 +419,12 @@ this table:
 - `PATCH` changes only what is sent; `conditions` is the whole list. The `trigger` and
   `cohort_id` never change — archive the rule and add a new one. Stale `version` →
   `409 VERSION_CONFLICT`; archived → `409 EARNING_ARCHIVED`.
+- The switch is a `PATCH` too: `{ "version": 3, "enabled": false }` alone is a valid
+  edit (same `version` check, `version` +1, `updated_by` = HO). The toggle in the list
+  sends the row's `version` and replaces the row with the answer. `null` is `400`.
 - Archive = the delete: the rule stops paying; rewards it already gave stay.
 - `PUT /order { cohort_id, ids }` takes every **active** rule of that cohort once
-  (all triggers together); otherwise `409 EARNING_ORDER_CHANGED`.
+  (all triggers together, **off ones included**); otherwise `409 EARNING_ORDER_CHANGED`.
 
 ## Rewards — the approval desk
 
@@ -473,8 +531,8 @@ any trigger key of the catalog; `agent_id` `VST-…`; `from` / `to` IST days
 
 | HTTP | `error.code` | When |
 |---|---|---|
-| 400 | `VALIDATION_FAILED` | body shape; a cohort with no condition (or no legacy filter), or with both shapes at once; a condition the catalog refuses (`details` lists them) |
-| 400 | `EARNING_COHORT_LOCKED` | conditions (or legacy filters) on, or archive of, `ec_default` |
+| 400 | `VALIDATION_FAILED` | body shape; a cohort with no condition (or no legacy filter), or with both shapes at once; a condition the catalog refuses (`details` lists them); a date not `YYYY-MM-DD` / not a real day, or `ends_on` before `starts_on` |
+| 400 | `EARNING_COHORT_LOCKED` | conditions (or legacy filters), a date or `commission_enabled: false` on, or archive of, `ec_default` |
 | 404 | `NOT_FOUND` | no such cohort, rule or partner |
 | 409 | `COHORT_EXISTS` | the key is taken (or `default`) |
 | 409 | `VERSION_CONFLICT` | edited on another screen since it was read |

@@ -68,17 +68,54 @@ it — reload").
   "payout": 250,                                 // optional, ₹ 0–1,00,000; left out or null = the taking partner's cohort rate (see Pay)
   "products": ["Humic acid 98%"],                // optional, ≤ 20, each ≤ 80
   "requirements": ["2 testimonials"],            // optional, ≤ 10, each ≤ 120 — shown to the partner
-  "cohorts": ["vistaar_agent"]                   // optional — cohort keys; empty = every partner
+  "cohorts": ["vistaar_agent"],                  // optional — cohort keys (partner types); empty = every partner
+  "earning_cohorts": ["ec_bhopal_belt"]          // optional, ≤ 20 — earning cohort ids; empty = every earning cohort (see Who sees it)
 }
 ```
 
 - The id is `GIG-000001` onwards.
-- Who sees it in the app: partners of the gig's `cohorts`, and of its `state` when both
-  the gig and the partner have one. Without `venue_point` there is no `far` flag and
-  the gig sorts after pinned ones. Partners see a new gig within a minute.
+- Who sees it in the app: see *Who sees it* below; also only partners of its `state`
+  when both the gig and the partner have one. Without `venue_point` there is no `far`
+  flag and the gig sorts after pinned ones. Partners see a new gig within a minute.
 - `PATCH` changes only what is sent; `null` clears `district`, `state`, `pincode`,
   `venue`, `venue_point`; `null` on any other field is `400`. A new `starts_at` must be in the future. A gig a
   partner gave back (or HO reopened) is open again and can be edited, not deleted.
+
+## Who sees it (cohorts AND earning cohorts, 2026-10-22)
+
+A gig has two independent target lists. A partner may see, open and take an open gig
+only when **both** let them in:
+
+| List | Matched against | Empty |
+|---|---|---|
+| `cohorts` | the partner type — onboarding cohort keys from `/admin/cohorts` (`vistaar_agent`, `shop_owner`, …) | every partner type |
+| `earning_cohorts` | the partner's **earning cohort now** — ids from `GET /admin/earning-cohorts` (`ec_…`, built from district / state / pincode / holdings; EARNINGS-HO.md) | every earning cohort |
+
+```
+(cohorts empty OR partner type in cohorts) AND (earning_cohorts empty OR partner's earning cohort in earning_cohorts)
+```
+
+- Example: a gig for the districts Sehore, Bhopal and Indore = an earning cohort with
+  that `district` condition, then `"earning_cohorts": ["ec_bhopal_belt"]`. Leave
+  `cohorts` empty to offer it to every partner type in those districts.
+- Create, and a `PATCH` that sends `earning_cohorts`, check that every id exists and is
+  **not archived** → else `400 EARNING_COHORT_NOT_FOUND` ("Earning cohort ec_x does not
+  exist or is archived."; `details` lists every bad id). Ids are kept once each, in the
+  order sent. `PATCH` with `[]` opens the gig to every earning cohort again.
+  `ec_default` ("Everyone else") is a valid target.
+- A partner not placed in an earning cohort yet (not approved) is in none: they do not
+  see a gig that lists earning cohorts.
+- The list is not re-checked later. If a listed cohort is archived afterwards, its
+  partners move on and nobody new matches it — edit the gig's `earning_cohorts`.
+- A cohort with dates (EARNINGS-HO.md, *Dates*) is a valid target whatever its
+  `window`: an `upcoming` one matches nobody until its start day, an `ended` one
+  matches nobody once its partners have moved (within an hour of the IST day turning,
+  usually minutes). Neither is refused; the portal may warn.
+- A partner moved to another earning cohort after taking the gig keeps it (the check is
+  at seeing / taking only).
+- Gigs posted before 2026-10-22 have no `earning_cohorts` on the row; every response
+  shows `[]` (every earning cohort).
+- Build the picker from `GET /admin/earning-cohorts` (active ones; `name` + `id`).
 
 ## Pay (earning cohorts, 2026-10-16)
 
@@ -101,8 +138,10 @@ it — reload").
 
 ## `POST /admin/gigs/:id/assign`
 
-Open gigs that have not started. The partner must be approved and active and in the
-gig's cohorts (each `400 VALIDATION_FAILED`, the message says which). The state and the
+Open gigs that have not started. The partner must be approved and active, in the
+gig's cohorts and in its earning cohorts (see *Who sees it*; each `400
+VALIDATION_FAILED`, the message says which — e.g. "This gig is not for this partner’s
+earning cohort. Change the gig’s earning cohorts first."). The state and the
 partner's other gigs that day are not checked. A partner who took it meanwhile →
 `409 GIG_TAKEN`. A cohort-paid gig fixes this partner's cohort rate (see *Pay*).
 
@@ -131,7 +170,8 @@ partner's other gigs that day are not checked. A partner who took it meanwhile �
   // + title, village, district, state, pincode, venue, starts_at, ends_at,
   //   expected_farmers, min_farmers, photos_required, payout (null = cohort-paid,
   //   not yet taken), payout_source ("gig" | "cohort"), products,
-  //   requirements, cohorts, agent_id, created_at, updated_at
+  //   requirements, cohorts, earning_cohorts ([] = every earning cohort, also on
+  //   gigs posted before 2026-10-22), agent_id, created_at, updated_at
 }
 ```
 
@@ -150,7 +190,8 @@ What to check before approving:
 
 `AdminGigRow` (list) = the row without `attendees`, `photos`, `releases`, plus
 `attendees_count`, `photos_count`, `partner_name` (profile name, else onboarding
-name, or `null`) and `missed`. The id is `_id`.
+name, or `null`) and `missed`. The id is `_id`. `earning_cohorts` is always there
+(`[]` on an old gig).
 
 ## `GET /admin/gigs/summary`
 
@@ -197,7 +238,8 @@ earning rules) are not gigs on this desk: HO approves them on the rewards desk
 
 | Code | Status | When |
 |---|---|---|
-| `VALIDATION_FAILED` | 400 | Bad body / filter, `from` after `to`, past `starts_at`, `ends_at` not after `starts_at`, assign outside the gig's cohorts, empty reason |
+| `VALIDATION_FAILED` | 400 | Bad body / filter (an `earning_cohorts` entry not shaped `ec_…`), `from` after `to`, past `starts_at`, `ends_at` not after `starts_at`, assign outside the gig's cohorts or earning cohorts, empty reason |
+| `EARNING_COHORT_NOT_FOUND` | 400 | Create / `PATCH` with an `earning_cohorts` id that does not exist or is archived |
 | `PARTNER_NOT_APPROVED` | 400 | Assign to a partner not approved or not active |
 | `NO_ADMIN_ACCESS` / `ROLE_NOT_ALLOWED` | 403 | No Vistaar access / no capability |
 | `NOT_FOUND` | 404 | No such gig or partner |
@@ -211,7 +253,9 @@ earning rules) are not gigs on this desk: HO approves them on the rewards desk
   district, partner; a *Missed* badge from `missed`.
 - **Post / edit** — the `CreateGig` form with a map pin for `venue_point`; defaults
   shown from settings; the payout field empty by default with the hint "Partner's
-  cohort rate"; delete only for never-taken gigs, else cancel with a reason.
+  cohort rate"; two pickers, "Partner types" (`cohorts`) and "Earning cohorts"
+  (`earning_cohorts`), both empty = everyone, with the hint "a partner must match
+  both"; delete only for never-taken gigs, else cancel with a reason.
 - **Review queue** — `status=submitted`; the drawer shows the map (venue pin +
   check-in point), flags, farmers with repeat-phone warnings, photos; approve / reject.
 - **Actions** — assign (partner picker), reopen, cancel.

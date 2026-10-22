@@ -36,6 +36,12 @@ export class EarningRule {
   @Prop({ type: Number, required: true }) order!: number;
   @Prop({ type: String, enum: COHORT_STATUSES, default: 'active' })
   status!: EarningStatus;
+  /**
+   * HO's ON/OFF switch: off never pays and is not shown in the app, but keeps
+   * its place in the order and can be switched on again (unlike archive).
+   * Absent on rules from before the switch: read through `ruleEnabled` (on).
+   */
+  @Prop({ type: Boolean, default: true }) enabled?: boolean;
   @Prop({ type: Number, default: 1 }) version!: number;
   @Prop({ type: String, required: true }) created_by!: string;
   @Prop({ type: String, required: true }) updated_by!: string;

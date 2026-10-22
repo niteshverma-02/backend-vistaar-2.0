@@ -1,16 +1,22 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, type OnModuleInit } from '@nestjs/common';
 
 import { badRequest, conflict, notFound } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
 import { istMonthKey } from '@common/utils/ist-day.util';
-import { DEFAULT_COHORT_ID } from '@modules/earning/earning.domain';
+import {
+  DEFAULT_COHORT_ID,
+  commissionOffIn,
+  type CommissionOffRange,
+} from '@modules/earning/earning.domain';
 import { EarningCohortsService } from '@modules/earning/services/earning-cohorts.service';
 import { CohortsService } from '@modules/onboarding/services/cohorts.service';
 
 import {
   defaultPlan,
+  inheritReasonOf,
   isEarningCohort,
   planSlabs,
+  type InheritReason,
   type PlanInEffect,
   type PlanInherit,
   type PlanKind,
@@ -40,14 +46,25 @@ export type PlanInEffectRow = PlanInEffect & {
   label: string;
   /** Earning cohorts with no plan of their own: whose rates apply; `null` = its own. */
   inherits: PlanInherit | null;
+  /** Why it inherits: its commission switched off that month, or no plan of its own; `null` = its own. */
+  inherits_reason: InheritReason | null;
 };
+
+/** Is this cohort's own commission switched off in this month? */
+type CommissionOff = (cohort: string, month: string) => boolean;
 
 export type PlanView = Omit<PlanRecord, '_id'> & { id: string };
 
 @Injectable()
-export class CommissionPlansService {
+export class CommissionPlansService implements OnModuleInit {
   private cached: { at: number; rows: PlanRecord[] } | null = null;
   private loading: Promise<PlanRecord[]> | null = null;
+  /** The cohorts' commission switches, held as long as the plans. */
+  private offCached: {
+    at: number;
+    ranges: Map<string, CommissionOffRange[]>;
+  } | null = null;
+  private offLoading: Promise<Map<string, CommissionOffRange[]>> | null = null;
 
   constructor(
     private readonly plans: CommissionPlanRepository,
@@ -55,13 +72,21 @@ export class CommissionPlansService {
     private readonly earning: EarningCohortsService,
   ) {}
 
+  /** A switch on this server is read at once, as a plan edit is (other servers: within the cache minute). */
+  onModuleInit(): void {
+    this.earning.onCommissionChange(() => {
+      this.offCached = null;
+    });
+  }
+
   /**
    * Every saved plan by cohort and month, from one snapshot — read once a
    * minute per process, not once per order.
    */
   async saved(): Promise<SavedPlans> {
+    const [rows, off] = await Promise.all([this.rows(), this.commissionOff()]);
     const byCohort = new Map<string, PlanRecord[]>();
-    for (const row of await this.rows()) {
+    for (const row of rows) {
       const list = byCohort.get(row.cohort) ?? [];
       list.push(row);
       byCohort.set(row.cohort, list);
@@ -70,6 +95,9 @@ export class CommissionPlansService {
       list.sort((a, b) => b.effective_from.localeCompare(a.effective_from));
     const memo = new Map<string, PlanInEffect | null>();
     return (cohort, month) => {
+      // Switched off: the month reads as if the cohort had no plan of its
+      // own, so every caller falls to ec_default's (`earningPlanIn`).
+      if (off(cohort, month)) return null;
       const key = planId(cohort, month);
       let terms = memo.get(key);
       if (terms === undefined) {
@@ -110,6 +138,7 @@ export class CommissionPlansService {
         ...(await this.termsFor(c._id))(month),
         label: c.label.en ?? c._id,
         inherits: null,
+        inherits_reason: null,
       })),
     );
   }
@@ -217,9 +246,10 @@ export class CommissionPlansService {
   }
 
   private async earningInEffect(month: string): Promise<PlanInEffectRow[]> {
-    const [cohorts, saved] = await Promise.all([
+    const [cohorts, saved, off] = await Promise.all([
       this.earning.all(),
       this.saved(),
+      this.commissionOff(),
     ]);
     const fallback = saved(DEFAULT_COHORT_ID, month);
     return cohorts
@@ -227,12 +257,15 @@ export class CommissionPlansService {
       .map((c): PlanInEffectRow => {
         const own = saved(c._id, month);
         const plan = own ?? (c._id === DEFAULT_COHORT_ID ? null : fallback);
+        const switchedOff = off(c._id, month);
         if (plan) {
+          const inherits = own ? null : 'ec_default';
           return {
             ...plan,
             cohort: c._id,
             label: c.name,
-            inherits: own ? null : 'ec_default',
+            inherits,
+            inherits_reason: inheritReasonOf(inherits, switchedOff),
           };
         }
         // Each partner earns on their own partner type's plan: no one set of slabs to show.
@@ -247,6 +280,7 @@ export class CommissionPlansService {
           draft: true,
           label: c.name,
           inherits: 'partner_type',
+          inherits_reason: inheritReasonOf('partner_type', switchedOff),
         };
       });
   }
@@ -276,6 +310,37 @@ export class CommissionPlansService {
     const row = await this.plans.findById(id);
     if (!row) throw notFound('This commission plan could not be found.');
     return row;
+  }
+
+  /**
+   * Earning cohorts' commission switches, from one read of the cohorts a
+   * minute (a book is worked out per partner, often for every partner at
+   * once). `ec_default` is never off: it is what the others fall back to.
+   */
+  private async commissionOff(): Promise<CommissionOff> {
+    let ranges = this.offCached?.ranges;
+    if (!ranges || Date.now() - (this.offCached?.at ?? 0) >= CACHE_MS) {
+      this.offLoading ??= this.earning
+        .all()
+        .then((cohorts) => {
+          const map = new Map(
+            cohorts
+              .filter((c) => (c.commission_off ?? []).length > 0)
+              .map((c) => [c._id, c.commission_off ?? []] as const),
+          );
+          this.offCached = { at: Date.now(), ranges: map };
+          return map;
+        })
+        .finally(() => {
+          this.offLoading = null;
+        });
+      ranges = await this.offLoading;
+    }
+    const held = ranges;
+    return (cohort, month) =>
+      isEarningCohort(cohort) &&
+      cohort !== DEFAULT_COHORT_ID &&
+      commissionOffIn(held.get(cohort), month);
   }
 
   private async rows(): Promise<PlanRecord[]> {

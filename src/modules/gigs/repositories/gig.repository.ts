@@ -44,6 +44,7 @@ const LIST = {
       'products',
       'requirements',
       'cohorts',
+      'earning_cohorts',
       'status',
       'agent_id',
       'accepted_at',

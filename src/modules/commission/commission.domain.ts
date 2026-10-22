@@ -83,6 +83,19 @@ export interface PlanInEffect extends PlanTerms {
 export const PLAN_INHERITS = ['ec_default', 'partner_type'] as const;
 export type PlanInherit = (typeof PLAN_INHERITS)[number];
 
+/**
+ * Why an earning cohort inherits in a month: HO switched its own commission
+ * off for that month (user, 2026-10-22), or it has no plan of its own by then.
+ */
+export const INHERIT_REASONS = ['commission_off', 'no_plan'] as const;
+export type InheritReason = (typeof INHERIT_REASONS)[number];
+
+export const inheritReasonOf = (
+  inherits: PlanInherit | null,
+  commissionOff: boolean,
+): InheritReason | null =>
+  inherits === null ? null : commissionOff ? 'commission_off' : 'no_plan';
+
 const bands = (low: number, mid: number, top: number): Slab[] => [
   { from: 0, to: 50_000, rate: low },
   { from: 50_000, to: 100_000, rate: mid },
@@ -318,7 +331,11 @@ export interface Book {
   withdrawable: number;
 }
 
-/** Saved plans by cohort and month: the one in effect, or `null` when none is saved by then. */
+/**
+ * Saved plans by cohort and month: the one in effect, or `null` when none is
+ * saved by then — or when the earning cohort's own commission is switched off
+ * that month, so it falls to `ec_default`'s exactly as with no plan.
+ */
 export type SavedPlans = (cohort: string, month: string) => PlanInEffect | null;
 
 /** The partner's earning cohorts, as commission reads them. */

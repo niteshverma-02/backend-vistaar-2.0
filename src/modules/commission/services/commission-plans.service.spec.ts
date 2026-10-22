@@ -2,7 +2,7 @@ import { addMonths, istMonthKey } from '@common/utils/ist-day.util';
 import type { EarningCohortsService } from '@modules/earning/services/earning-cohorts.service';
 import type { CohortsService } from '@modules/onboarding/services/cohorts.service';
 
-import { defaultPlan } from '../commission.domain';
+import { defaultPlan, earningPlanIn } from '../commission.domain';
 import type { CreatePlanDto } from '../dto/commission-plan.dto';
 import type {
   CommissionPlanRepository,
@@ -68,12 +68,10 @@ describe('CommissionPlansService', () => {
         { _id: 'consultant', label: { en: 'Consultant' } },
       ]),
     } as unknown as CohortsService;
-    // Partner-type plans only here: the earning cohorts are never read.
-    service = new CommissionPlansService(
-      repo,
-      cohorts,
-      {} as EarningCohortsService,
-    );
+    // Partner-type plans only here: no earning cohort has a switch.
+    service = new CommissionPlansService(repo, cohorts, {
+      all: jest.fn().mockResolvedValue([]),
+    } as unknown as EarningCohortsService);
   });
 
   it('uses the latest plan started by the month, else the PRD’s draft rates', async () => {
@@ -320,5 +318,117 @@ describe('CommissionPlansService — earning cohorts', () => {
       inherits: 'ec_default',
       slabs: [{ from: 0, to: null, rate: 5 }],
     });
+  });
+});
+
+describe('CommissionPlansService — commission switched off', () => {
+  const TWO_AGO = addMonths(THIS, -2);
+  let rows: PlanRecord[];
+  let cohorts: {
+    _id: string;
+    name: string;
+    status: string;
+    commission_off?: { from: string; to: string | null }[];
+  }[];
+  let all: jest.Mock;
+  let listeners: (() => void)[];
+  let service: CommissionPlansService;
+
+  beforeEach(() => {
+    rows = [
+      plan('ec_paddy', TWO_AGO, 8),
+      plan('ec_cotton', TWO_AGO, 9),
+      plan('ec_default', TWO_AGO, 5),
+    ];
+    cohorts = [
+      // Off last month only (switched on again this month).
+      {
+        _id: 'ec_paddy',
+        name: 'Paddy belt',
+        status: 'active',
+        commission_off: [{ from: LAST, to: LAST }],
+      },
+      // Off from this month on.
+      {
+        _id: 'ec_cotton',
+        name: 'Cotton',
+        status: 'active',
+        commission_off: [{ from: THIS, to: null }],
+      },
+      { _id: 'ec_wheat', name: 'Wheat', status: 'active' },
+      { _id: 'ec_default', name: 'Everyone else', status: 'active' },
+    ];
+    all = jest.fn(() => Promise.resolve(cohorts));
+    listeners = [];
+    service = new CommissionPlansService(
+      {
+        all: jest.fn(() => Promise.resolve(rows)),
+      } as unknown as CommissionPlanRepository,
+      {} as CohortsService,
+      {
+        all,
+        onCommissionChange: (l: () => void) => listeners.push(l),
+      } as unknown as EarningCohortsService,
+    );
+    service.onModuleInit();
+  });
+
+  it('a month inside an off range has no own plan: ec_default’s applies; before and after, its own', async () => {
+    const saved = await service.saved();
+    const rateOf = (cohort: string, month: string) =>
+      earningPlanIn(cohort, month, saved)?.slabs[0].rate;
+    // Before, inside, after the closed range.
+    expect(rateOf('ec_paddy', TWO_AGO)).toBe(8);
+    expect(rateOf('ec_paddy', LAST)).toBe(5);
+    expect(rateOf('ec_paddy', THIS)).toBe(8);
+    // Open range: this month and every later one, never the months before.
+    expect(rateOf('ec_cotton', LAST)).toBe(9);
+    expect(rateOf('ec_cotton', THIS)).toBe(5);
+    expect(rateOf('ec_cotton', NEXT)).toBe(5);
+    expect(saved('ec_cotton', THIS)).toBeNull();
+    // The fallback itself is never off.
+    expect(saved('ec_default', THIS)?.plan_id).toBe(`ec_default@${TWO_AGO}`);
+  });
+
+  it('in-effect rows say why a cohort inherits', async () => {
+    const reasons = async (month: string) =>
+      (await service.inEffect(month, 'earning')).map((p) => [
+        p.cohort,
+        p.inherits,
+        p.inherits_reason,
+      ]);
+    expect(await reasons(THIS)).toEqual([
+      ['ec_paddy', null, null],
+      ['ec_cotton', 'ec_default', 'commission_off'],
+      ['ec_wheat', 'ec_default', 'no_plan'],
+      ['ec_default', null, null],
+    ]);
+    expect((await reasons(LAST))[0]).toEqual([
+      'ec_paddy',
+      'ec_default',
+      'commission_off',
+    ]);
+    // Off with nothing on ec_default either: each partner's partner-type plan.
+    rows = [plan('ec_cotton', TWO_AGO, 9)];
+    (service as unknown as { cached: null }).cached = null;
+    expect((await reasons(THIS))[1]).toEqual([
+      'ec_cotton',
+      'partner_type',
+      'commission_off',
+    ]);
+  });
+
+  it('reads the switches once a minute, and again at once after a switch here', async () => {
+    await service.saved();
+    await service.saved();
+    expect(all).toHaveBeenCalledTimes(1);
+
+    // HO switches cotton back on this month: the open range goes.
+    cohorts[1] = { ...cohorts[1], commission_off: [] };
+    expect(listeners).toHaveLength(1);
+    listeners[0]();
+    const saved = await service.saved();
+    expect(all).toHaveBeenCalledTimes(2);
+    expect(earningPlanIn('ec_cotton', THIS, saved)?.slabs[0].rate).toBe(9);
   });
 });

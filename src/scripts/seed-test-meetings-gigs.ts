@@ -176,6 +176,7 @@ function gigs() {
     products: ['Humic acid 98%'],
     requirements: ['Banner photo', '2 testimonials (optional)'],
     cohorts: [] as string[],
+    earning_cohorts: [] as string[],
     agent_id: null as string | null,
     accepted_at: null as Date | null,
     assigned_by: null,

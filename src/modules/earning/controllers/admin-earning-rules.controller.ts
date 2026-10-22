@@ -49,7 +49,8 @@ export class AdminEarningRulesController {
   @Get()
   @Can('earning.read')
   @ApiOperation({
-    summary: 'Rules by cohort, then HO order; by cohort_id and trigger',
+    summary:
+      'Rules by cohort, then HO order; by cohort_id, trigger and enabled (on / off)',
   })
   list(
     @Query() query: EarningRulesQueryDto,
@@ -96,7 +97,10 @@ export class AdminEarningRulesController {
 
   @Patch(':id')
   @Can('earning.write')
-  @ApiOperation({ summary: 'Edit name, conditions or reward' })
+  @ApiOperation({
+    summary:
+      'Edit name, conditions or reward, or switch it on / off (`{ version, enabled }`)',
+  })
   @ApiConflictResponse({
     description: '`VERSION_CONFLICT` (stale version) / `EARNING_ARCHIVED`',
   })
