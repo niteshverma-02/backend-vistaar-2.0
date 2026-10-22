@@ -333,9 +333,8 @@ export class LeadsService implements OnModuleInit {
         ? 'linked'
         : (found?.link?.origin ??
           (holder === 'katyayani' ? 'linked' : 'created'));
-    // A missing owner refuses before anything is written.
     const owner =
-      origin === 'created' && !found?.lead ? await this.leadOwner() : null;
+      origin === 'created' && !found?.lead ? await this.leadOwner(by) : null;
     const piiId =
       known ?? (await this.piis.resolve(phone, COUNTRY_CODE)).pii_id;
 
@@ -1399,7 +1398,7 @@ export class LeadsService implements OnModuleInit {
         farmer,
         piiId,
         agentId,
-        owner ?? (await this.leadOwner()),
+        owner ?? (await this.leadOwner(agentId)),
         place.state,
         now,
       );
@@ -1470,21 +1469,25 @@ export class LeadsService implements OnModuleInit {
   }
 
   /**
-   * The HO portal head owns every farmer lead (user, 2026-10-13): the one
-   * active Offline Head, unless HO named an owner in the settings.
+   * The HO portal head owns a farmer lead (user, 2026-10-13): the owner HO
+   * named in the settings, else the one active Offline Head. With neither,
+   * the partner who added the farmer owns it (user, 2026-10-22) — adding a
+   * farmer never waits on HO's setup.
    */
-  private async leadOwner(): Promise<LeadOwner> {
+  private async leadOwner(partnerId: string): Promise<LeadOwner> {
     const { lead_owner_agent_id: named } = await this.settings.get();
-    const owner = named
+    const head = named
       ? (await this.access.staffByIds([named])).get(named)
       : await this.access.offlineHead();
-    if (!owner?.agent_id || !owner.is_active) {
-      throw serviceUnavailable(
-        'LEADS_NOT_CONFIGURED',
-        'Adding new farmers is not switched on yet: no single active Offline Head (USR-1037) to own the leads.',
+    if (head?.agent_id && head.is_active) {
+      return { agent_id: head.agent_id, ref: head.ref };
+    }
+    if (named) {
+      this.logger.warn(
+        `settings.lead_owner_agent_id ${named} is not an active staff account; ${partnerId} owns the new lead.`,
       );
     }
-    return { agent_id: owner.agent_id, ref: owner.ref };
+    return { agent_id: partnerId, ref: null };
   }
 
   /** Approved partners only; a blocked one is told so. */

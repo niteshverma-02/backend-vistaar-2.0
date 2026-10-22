@@ -63,19 +63,22 @@ export class OrgLeadsRepository {
       .exec();
   }
 
-  /** `lead_owner.agent_ref` is stored as an ObjectId, as ko-sales stores it. */
+  /**
+   * `lead_owner.agent_ref` is stored as an ObjectId, as ko-sales stores it;
+   * `null` when a partner owns the lead.
+   */
   async insertLead(
-    doc: { lead_owner: { agent_id: string; agent_ref: string } } & Record<
-      string,
-      unknown
-    >,
+    doc: {
+      lead_owner: { agent_id: string; agent_ref: string | null };
+    } & Record<string, unknown>,
   ): Promise<InsertResult> {
     const ref = doc.lead_owner.agent_ref;
     const lead = {
       ...doc,
       lead_owner: {
         agent_id: doc.lead_owner.agent_id,
-        agent_ref: Types.ObjectId.isValid(ref) ? new Types.ObjectId(ref) : null,
+        agent_ref:
+          ref && Types.ObjectId.isValid(ref) ? new Types.ObjectId(ref) : null,
       },
     };
     try {

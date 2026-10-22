@@ -240,12 +240,17 @@ partner never sets it).
 
 ## Lead owner
 
-A new farmer's org lead (`leads_v2.lead_owner`) is the **HO portal head**: the one active
-`agents_v2` account with role **USR-1037 (Offline Head)** — written `{ agent_id,
-agent_ref }`. Super Admin / Admin (USR-1000 / 1001) have full HO access but are never the
-owner. No owner (no active Offline Head, or more than one, and no setting) = adding **new**
-farmers answers `503 LEADS_NOT_CONFIGURED` in the app; linking an existing Katyayani farmer
-still works. Owning a lead gives no access; partners never reach `/admin/*`.
+A new farmer's org lead (`leads_v2.lead_owner`) is the **HO portal head**: the account named
+in settings `lead_owner_agent_id`, else the one active `agents_v2` account with role
+**USR-1037 (Offline Head)** — written `{ agent_id, agent_ref }`. Super Admin / Admin
+(USR-1000 / 1001) have full HO access but are never the owner.
+
+**No head (2026-10-22):** no setting and no single active Offline Head (none, or more than
+one), or a named account that is not active → the **partner who added the farmer** owns
+the lead: `{ agent_id: "VST-…", agent_ref: null }` (a partner is not in `agents_v2`, so
+there is no staff `_id`), the same id as `created_by`. Adding a farmer never stops on HO's
+setup any more — `LEADS_NOT_CONFIGURED` is no longer sent. Leads already written keep
+their owner. Owning a lead gives no access; partners never reach `/admin/*`.
 
 ## Rules
 

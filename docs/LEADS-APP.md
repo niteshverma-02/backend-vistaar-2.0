@@ -322,5 +322,4 @@ stay. A customer (`won`) cannot be removed — `409 STAGE_NOT_ALLOWED`.
 | `STAGE_CHANGED` | 409 | the lead changed meanwhile — reload it |
 | `PARTNER_NOT_APPROVED` / `ACCOUNT_BLOCKED` | 403 | |
 | `NOT_FOUND` | 404 | not one of your leads |
-| `LEADS_NOT_CONFIGURED` | 503 | adding **new** farmers is off (no lead owner set) — linking still works |
 | `LEADS_UNAVAILABLE` | 503 | try again |
