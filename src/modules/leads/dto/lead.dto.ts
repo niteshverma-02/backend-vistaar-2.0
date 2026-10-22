@@ -49,6 +49,37 @@ const MAX_ACRES = 10_000;
 /** ₹10 crore — far above any first order. */
 const MAX_EXPECTED_VALUE = 100_000_000;
 
+/** One crop on Add lead ("Add more" opportunity). */
+export class LeadOpportunityDto {
+  @ApiProperty({ example: 'Wheat' })
+  @Transform(trim)
+  @IsString()
+  @IsNotEmpty({ message: 'Pick the crop.' })
+  @MaxLength(60)
+  crop!: string;
+
+  @ApiProperty({ example: 3, description: 'Acres under this crop' })
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Enter acres.' })
+  @IsPositive({ message: 'Farm area must be more than 0 acres.' })
+  @Max(MAX_ACRES)
+  acreage!: number;
+
+  @ApiPropertyOptional({ enum: FOUND_VIA })
+  @IsOptional()
+  @IsIn(FOUND_VIA)
+  found_via?: FoundVia;
+
+  @ApiPropertyOptional({
+    example: 2500,
+    description: 'Expected first order for this crop, ₹',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(MAX_EXPECTED_VALUE)
+  expected_value?: number;
+}
+
 /**
  * Add a farmer (Lovable "Add lead"). Mandatory (TL, PRD): name, mobile,
  * village, the farm — at least one crop and an area above 0 — and the
@@ -125,6 +156,18 @@ export class AddFarmerDto {
   @Min(0)
   @Max(MAX_EXPECTED_VALUE)
   expected_value?: number;
+
+  @ApiPropertyOptional({
+    type: [LeadOpportunityDto],
+    description: `Add lead's Opportunity blocks, main crop first (1 to ${MAX_CROPS}, each crop once). When sent, the lead's crops, acreage (sum), found_via (the first one's) and expected_value (sum) come from them.`,
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(MAX_CROPS)
+  @ValidateNested({ each: true })
+  @Type(() => LeadOpportunityDto)
+  opportunities?: LeadOpportunityDto[];
 
   @ApiPropertyOptional({
     example: '2026-10-15T10:00:00+05:30',
@@ -267,6 +310,18 @@ export class UpdateLeadDto {
   @IsPositive({ message: 'Farm area must be more than 0 acres.' })
   @Max(MAX_ACRES)
   acreage?: number;
+
+  @ApiPropertyOptional({
+    type: [LeadOpportunityDto],
+    description: `Edit farmer's crop blocks, main crop first (1 to ${MAX_CROPS}, each crop once) — replaces the list and sets \`crops\` and \`acreage\` (sum); a crop's \`found_via\` / \`expected_value\` not sent are kept from before.`,
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(MAX_CROPS)
+  @ValidateNested({ each: true })
+  @Type(() => LeadOpportunityDto)
+  opportunities?: LeadOpportunityDto[];
 
   @ApiPropertyOptional({
     enum: LEAD_STAGES,

@@ -190,12 +190,22 @@ SMS, exactly as sign-in. The lead keeps when the mobile was verified
   "pincode": "462026",              // optional — sets state (and district if not sent)
   "found_via": "meeting",           // optional — meeting | referral | walk_in | self | campaign
   "expected_value": 2500,           // optional — expected first order, ₹
+  "opportunities": [                // optional — Add lead's "Add more" blocks, main crop first, 1–10, each crop once
+    { "crop": "Wheat", "acreage": 3, "found_via": "meeting", "expected_value": 2000 },
+    { "crop": "Chana", "acreage": 2, "expected_value": 500 }   // found_via / expected_value optional
+  ],
   "next_follow_up": "2026-10-15T10:00:00+05:30",   // optional — future only
   "note": "Needs a fungicide",      // optional — saved as the first activity
   "ex_employee_declared": true,     // required for ex-employee partners (12-month declaration)
   "location": { "lat": 23.21, "lng": 77.41, "accuracy_m": 20 }   // optional — the phone's GPS now (RADAR-APP.md)
 }
 ```
+
+With `opportunities`, the lead's `crops` (their crops, in order), `acreage` (sum),
+`found_via` (the first one's, else the one sent) and `expected_value` (sum of those given)
+come from them — still send `crops` / `acreage` (required) as the same list and total. Two
+blocks for one crop → `400 VALIDATION_FAILED` "Each opportunity needs a different crop."
+Resending a farmer with `opportunities` replaces the list; without, it is kept.
 
 Without a pincode the farmer's state is the partner's own state. Sending a mobile you
 already hold updates the farmer (name, village, crops, acreage, and any of `found_via`,
@@ -215,6 +225,10 @@ already).
   "district": "BHOPAL", "state": "MADHYA PRADESH", "pincode": "462026",
   "crops": ["Wheat"], "acreage": 5,
   "found_via": "meeting", "expected_value": 2500,
+  "opportunities": [                // Add lead's blocks; [] when added with one block (or before 2026-10-22)
+    { "crop": "Wheat", "acreage": 3, "found_via": "meeting", "expected_value": 2000 },
+    { "crop": "Chana", "acreage": 2, "found_via": null, "expected_value": 500 }
+  ],
   "stage": "prospect",              // prospect | contacted | interested | negotiation | won | lost
   "next_follow_up": "2026-10-15T04:30:00.000Z", "lost_reason": null,
   "consent_version": 1, "customer_at": null,
@@ -267,7 +281,10 @@ Only what is sent changes; `null` clears.
 - Each stage move is logged in `stage_history` and as a `stage_change` activity — the app
   does not write its own note (there is no `note` field; sending one is a 400).
 - Editing the farmer: a new `pincode` moves the state (and the district, unless one is
-  sent); `crops` replaces the list. Works for a customer too. Counts as work (renews the
+  sent); `crops` replaces the list (`opportunities` stay as added). Edit farmer's crop blocks go as
+  `opportunities: [{crop, acreage}]` (main first, each crop once): they replace the list and set `crops` and
+  `acreage` (sum); a crop already there keeps its `found_via` / `expected_value` unless sent, and the lead's own
+  `expected_value` is untouched. Works for a customer too. Counts as work (renews the
   hold).
 
 `POST /leads/:piiId/activities` `{ "type": "call|visit|whatsapp|note", "text": "…" }` (≤ 500).
