@@ -22,16 +22,7 @@ import { StoryFestivalRepository } from './repositories/story-festival.repositor
 import { StorySampleRepository } from './repositories/story-sample.repository';
 import { StoryStatRepository } from './repositories/story-stat.repository';
 import { StoryRepository } from './repositories/story.repository';
-import { StoryDesign, StoryDesignSchema } from './schemas/story-design.schema';
-import {
-  StoryFestival,
-  StoryFestivalSchema,
-} from './schemas/story-festival.schema';
-import { StorySample, StorySampleSchema } from './schemas/story-sample.schema';
-import {
-  StoryTemplateRow,
-  StoryTemplateSchema,
-} from './schemas/story-template.schema';
+import { STORY_CONTENT_MODEL } from './schemas/story-content.schema';
 import { StoryStat, StoryStatSchema } from './schemas/story-stat.schema';
 import { Story, StorySchema } from './schemas/story.schema';
 import { AdminStoriesService } from './services/admin-stories.service';
@@ -46,10 +37,7 @@ import { StorySamplesService } from './services/story-samples.service';
     MongooseModule.forFeature([
       { name: Story.name, schema: StorySchema },
       { name: StoryStat.name, schema: StoryStatSchema },
-      { name: StoryFestival.name, schema: StoryFestivalSchema },
-      { name: StorySample.name, schema: StorySampleSchema },
-      { name: StoryDesign.name, schema: StoryDesignSchema },
-      { name: StoryTemplateRow.name, schema: StoryTemplateSchema },
+      STORY_CONTENT_MODEL,
     ]),
     AccessModule,
     AgentsModule,
