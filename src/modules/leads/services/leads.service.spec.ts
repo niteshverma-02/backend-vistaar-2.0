@@ -333,6 +333,75 @@ describe('LeadsService.upsert', () => {
     });
   });
 
+  it('saves Add lead’s opportunities and takes the lead’s crops, acres, source and value from them', async () => {
+    const { service, rows } = setup();
+    const saved = await service.upsert(ME, {
+      ...dto,
+      opportunities: [
+        {
+          crop: 'wheat',
+          acreage: 3,
+          found_via: 'walk_in',
+          expected_value: 5000,
+        },
+        { crop: 'Chana', acreage: 2.5, found_via: 'referral' },
+        { crop: 'Soybean', acreage: 1.25, expected_value: 1500 },
+      ],
+    });
+    const row = firstArg(rows.insert);
+    expect(row).toMatchObject({
+      crops: ['Wheat', 'Chana', 'Soybean'],
+      acreage: 6.75,
+      found_via: 'walk_in',
+      expected_value: 6500,
+      opportunities: [
+        {
+          crop: 'Wheat',
+          acreage: 3,
+          found_via: 'walk_in',
+          expected_value: 5000,
+        },
+        {
+          crop: 'Chana',
+          acreage: 2.5,
+          found_via: 'referral',
+          expected_value: null,
+        },
+        {
+          crop: 'Soybean',
+          acreage: 1.25,
+          found_via: null,
+          expected_value: 1500,
+        },
+      ],
+    });
+    expect(saved.opportunities).toHaveLength(3);
+  });
+
+  it('refuses two opportunities for the same crop before anything is written', async () => {
+    const { service, rows } = setup();
+    await expect(
+      service.upsert(ME, {
+        ...dto,
+        opportunities: [
+          { crop: 'Wheat', acreage: 3 },
+          { crop: ' wheat ', acreage: 2 },
+        ],
+      }),
+    ).rejects.toMatchObject({ response: { error: 'VALIDATION_FAILED' } });
+    expect(rows.insert).not.toHaveBeenCalled();
+  });
+
+  it('keeps no opportunities for a lead added with one block', async () => {
+    const { service, rows } = setup();
+    await service.upsert(ME, dto);
+    expect(firstArg(rows.insert)).toMatchObject({
+      crops: ['Wheat'],
+      acreage: 5,
+      opportunities: [],
+    });
+  });
+
   it('links a Katyayani farmer from another channel without touching the org records', async () => {
     const { service, org, piis } = setup({
       known: 'PII-9',
@@ -738,6 +807,66 @@ describe('LeadsService — edit, remove, cards', () => {
       'L-5',
       expect.objectContaining({ first_name: 'ramesh', last_name: 'kumar' }),
     );
+  });
+
+  it('edits the crop blocks: crops and acres follow, a kept crop keeps its source and value', async () => {
+    const { service } = setup({
+      seed: [
+        farmerRow({
+          crops: ['Wheat', 'Chana'],
+          acreage: 5,
+          expected_value: 7000,
+          opportunities: [
+            {
+              crop: 'Wheat',
+              acreage: 3,
+              found_via: 'walk_in',
+              expected_value: 5000,
+            },
+            {
+              crop: 'Chana',
+              acreage: 2,
+              found_via: 'referral',
+              expected_value: 2000,
+            },
+          ],
+        }),
+      ],
+    });
+    const saved = await service.update(ME, 'PII-9', {
+      opportunities: [
+        { crop: 'wheat', acreage: 4 },
+        { crop: 'Soybean', acreage: 1.5 },
+      ],
+    });
+    expect(saved).toMatchObject({
+      crops: ['Wheat', 'Soybean'],
+      acreage: 5.5,
+      // The lead's own expected value is not an edit-farmer field.
+      expected_value: 7000,
+      opportunities: [
+        {
+          crop: 'Wheat',
+          acreage: 4,
+          found_via: 'walk_in',
+          expected_value: 5000,
+        },
+        {
+          crop: 'Soybean',
+          acreage: 1.5,
+          found_via: null,
+          expected_value: null,
+        },
+      ],
+    });
+    await expect(
+      service.update(ME, 'PII-9', {
+        opportunities: [
+          { crop: 'Wheat', acreage: 1 },
+          { crop: 'WHEAT', acreage: 1 },
+        ],
+      }),
+    ).rejects.toMatchObject({ response: { error: 'VALIDATION_FAILED' } });
   });
 
   it('edits only the partner’s copy for a farmer from another channel', async () => {

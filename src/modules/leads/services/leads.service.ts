@@ -39,6 +39,7 @@ import {
   type AddFarmerDto,
   type AdminLeadQueryDto,
   type FarmerLeadQueryDto,
+  type LeadOpportunityDto,
   type LeadPlacesQueryDto,
   type TransferLeadDto,
   type UpdateLeadDto,
@@ -57,6 +58,7 @@ import {
   farmerCopyOf,
   fixFits,
   followUpMoved,
+  fromOpportunities,
   holderOf,
   isOpenStage,
   leadDocOf,
@@ -70,6 +72,7 @@ import {
   type FarmerInput,
   type HoldEnd,
   type Holder,
+  type LeadOpportunity,
   type LeadOwner,
   type LeadStage,
   type LocationSource,
@@ -280,7 +283,8 @@ export class LeadsService implements OnModuleInit {
    * refusal comes before the first write; the partner's row is claimed before
    * the org records, so one farmer can never end up with two partners.
    */
-  async upsert(partner: PartnerRef, dto: AddFarmerDto): Promise<SavedLead> {
+  async upsert(partner: PartnerRef, input: AddFarmerDto): Promise<SavedLead> {
+    const { dto, opportunities } = this.withOpportunities(input);
     const agent = await this.requireWorkingPartner(partner.agent_id);
     const now = new Date();
     const { farmer_consent: consent } = await this.settings.get();
@@ -352,6 +356,7 @@ export class LeadsService implements OnModuleInit {
           origin,
           found_via: dto.found_via ?? null,
           expected_value: dto.expected_value ?? null,
+          opportunities: opportunities ?? [],
           next_follow_up: isOpenStage(fresh.stage) ? followUp : null,
           activities: note,
           consent: { version: consent.version, at: now },
@@ -377,6 +382,7 @@ export class LeadsService implements OnModuleInit {
         leadId: found?.lead?.lead_id ?? null,
         copy,
         dto,
+        opportunities,
         followUp,
         note,
         consentVersion: consent.version,
@@ -440,6 +446,7 @@ export class LeadsService implements OnModuleInit {
     leadId: string | null;
     copy: ReturnType<typeof farmerCopyOf>;
     dto: AddFarmerDto;
+    opportunities: LeadOpportunity[] | null;
     followUp: Date | null;
     note: LeadActivity[];
     consentVersion: number;
@@ -447,6 +454,7 @@ export class LeadsService implements OnModuleInit {
     now: Date;
   }): Promise<SavedLead['result']> {
     const { found, piiId, by, origin, copy, dto, followUp, note, now } = input;
+    const { opportunities } = input;
     const consent = { version: input.consentVersion, at: now };
     const claimed = found
       ? false
@@ -459,6 +467,7 @@ export class LeadsService implements OnModuleInit {
           ...copy,
           found_via: dto.found_via ?? null,
           expected_value: dto.expected_value ?? null,
+          opportunities: opportunities ?? [],
           stage: 'prospect',
           stage_history: [{ from: null, to: 'prospect', at: now, by }],
           next_follow_up: followUp,
@@ -485,6 +494,7 @@ export class LeadsService implements OnModuleInit {
         ...(dto.expected_value !== undefined && {
           expected_value: dto.expected_value,
         }),
+        ...(opportunities && { opportunities }),
         ...(followUp && { next_follow_up: followUp }),
         consent,
         ...(dto.ex_employee_declared && { ex_employee_declared_at: now }),
@@ -664,9 +674,16 @@ export class LeadsService implements OnModuleInit {
   async update(
     partner: PartnerRef,
     piiId: string,
-    dto: UpdateLeadDto,
+    input: UpdateLeadDto,
   ): Promise<LeadDetail> {
     const row = await this.mine(partner, piiId);
+    // Edit farmer's crop blocks: the lead's crops and acres follow them.
+    const blocks = input.opportunities?.length
+      ? this.editedOpportunities(row, input.opportunities)
+      : null;
+    const dto: UpdateLeadDto = blocks
+      ? { ...input, crops: blocks.crops, acreage: blocks.acreage }
+      : input;
     const now = new Date();
     const by = partner.agent_id;
     const set: Record<string, unknown> = {};
@@ -728,6 +745,7 @@ export class LeadsService implements OnModuleInit {
 
     const edit = await this.editOf(row, dto);
     if (edit) Object.assign(set, farmerCopyOf(edit.farmer, edit.place));
+    if (blocks) set.opportunities = blocks.opportunities;
 
     const window = await this.window();
     if (Object.keys(set).length === 0) return detailOf(row, window);
@@ -833,6 +851,41 @@ export class LeadsService implements OnModuleInit {
         `leads_v2 ${leadId}: follow_up_date not mirrored: ${String(error)}`,
       );
     }
+  }
+
+  /**
+   * Edit farmer's crop blocks over the lead's: a crop's source and expected
+   * value not sent stay as Add lead saved them.
+   */
+  private editedOpportunities(
+    row: VistaarLeadRecord,
+    sent: LeadOpportunityDto[],
+  ): { opportunities: LeadOpportunity[]; crops: string[]; acreage: number } {
+    const before = new Map(
+      (row.opportunities ?? []).map((o) => [o.crop.toLowerCase(), o]),
+    );
+    const lead = fromOpportunities(
+      sent.map((o) => {
+        const was = before.get(titleCase(o.crop).toLowerCase());
+        return {
+          crop: o.crop,
+          acreage: o.acreage,
+          found_via: o.found_via ?? was?.found_via ?? undefined,
+          expected_value: o.expected_value ?? was?.expected_value ?? undefined,
+        };
+      }),
+    );
+    if (!lead) {
+      throw badRequest(
+        'VALIDATION_FAILED',
+        'Each opportunity needs a different crop.',
+      );
+    }
+    return {
+      opportunities: lead.opportunities,
+      crops: lead.crops,
+      acreage: lead.acreage,
+    };
   }
 
   /** The farmer as edited, and where they are; `null` when no detail was sent. */
@@ -1450,6 +1503,36 @@ export class LeadsService implements OnModuleInit {
       );
     }
     return agent;
+  }
+
+  /**
+   * Add lead's opportunities set the lead's crops, acres (sum), source (the
+   * first one's) and expected value (sum); without them the dto is as sent.
+   */
+  private withOpportunities(input: AddFarmerDto): {
+    dto: AddFarmerDto;
+    opportunities: LeadOpportunity[] | null;
+  } {
+    if (!input.opportunities?.length) {
+      return { dto: input, opportunities: null };
+    }
+    const lead = fromOpportunities(input.opportunities);
+    if (!lead) {
+      throw badRequest(
+        'VALIDATION_FAILED',
+        'Each opportunity needs a different crop.',
+      );
+    }
+    const { opportunities, found_via, expected_value, ...farm } = lead;
+    return {
+      dto: {
+        ...input,
+        ...farm,
+        found_via: found_via ?? input.found_via,
+        expected_value: expected_value ?? input.expected_value,
+      },
+      opportunities,
+    };
   }
 
   /** State from the pincode, else the partner's own state (the farmer is local). */

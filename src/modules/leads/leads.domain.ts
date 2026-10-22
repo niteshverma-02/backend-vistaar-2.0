@@ -274,6 +274,57 @@ export function cropsOf(crops: readonly string[]): string[] {
   return out;
 }
 
+/** One crop the farmer grows — Add lead's Opportunity block. */
+export interface LeadOpportunity {
+  crop: string;
+  /** Acres under this crop. */
+  acreage: number;
+  found_via: FoundVia | null;
+  /** Expected first order for this crop, ₹. */
+  expected_value: number | null;
+}
+
+/**
+ * Add lead's opportunities (main crop first) and the lead's own fields from
+ * them: the crops in order, acres and ₹ summed, the first one's source.
+ * `null` when two name the same crop.
+ */
+export function fromOpportunities(
+  list: readonly {
+    crop: string;
+    acreage: number;
+    found_via?: FoundVia;
+    expected_value?: number;
+  }[],
+): {
+  opportunities: LeadOpportunity[];
+  crops: string[];
+  acreage: number;
+  found_via: FoundVia | null;
+  expected_value: number | null;
+} | null {
+  const opportunities = list.map((o) => ({
+    crop: titleCase(o.crop),
+    acreage: o.acreage,
+    found_via: o.found_via ?? null,
+    expected_value: o.expected_value ?? null,
+  }));
+  const crops = cropsOf(opportunities.map((o) => o.crop));
+  if (crops.length !== opportunities.length) return null;
+  const values = opportunities.flatMap((o) =>
+    o.expected_value === null ? [] : [o.expected_value],
+  );
+  return {
+    opportunities,
+    crops,
+    // Two decimals, as each acreage is taken.
+    acreage:
+      Math.round(opportunities.reduce((s, o) => s + o.acreage, 0) * 100) / 100,
+    found_via: opportunities[0]?.found_via ?? null,
+    expected_value: values.length ? values.reduce((s, v) => s + v, 0) : null,
+  };
+}
+
 /** First word, then the rest — lower case, as ko-sales' lead schema stores names. */
 export function splitName(name: string): {
   first_name: string;

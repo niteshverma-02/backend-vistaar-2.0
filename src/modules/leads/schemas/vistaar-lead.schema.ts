@@ -10,6 +10,7 @@ import {
   type ActivityType,
   type FoundVia,
   type HoldEnd,
+  type LeadOpportunity,
   type LeadStage,
   type LocationSource,
 } from '../leads.domain';
@@ -79,6 +80,13 @@ export class VistaarLead {
   @Prop({ type: String, enum: FOUND_VIA, default: null })
   found_via!: FoundVia | null;
   @Prop({ type: Number, default: null }) expected_value!: number | null;
+  /**
+   * Add lead's Opportunity blocks, main crop first — `crops`, `acreage`,
+   * `found_via` and `expected_value` above are their order / sums / first
+   * source. `[]` on leads added with one block only (or before 2026-10-22).
+   */
+  @Prop({ type: [SchemaTypes.Mixed], default: [] })
+  opportunities!: LeadOpportunity[];
 
   @Prop({ type: String, enum: LEAD_STAGES, default: 'prospect' })
   stage!: LeadStage;
