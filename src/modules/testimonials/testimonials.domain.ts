@@ -101,10 +101,6 @@ export const toContact = (tenDigits: string): string => `+91${tenDigits}`;
 /** A 24-hex Mongo id; anything else is a 400, not a 500 from the cast. */
 export const OBJECT_ID = /^[0-9a-f]{24}$/i;
 
-/** `q` matches words, name, phone or product key; escaped so `+91…` is literal. */
-export const escapeRegex = (s: string): string =>
-  s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
 export const MEDIA_URL = /^https:\/\/\S+$/i;
 
 // ---------------------------------------------------------------------------
@@ -159,12 +155,6 @@ export const ACTION_FROM: Record<HoAction, readonly SubmissionStatus[]> = {
   approve: ['submitted', 'rejected', 'removed'],
   reject: ['submitted'],
   remove: ['approved'],
-};
-
-export const ACTION_TO: Record<HoAction, SubmissionStatus> = {
-  approve: 'approved',
-  reject: 'rejected',
-  remove: 'removed',
 };
 
 export const canAct = (action: HoAction, from: SubmissionStatus): boolean =>

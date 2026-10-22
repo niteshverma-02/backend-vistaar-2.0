@@ -1,4 +1,5 @@
 import { isIndiaFix } from '@common/utils/geo.util';
+import { istDate } from '@common/utils/ist-day.util';
 
 /** Where a punch was made: a GPS fix, or the partner's registered village when GPS failed. */
 export const LOCATION_SOURCES = ['gps', 'registered'] as const;
@@ -38,11 +39,6 @@ export const MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
 /** Partners work in India; their day turns over at IST midnight, not the server's. */
 const IST_OFFSET_MS = 330 * 60_000;
-
-/** `YYYY-MM-DD` of the IST calendar day `at` falls in. */
-export function istDate(at: Date): string {
-  return new Date(at.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
-}
 
 /** `YYYY-MM` of the IST month `at` falls in. */
 export function istMonth(at: Date): string {

@@ -191,10 +191,33 @@ export class DraftOrderService {
       );
     }
 
+    const inserted = await this.drafts.insert(
+      partnerId,
+      draftOrderId(count),
+      write,
+    );
     return draftView(
-      await this.drafts.insert(partnerId, draftOrderId(count), write),
+      await this.keepOldest(partnerId, key, inserted),
       cart.pii_id,
     );
+  }
+
+  /**
+   * The queue holds on one instance only: a save on another may have started
+   * the same customer's draft meanwhile. Every racer keeps the oldest and
+   * deletes the rest (ours only — the filter names `entry_path` + `agent_id`).
+   */
+  private async keepOldest(
+    partnerId: string,
+    key: CustomerKey,
+    inserted: DraftOrderRecord,
+  ): Promise<DraftOrderRecord> {
+    const [oldest, ...newer] = await this.drafts.findAllOpen(partnerId, key);
+    if (!oldest || newer.length === 0) return inserted;
+    await Promise.all(
+      newer.map((d) => this.drafts.delete(partnerId, d.draft_order_id)),
+    );
+    return oldest;
   }
 
   private async customerFor(

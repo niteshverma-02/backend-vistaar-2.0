@@ -126,6 +126,7 @@ export const API_ERROR_CODES = [
   // Farmer leads. A partner adds farmers only, and each farmer once.
   'PARTNER_NOT_APPROVED',
   'SELF_LEAD',
+  'PARTNER_NUMBER',
   'FARMER_TAKEN',
   'NOT_A_FARMER',
   'CONSENT_OUTDATED',

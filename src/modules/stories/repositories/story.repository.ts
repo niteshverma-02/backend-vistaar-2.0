@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, mongo, type QueryFilter } from 'mongoose';
+import { Model, type QueryFilter } from 'mongoose';
+
+import { isDuplicateKey } from '@common/utils/mongo-error.util';
 
 import type { StoryTemplate } from '../stories.domain';
 import { Story, type StoryDocument } from '../schemas/story.schema';
@@ -22,9 +24,6 @@ export type StoryContent = Omit<
   | 'created_at'
   | 'updated_at'
 >;
-
-const isDuplicateKey = (error: unknown): boolean =>
-  error instanceof mongo.MongoServerError && error.code === 11000;
 
 /** Every partner read and write carries `agent_id`: one partner never reaches another's row. */
 @Injectable()

@@ -121,6 +121,7 @@ function setup(
     countUsing: jest.fn().mockResolvedValue(opts.using ?? 0),
   };
   const stats = { bump: jest.fn().mockResolvedValue(undefined) };
+  const rewards = { storyCreated: jest.fn().mockResolvedValue([]) };
   const storage = {
     savePrivate: jest.fn().mockResolvedValue(RENDER),
     privateFile: jest.fn((path: string) =>
@@ -159,12 +160,10 @@ function setup(
       forStories: jest.fn().mockResolvedValue(opts.testimonials ?? []),
     } as unknown as TestimonialsService,
     storage as unknown as StorageService,
-    {
-      storyCreated: jest.fn().mockResolvedValue([]),
-    } as unknown as RewardsService,
+    rewards as unknown as RewardsService,
     { get: () => SECRET } as unknown as ConfigService<Env, true>,
   );
-  return { service, repo, stats, storage };
+  return { service, repo, stats, storage, rewards };
 }
 
 /** The `error.code` a rejected call carries. */
@@ -277,6 +276,27 @@ describe('StoriesService.save', () => {
     const { service, storage } = setup({ beyond: [old], using: 1 });
     await service.save(AGENT, dto());
     expect(storage.remove).not.toHaveBeenCalled();
+  });
+
+  it('a story deleted and saved again earns under the same key, a new one under its own', async () => {
+    const { service, rewards } = setup();
+    await service.save(AGENT, dto());
+    await service.remove(AGENT, 'story-1');
+    await service.save(AGENT, dto());
+    await service.save(AGENT, dto({ photo: PHOTO }));
+    const keys = rewards.storyCreated.mock.calls.map(
+      ([agent, , signature]: [string, string, string]) => [agent, signature],
+    );
+    expect(keys).toHaveLength(3);
+    expect(keys[0]).toEqual([AGENT, expect.stringMatching(/^[0-9a-f]{64}$/)]);
+    expect(keys[1]).toEqual(keys[0]);
+    expect(keys[2][1]).not.toBe(keys[0][1]);
+  });
+
+  it('a re-save of a saved story does not earn', async () => {
+    const { service, rewards } = setup({ previous: story(), created: false });
+    await service.save(AGENT, dto());
+    expect(rewards.storyCreated).not.toHaveBeenCalled();
   });
 });
 

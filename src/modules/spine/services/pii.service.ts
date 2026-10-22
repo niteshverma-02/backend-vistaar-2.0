@@ -93,7 +93,7 @@ export class PiiService {
       });
       if (inserted) {
         await this.piis.addAddressRef(piiId, addressId);
-        return addressId;
+        return this.keepOneOwnRow(piiId, meta.source, addressId);
       }
       this.logger.warn(
         `app_counters.addresses minted ${addressId}, already taken.`,
@@ -103,6 +103,39 @@ export class PiiService {
       'IDENTITY_UNAVAILABLE',
       'Could not save the address right now. Please try again.',
     );
+  }
+
+  /**
+   * No unique `{pii_id, source}` index on the shared collection: two saves on
+   * two processes can both insert. Every racer keeps the lowest `ADDR-n` and
+   * drops the rest of `source`'s rows, so they all end on the same one.
+   */
+  private async keepOneOwnRow(
+    piiId: string,
+    source: string,
+    addressId: string,
+  ): Promise<string> {
+    const rows = await this.addresses.ownRows(piiId, source);
+    if (rows.length <= 1) return addressId;
+    const n = (id: string) => Number(id.replace(/^ADDR-/, ''));
+    const [kept, ...extra] = rows.sort(
+      (a, b) => n(a.address_id) - n(b.address_id),
+    );
+    const dropped = extra.map((r) => r.address_id);
+    await this.addresses.removeOwn(piiId, source, dropped);
+    // Ours too, should a racer have already removed it before our ref landed.
+    await this.piis.removeAddressRefs(piiId, [
+      ...new Set(
+        [...dropped, addressId].filter((id) => id !== kept.address_id),
+      ),
+    ]);
+    if (!kept.is_primary && extra.some((r) => r.is_primary)) {
+      await this.addresses.update(kept.address_id, { is_primary: true });
+    }
+    this.logger.warn(
+      `${piiId}: two saves raced on ${source}'s address; kept ${kept.address_id}, dropped ${dropped.join(', ')}.`,
+    );
+    return kept.address_id;
   }
 
   /** A GPS fix on the address row `source` filed for the person, if any. */
@@ -130,7 +163,12 @@ export class PiiService {
     if (existing) return { pii_id: existing, created: false };
 
     for (let attempt = 0; attempt < 2; attempt++) {
-      const piiId = `PII-${await this.piis.nextPiiNumber()}`;
+      const next = await this.piis.nextPiiNumber();
+      if (next === null) {
+        this.logger.error('app_counters has no "piis" row.');
+        break;
+      }
+      const piiId = `PII-${next}`;
       if (await this.piis.insert(piiId, phone, countryCode)) {
         return { pii_id: piiId, created: true };
       }

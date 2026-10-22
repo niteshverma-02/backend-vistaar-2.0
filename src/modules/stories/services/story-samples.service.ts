@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
-import { mongo } from 'mongoose';
 
 import { conflict, notFound } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
+import { isDuplicateKey } from '@common/utils/mongo-error.util';
 import { TtlCache } from '@common/utils/ttl-cache';
 
 import type {
@@ -19,9 +19,6 @@ const SAMPLE_NOT_FOUND =
   'This farmer story could not be found. It may have been deleted.';
 
 const ACTIVE_TTL_MS = 60_000;
-
-const isDuplicateKey = (error: unknown): boolean =>
-  error instanceof mongo.MongoServerError && error.code === 11000;
 
 /** HO's ready-made farmer quotes for the "Farmer story" template. */
 @Injectable()

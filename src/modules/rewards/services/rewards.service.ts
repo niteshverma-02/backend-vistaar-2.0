@@ -302,16 +302,21 @@ export class RewardsService {
     );
   }
 
-  /** The partner saved a brand-new My Story (an edit never fires it). Once per story. */
+  /**
+   * The partner saved a brand-new My Story (an edit never fires it). Once per
+   * story content: keyed on its signature, so one deleted and saved again
+   * (a fresh `_id`) never pays twice; `ref_id` still names the row.
+   */
   storyCreated(
     agentId: string,
     storyId: string,
+    signature: string,
     template: string,
   ): Promise<string[]> {
     return this.record(
       agentId,
       'story_created',
-      { key: [storyId], ref_id: storyId },
+      { key: [agentId, signature], ref_id: storyId },
       { template },
     );
   }

@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, type QueryFilter } from 'mongoose';
 
+import { windowQuery } from '@common/utils/schedule-window.util';
+
 import type { FestivalStatus } from '../stories.domain';
 import { StoryFestival } from '../schemas/story-festival.schema';
 import {
@@ -49,7 +51,7 @@ export class StoryFestivalRepository {
     limit: number,
     sort: Record<string, 1 | -1>,
   ): Promise<{ rows: StoryFestival[]; total: number }> {
-    const query = queryOf(status, now);
+    const query: QueryFilter<Stored> = windowQuery(status, now);
     const [rows, total] = await Promise.all([
       this.model
         .find(query)
@@ -98,34 +100,5 @@ export class StoryFestivalRepository {
       (await this.model.deleteOne({ _id: storedId(KIND, id) }).exec())
         .deletedCount === 1
     );
-  }
-}
-
-/** The Mongo side of `festivalStatus` — keep the two in step. */
-function queryOf(
-  status: FestivalStatus | undefined,
-  now: Date,
-): QueryFilter<Stored> {
-  switch (status) {
-    case 'inactive':
-      return { is_active: false };
-    case 'expired':
-      return { is_active: true, ends_at: { $lte: now } };
-    case 'scheduled':
-      return {
-        is_active: true,
-        starts_at: { $gt: now },
-        $or: [{ ends_at: null }, { ends_at: { $gt: now } }],
-      };
-    case 'live':
-      return {
-        $and: [
-          { is_active: true },
-          { $or: [{ starts_at: null }, { starts_at: { $lte: now } }] },
-          { $or: [{ ends_at: null }, { ends_at: { $gt: now } }] },
-        ],
-      };
-    case undefined:
-      return {};
   }
 }

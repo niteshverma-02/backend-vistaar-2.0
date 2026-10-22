@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 
 import { badRequest, notFound } from '@common/errors/api-error';
 import { imageInfo } from '@common/utils/image-size.util';
+import { istDate } from '@common/utils/ist-day.util';
 import { TtlCache } from '@common/utils/ttl-cache';
 import type { Env } from '@config/env.schema';
 import { EventsService } from '@modules/events/services/events.service';
@@ -27,7 +28,6 @@ import type { Story } from '../schemas/story.schema';
 import {
   MAX_SAVED_STORIES,
   RECEIPT_FRESH_MS,
-  istDate,
   ownsImage,
   readReceipt,
   receiptStem,
@@ -280,7 +280,12 @@ export class StoriesService {
     if (created) {
       await this.trim(agentId);
       // A brand-new story can earn (an edit or re-share of one never does).
-      await this.rewards.storyCreated(agentId, story._id, story.template);
+      await this.rewards.storyCreated(
+        agentId,
+        story._id,
+        signature,
+        story.template,
+      );
     }
 
     const [view] = await this.views([saved]);

@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
-import { mongo } from 'mongoose';
 
 import { badRequest, conflict, notFound } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
 import { imageInfo } from '@common/utils/image-size.util';
+import { isDuplicateKey } from '@common/utils/mongo-error.util';
+import { checkWindow, toDate } from '@common/utils/schedule-window.util';
 import { TtlCache } from '@common/utils/ttl-cache';
 import type { Localized } from '@modules/onboarding/form.domain';
 import { StorageService } from '@modules/uploads/services/storage.service';
@@ -26,7 +27,6 @@ import {
   designImageError,
   designWarnings,
   festivalStatus,
-  windowError,
   type DesignColorKey,
   type DesignColors,
   type FestivalStatus,
@@ -68,9 +68,6 @@ const NO_IMAGE: ImageFields = {
 };
 
 const ACTIVE_TTL_MS = 60_000;
-
-const isDuplicateKey = (error: unknown): boolean =>
-  error instanceof mongo.MongoServerError && error.code === 11000;
 
 /** HO's story designs: colours and optional art for My Story. */
 @Injectable()
@@ -313,15 +310,6 @@ function checkLabel(label: Record<string, string>): void {
     const error = 'Please add the design name in English.';
     throw badRequest('VALIDATION_FAILED', error, [error]);
   }
-}
-
-function toDate(value: string | null | undefined): Date | null {
-  return value ? new Date(value) : null;
-}
-
-function checkWindow(startsAt: Date | null, endsAt: Date | null): void {
-  const error = windowError(startsAt, endsAt);
-  if (error) throw badRequest('VALIDATION_FAILED', error, [error]);
 }
 
 const unique = <T>(items: T[]): T[] => [...new Set(items)];

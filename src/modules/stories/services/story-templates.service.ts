@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { mongo } from 'mongoose';
 
 import { badRequest, conflict, notFound } from '@common/errors/api-error';
+import { isDuplicateKey } from '@common/utils/mongo-error.util';
+import { checkWindow, toDate } from '@common/utils/schedule-window.util';
 import { TtlCache } from '@common/utils/ttl-cache';
 import type { Localized } from '@modules/onboarding/form.domain';
 
@@ -16,7 +17,6 @@ import {
   festivalStatus,
   templateFieldsError,
   templateTextsError,
-  windowError,
   type FestivalStatus,
   type StoryTemplate,
   type TemplateFields,
@@ -50,9 +50,6 @@ const ACTIVE_TTL_MS = 60_000;
 
 const isBuiltinKey = (key: string): boolean =>
   (STORY_TEMPLATES as readonly string[]).includes(key);
-
-const isDuplicateKey = (error: unknown): boolean =>
-  error instanceof mongo.MongoServerError && error.code === 11000;
 
 /** HO's "Choose a design" cards: the six built-in ones and custom cards on their layouts. */
 @Injectable()
@@ -292,15 +289,6 @@ function localizedErrors(
   return [
     `Please add the card ${field === 'hint' ? 'description' : 'name'} in English.`,
   ];
-}
-
-function toDate(value: string | null | undefined): Date | null {
-  return value ? new Date(value) : null;
-}
-
-function checkWindow(startsAt: Date | null, endsAt: Date | null): void {
-  const error = windowError(startsAt, endsAt);
-  if (error) throw invalid(error);
 }
 
 function cleanTexts(

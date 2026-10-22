@@ -231,10 +231,7 @@ export class WalletService {
         true,
       );
       if (partner.stage !== 'approved' || !partner.is_active) {
-        throw forbidden(
-          'PARTNER_NOT_APPROVED',
-          'Your account is not active for payouts. Please contact Katyayani support.',
-        );
+        throw notApproved();
       }
       if (dto.amount < settings.min_withdrawal) {
         throw badRequest(
@@ -252,12 +249,7 @@ export class WalletService {
       const facts = await this.payoutFactsOf(partner);
       if (!facts?.bank_verified) throw bankNotVerified();
       // Which account it would be paid into is open until HO decides the change.
-      if (facts.bank_change_pending) {
-        throw conflict(
-          'BANK_CHANGE_PENDING',
-          'Your new bank account is waiting for Katyayani to check it. You can withdraw once it is approved, or after you cancel the change.',
-        );
-      }
+      if (facts.bank_change_pending) throw bankChangePending();
 
       const rate = facts.pan_verified
         ? settings.tds_rate_with_pan
@@ -365,15 +357,21 @@ export class WalletService {
   async approve(id: string, by: string): Promise<AdminWithdrawalView> {
     const w = await this.require(id);
     if (w.status !== 'requested') throw notInStatus('approved', w.status);
+    // The partner may have been blocked on another server within the cache's minute.
+    this.commission.forget(w.agent_id);
     const { partner, book, settings } = await this.commission.bookOf(
       w.agent_id,
       new Date(),
       true,
     );
+    if (partner.stage !== 'approved' || !partner.is_active) {
+      throw notApproved();
+    }
     const facts = await this.payoutFactsOf(partner);
     if (!facts?.bank_verified) throw bankNotVerified();
-    // This request is open, so it is held out of the balance already.
-    const available = book.earned - book.paid - (book.open - w.amount);
+    if (facts.bank_change_pending) throw bankChangePending();
+    // Confirmed and not yet paid; this request is open, so it is held out already.
+    const available = book.totals.confirmed.amount - (book.open - w.amount);
     if (w.amount > available) {
       throw conflict(
         'NOT_ENOUGH_BALANCE',
@@ -500,13 +498,26 @@ export class WalletService {
     let totalNet = 0;
     for (const w of rows) {
       const p = partners.get(w.agent_id);
-      const bank = p ? facts.get(p.agent_ref)?.bank_account : null;
+      const f = p ? facts.get(p.agent_ref) : undefined;
+      const bank = f?.bank_account;
       if (!bank?.account_number || !bank.ifsc) {
         skipped.push({
           id: w._id,
           agent_id: w.agent_id,
           reason: 'No bank account number or IFSC on the partner’s form.',
         });
+        continue;
+      }
+      // Paid only into the verified account the approval was fixed to.
+      const unsafe = !f?.bank_verified
+        ? 'The partner’s bank account is not verified.'
+        : f?.bank_change_pending
+          ? 'A bank account change is waiting for review.'
+          : last4(bank.account_number) !== w.account_last4
+            ? 'The bank account changed after approval. Reject it so the partner can ask again.'
+            : null;
+      if (unsafe) {
+        skipped.push({ id: w._id, agent_id: w.agent_id, reason: unsafe });
         continue;
       }
       totalNet += w.net_amount;
@@ -831,6 +842,20 @@ function stillOpen() {
   return conflict(
     'WITHDRAWAL_OPEN',
     'You already have a withdrawal in progress. Please wait for it to be paid, or cancel it first.',
+  );
+}
+
+function notApproved() {
+  return forbidden(
+    'PARTNER_NOT_APPROVED',
+    'Your account is not active for payouts. Please contact Katyayani support.',
+  );
+}
+
+function bankChangePending() {
+  return conflict(
+    'BANK_CHANGE_PENDING',
+    'Your new bank account is waiting for Katyayani to check it. You can withdraw once it is approved, or after you cancel the change.',
   );
 }
 

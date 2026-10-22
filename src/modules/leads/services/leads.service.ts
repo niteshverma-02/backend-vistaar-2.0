@@ -51,6 +51,7 @@ import {
   MAX_HOLDER_HISTORY,
   MAX_STAGE_HISTORY,
   STAGE_LABELS,
+  addedRange,
   contactDocOf,
   contactUpdateOf,
   farmerCopyOf,
@@ -172,6 +173,12 @@ const taken = () =>
 const selfLead = () =>
   badRequest('SELF_LEAD', 'You cannot add your own number as a farmer.');
 
+const partnerNumber = () =>
+  conflict(
+    'PARTNER_NUMBER',
+    'This number belongs to a Vistaar partner and cannot be added as a farmer.',
+  );
+
 const notFarmer = () =>
   conflict(
     'NOT_A_FARMER',
@@ -234,8 +241,9 @@ export class LeadsService implements OnModuleInit {
   ): Promise<{ status: CheckStatus; pii_id: string | null }> {
     const phone = this.phoneOf(rawPhone);
     const piiId = await this.piis.findIdByPhone(phone);
-    if (!piiId) return { status: 'new', pii_id: null };
     if (piiId === partner.pii_id) return { status: 'self', pii_id: piiId };
+    await this.refusePartner(partner, phone);
+    if (!piiId) return { status: 'new', pii_id: null };
     const holder = await this.holder(piiId, partner.agent_id);
     return { status: CHECK_STATUS[holder], pii_id: piiId };
   }
@@ -251,7 +259,9 @@ export class LeadsService implements OnModuleInit {
     resend: boolean,
   ): Promise<{ sent: true; resend_after_seconds: number }> {
     await this.requireWorkingPartner(partner.agent_id);
-    await this.leadOtp.send(this.phoneOf(rawPhone), resend);
+    const phone = this.phoneOf(rawPhone);
+    await this.refusePartner(partner, phone);
+    await this.leadOtp.send(phone, resend);
     return { sent: true, resend_after_seconds: RESEND_AFTER_SECONDS };
   }
 
@@ -300,6 +310,7 @@ export class LeadsService implements OnModuleInit {
 
     const known = await this.piis.findIdByPhone(phone);
     if (known === partner.pii_id) throw selfLead();
+    await this.refusePartner(partner, phone);
     const found = known ? await this.found(known) : null;
     const lapse = await this.lapseOf(found?.link ?? null, by, now);
     const holder = holderOf({
@@ -950,8 +961,6 @@ export class LeadsService implements OnModuleInit {
   }
 
   async list(query: AdminLeadQueryDto): Promise<PageResult<PartnerLeadView>> {
-    const to = query.to ? new Date(query.to) : undefined;
-    if (to && query.to?.length === 10) to.setUTCHours(23, 59, 59, 999);
     const filter: LeadListFilter = {
       ...searchOf(query.q),
       agent_id: query.agent_id?.toUpperCase(),
@@ -960,8 +969,7 @@ export class LeadsService implements OnModuleInit {
       state: query.state?.trim().toUpperCase() || undefined,
       district: query.district || undefined,
       due_before: query.due ? endOfToday() : undefined,
-      from: query.from ? new Date(query.from) : undefined,
-      to,
+      ...addedRange(query.from, query.to),
     };
     const [{ items, total }, window] = await Promise.all([
       this.rows.listRecent(
@@ -1456,6 +1464,17 @@ export class LeadsService implements OnModuleInit {
       state: state.trim().toUpperCase(),
       district: dto.district || found?.district || null,
     };
+  }
+
+  /** A partner is never written to the org's leads, contacts or addresses. */
+  private async refusePartner(
+    partner: PartnerRef,
+    phone: string,
+  ): Promise<void> {
+    // Verified partners only: an OTP request alone leaves no person behind.
+    const other = await this.agents.findByPhone(phone, COUNTRY_CODE);
+    if (!other?.pii_id) return;
+    throw other.pii_id === partner.pii_id ? selfLead() : partnerNumber();
   }
 
   private phoneOf(raw: string): string {

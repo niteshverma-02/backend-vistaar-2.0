@@ -20,6 +20,7 @@ import {
   type CreateBannerDto,
 } from '../modules/banners/dto/banner.dto';
 import { BannersService } from '../modules/banners/services/banners.service';
+import { refuseUnlessTestDb } from './test-db-guard';
 
 const BY = 'seed:test-banners';
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -139,6 +140,8 @@ function gradientPng(from: Rgb, to: Rgb, width = 1200, height = 500): Buffer {
 }
 
 async function main(): Promise<void> {
+  process.loadEnvFile?.('.env');
+  refuseUnlessTestDb();
   const apply = process.argv.includes('--apply');
   const remove = process.argv.includes('--remove');
   const app = await NestFactory.createApplicationContext(AppModule, {

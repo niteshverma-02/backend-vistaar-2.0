@@ -312,4 +312,40 @@ describe('GigsService', () => {
       expect((await inside.service.accept(AGENT, ID)).status).toBe('accepted');
     });
   });
+
+  describe('same state (gig ids run in order, so a partner can try any)', () => {
+    const inUP = { profile: { state: 'Uttar Pradesh' } };
+
+    it('detail and accept answer 404 for another state’s open gig', async () => {
+      const { service, gigs } = setup(gig(), held(), 300, inUP);
+      expect(await failure(service.get(AGENT, ID))).toEqual({
+        status: 404,
+        code: 'NOT_FOUND',
+      });
+      expect(await failure(service.accept(AGENT, ID))).toEqual({
+        status: 404,
+        code: 'NOT_FOUND',
+      });
+      expect(gigs.transition).not.toHaveBeenCalled();
+    });
+
+    it('the partner’s own gig still opens and answers accept, whatever its state', async () => {
+      const { service, gigs } = setup(held(), held(), 300, inUP);
+      expect((await service.get(AGENT, ID)).status).toBe('accepted');
+      expect((await service.accept(AGENT, ID)).status).toBe('accepted');
+      expect(gigs.transition).not.toHaveBeenCalled();
+    });
+
+    it('the same state, or a state not known on either side, may take it', async () => {
+      for (const agent of [
+        { preview: { state: 'Madhya Pradesh' } },
+        { preview: {} },
+      ]) {
+        const { service } = setup(gig(), held(), 300, agent);
+        expect((await service.accept(AGENT, ID)).status).toBe('accepted');
+      }
+      const { service } = setup(gig({ state: null }), held(), 300, inUP);
+      expect((await service.accept(AGENT, ID)).status).toBe('accepted');
+    });
+  });
 });

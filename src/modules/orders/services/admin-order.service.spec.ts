@@ -216,6 +216,25 @@ describe('AdminOrderService', () => {
     });
   });
 
+  it('counts a split parent’s children once and leaves placeholders out', async () => {
+    adminSummary.mockResolvedValueOnce({
+      by_status: [
+        { status: 'split', count: 1, value: 1000 },
+        { status: 'pseudo', count: 1, value: 50 },
+        { status: 'created', count: 2, value: 1000 },
+      ],
+      partners: 1,
+      customers: 1,
+    });
+    const summary = await service.summary(query({}));
+    expect(summary).toMatchObject({ orders: 2, value: 1000 });
+    expect(summary.by_stage.find((s) => s.stage === 'placed')).toEqual({
+      stage: 'placed',
+      count: 2,
+      value: 1000,
+    });
+  });
+
   it('refuses a search that is neither an order id nor a phone, instead of listing everything', async () => {
     await expect(service.list(query({ q: 'Ram Kumar' }))).rejects.toMatchObject(
       {
@@ -238,7 +257,9 @@ describe('AdminOrderService', () => {
   it('splits sales by category from every pack, names the best packs, and leaves returns out', async () => {
     const b = await service.breakdown(query({}));
     const [, off] = adminBreakdown.mock.calls[0] as [unknown, string[]];
-    expect(off).toEqual(expect.arrayContaining(['cancelled', 'rto_delivered']));
+    expect(off).toEqual(
+      expect.arrayContaining(['cancelled', 'rto_delivered', 'split', 'pseudo']),
+    );
     expect(b.by_category).toEqual([
       { name: 'Fertilizers & Nutrition', value: 900, pct: 75 },
       { name: 'Insecticides', value: 300, pct: 25 },

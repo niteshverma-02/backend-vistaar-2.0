@@ -10,6 +10,11 @@ export function istDayStart(at: Date): Date {
   return new Date(ist.getTime() - IST_OFFSET_MS);
 }
 
+/** `YYYY-MM-DD` of the IST day `at` falls on. */
+export function istDate(at: Date): string {
+  return new Date(at.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
 /** Whole IST calendar days from `from` to `to` (negative when `to` is earlier). */
 export function istDaysBetween(from: Date, to: Date): number {
   return Math.round(

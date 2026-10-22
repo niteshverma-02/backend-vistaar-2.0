@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, type QueryFilter } from 'mongoose';
 
+import { windowQuery } from '@common/utils/schedule-window.util';
+
 import type { BannerStatus } from '../banners.domain';
 import { Banner, type BannerDocument } from '../schemas/banner.schema';
 
@@ -100,33 +102,9 @@ export class BannerRepository {
   }
 }
 
-/** The Mongo side of `statusOf` — keep the two in step. */
 function queryOf(filter: BannerFilter, now: Date): QueryFilter<Banner> {
   const and: QueryFilter<Banner>[] = [];
-  switch (filter.status) {
-    case 'inactive':
-      and.push({ is_active: false });
-      break;
-    case 'expired':
-      and.push({ is_active: true, ends_at: { $lte: now } });
-      break;
-    case 'scheduled':
-      and.push({
-        is_active: true,
-        starts_at: { $gt: now },
-        $or: [{ ends_at: null }, { ends_at: { $gt: now } }],
-      });
-      break;
-    case 'live':
-      and.push(
-        { is_active: true },
-        { $or: [{ starts_at: null }, { starts_at: { $lte: now } }] },
-        { $or: [{ ends_at: null }, { ends_at: { $gt: now } }] },
-      );
-      break;
-    case undefined:
-      break;
-  }
+  if (filter.status) and.push(windowQuery(filter.status, now));
   // A banner for every partner is shown to this cohort too.
   if (filter.cohort) {
     and.push({ $or: [{ cohorts: filter.cohort }, { cohorts: { $size: 0 } }] });

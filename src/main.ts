@@ -15,6 +15,7 @@ import { AppModule } from './app.module';
 import { corsOptions } from '@core/http/cors-options';
 import { allowEmptyJsonBody } from '@core/http/empty-json-body';
 import { registerJsonEtag } from '@core/http/json-etag';
+import { TRUSTED_PROXIES } from '@core/http/trusted-proxies';
 import {
   SWAGGER_CUSTOM_CSS,
   SWAGGER_DARK_MODE_JS,
@@ -28,7 +29,12 @@ const JSON_COMPRESS_THRESHOLD_BYTES = 1024;
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter({ trustProxy: true, bodyLimit: 2 * 1024 * 1024 }),
+    // `true` would take the client-written leftmost X-Forwarded-For as req.ip
+    // and dodge the IP throttle; a hop count breaks when Cloudflare adds one.
+    new FastifyAdapter({
+      trustProxy: TRUSTED_PROXIES,
+      bodyLimit: 2 * 1024 * 1024,
+    }),
     { bufferLogs: true },
   );
 

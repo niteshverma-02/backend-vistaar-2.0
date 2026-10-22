@@ -7,9 +7,8 @@ import {
 
 import { badRequest, conflict, notFound } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
-import { istMonthKey } from '@common/utils/ist-day.util';
+import { istDate, istMonthKey } from '@common/utils/ist-day.util';
 import { KeyedSerialQueue } from '@common/utils/keyed-serial-queue';
-import { istDate } from '@modules/attendance/attendance.domain';
 import {
   AgentsService,
   type EarningCohortRef,
@@ -67,6 +66,7 @@ import {
   type EarningCohortPatch,
   type EarningCohortRecord,
 } from '../repositories/earning-cohort.repository';
+import { EarningWindowRepository } from '../repositories/earning-window.repository';
 
 export type { EarningCohortRecord } from '../repositories/earning-cohort.repository';
 
@@ -204,7 +204,7 @@ export class EarningCohortsService implements OnModuleInit, OnModuleDestroy {
   /** The bulk run in flight here, and whether another was asked for meanwhile. */
   private bulk: Promise<void> | null = null;
   private bulkAgain = false;
-  /** The IST day cohort dates were last looked at in this process. */
+  /** The IST day this process last asked about (the shared row decides who runs it). */
   private windowDay: string | null = null;
   private windowTimer: NodeJS.Timeout | null = null;
   /** Told when a cohort's commission is switched (the commission module's plan cache). */
@@ -214,6 +214,7 @@ export class EarningCohortsService implements OnModuleInit, OnModuleDestroy {
     private readonly cohorts: EarningCohortRepository,
     private readonly assignments: EarningAssignmentRepository,
     private readonly agents: AgentsService,
+    private readonly window: EarningWindowRepository,
   ) {}
 
   /** Called once by the leads module at start-up. */
@@ -271,7 +272,7 @@ export class EarningCohortsService implements OnModuleInit, OnModuleDestroy {
           (b.archived_at?.getTime() ?? 0) - (a.archived_at?.getTime() ?? 0),
       );
     const out = [...cohortOrder(rows), ...archived].map(normalized);
-    this.noteDay(out);
+    await this.noteDay(out);
     return out;
   }
 
@@ -319,16 +320,6 @@ export class EarningCohortsService implements OnModuleInit, OnModuleDestroy {
     // `all()` writes the default when it is missing; this is a broken database.
     if (!cohort) throw new Error('The default earning cohort is missing.');
     return { cohort, since: ref?.since ?? null };
-  }
-
-  /**
-   * The cohort the partner was in at `at` (an order's placing time); `null`
-   * before their first assignment — the caller keeps its older rules then.
-   */
-  async cohortAt(agentId: string, at: Date): Promise<string | null> {
-    return (
-      (await this.assignments.at(agentId.toUpperCase(), at))?.cohort_id ?? null
-    );
   }
 
   /** Every stretch of these partners, oldest first — for `cohortAtIn` over many orders. */
@@ -816,17 +807,27 @@ export class EarningCohortsService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * On the first read of a new IST day (or the first in this process): a
-   * cohort that started or ended since the last look moves its partners.
-   * The day is noted before the run, so concurrent reads start one.
+   * On the first read of a new IST day: a cohort that started or ended since
+   * the last look moves its partners. Each process asks once a day (noted
+   * before the write, so concurrent reads ask once); only the one whose write
+   * moves the shared row to today runs it, from the day the row held.
    */
-  private noteDay(cohorts: readonly EarningCohortRecord[]): void {
+  private async noteDay(
+    cohorts: readonly EarningCohortRecord[],
+  ): Promise<void> {
     const today = istToday();
     if (this.windowDay === today) return;
-    const since = this.windowDay;
+    const last = this.windowDay;
     this.windowDay = today;
-    if (windowsCrossed(cohorts, since, today)) {
-      this.recomputeAllLater('cohort_window');
+    try {
+      const claimed = await this.window.claimDay(today);
+      if (claimed && windowsCrossed(cohorts, claimed.since, today)) {
+        this.recomputeAllLater('cohort_window');
+      }
+    } catch (error) {
+      // Asked again on the next read or the hourly look.
+      this.windowDay = last;
+      this.logger.warn(`Cohort dates not checked: ${message(error)}`);
     }
   }
 

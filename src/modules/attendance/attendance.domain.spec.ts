@@ -1,9 +1,9 @@
+import { istDate } from '@common/utils/ist-day.util';
 import {
   dayStatus,
   daysInRange,
   rangeError,
   rollup,
-  istDate,
   istMonth,
   locationError,
   monthBounds,

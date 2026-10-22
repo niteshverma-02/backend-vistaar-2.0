@@ -2,13 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { InjectConnection } from '@nestjs/mongoose';
 import { Types, type Connection } from 'mongoose';
 
+import { escapeRegex } from '@common/utils/regex.util';
+
 import {
   BULK_COLLECTION,
   COMBO_COLLECTION,
   TESTIMONIALS_COLLECTION,
   TESTIMONIAL_STATUSES,
   VISTAAR_SOURCE,
-  escapeRegex,
   statusFilter,
   type MediaType,
   type TestimonialStatus,

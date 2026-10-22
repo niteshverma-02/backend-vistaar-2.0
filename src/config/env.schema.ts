@@ -35,6 +35,12 @@ export const envSchema = z.object({
   /** Connections per process. Many processes × this must stay under the server's limit. */
   MONGODB_MAX_POOL_SIZE: z.coerce.number().int().min(1).max(500).default(50),
   MONGODB_MIN_POOL_SIZE: z.coerce.number().int().min(0).max(100).default(5),
+  /**
+   * Comma-separated Mongo host names the test-data seeds (`seed-test-*`,
+   * `seed-feedback`, `seed-banners`) may write to. Set only in beta / local
+   * `.env`; unset, every test seed refuses (`scripts/test-db-guard.ts`).
+   */
+  SEED_ALLOW_HOSTS: z.string().optional(),
 
   /** `pnpm start:cluster`: worker processes; 0 = one per CPU core. */
   WEB_CONCURRENCY: z.coerce.number().int().min(0).max(64).default(0),

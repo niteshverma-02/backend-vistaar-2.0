@@ -128,12 +128,22 @@ export const isForPartner = (
   forCohort(g, partner.cohort) &&
   forEarningCohort(g, partner.earning_cohort?.id ?? null);
 
-/** Defaults from settings, HO-changeable per gig (user's decision, 2026-10-15). */
-export interface GigRules {
-  payout: number;
-  min_farmers: number;
-  photos_required: number;
-  checkin_radius_m: number;
+/**
+ * What a partner may see and take of a gig that is not theirs: `isForPartner`,
+ * and the same state when both are known. Gig ids run in order, so detail and
+ * accept check this too, not only the Available tab.
+ */
+export function mayTake(
+  g: GigAudience & { state: string | null },
+  partner: Parameters<typeof isForPartner>[1] & {
+    profile?: { state?: string } | null;
+    preview: { state?: string };
+  },
+): boolean {
+  const state = (
+    partner.profile?.state ?? partner.preview.state
+  )?.toUpperCase();
+  return isForPartner(g, partner) && (!state || !g.state || g.state === state);
 }
 
 /** Accepted or checked in, and the gig's IST day has passed: HO cancels or reopens it. */
