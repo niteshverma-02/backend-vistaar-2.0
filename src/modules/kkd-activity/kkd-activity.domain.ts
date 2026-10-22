@@ -1,7 +1,6 @@
 import { haversineKm } from '@common/utils/geo.util';
-import { istMonthKey } from '@common/utils/ist-day.util';
+import { istDate, istMonthKey } from '@common/utils/ist-day.util';
 import { normalizeMobile } from '@common/utils/phone.util';
-import { istDate } from '@modules/attendance/attendance.domain';
 import { isCounted, sizeLabel, stageOf } from '@modules/orders/orders.domain';
 
 /**

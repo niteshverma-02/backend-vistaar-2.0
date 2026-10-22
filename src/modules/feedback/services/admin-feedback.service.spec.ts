@@ -21,7 +21,7 @@ function setup() {
         { _id: 2, count: 1 },
       ],
       reasons: [
-        { _id: { bucket: 'detractor', reason: 'Late delivery' }, count: 2 },
+        { _id: 'detractor', reasons: [{ reason: 'Late delivery', count: 2 }] },
       ],
     }),
     followUpCounts: jest.fn().mockResolvedValue({ open: 3, overdue: 1 }),
@@ -62,6 +62,28 @@ describe('AdminFeedbackService.summary', () => {
         promoter: [],
       },
       follow_ups: { open: 3, overdue: 1 },
+    });
+  });
+
+  it('keeps every bucket’s own reasons, a small one included', async () => {
+    const { service, feedback } = setup();
+    const many = Array.from({ length: 20 }, (_, i) => ({
+      reason: `Good ${i}`,
+      count: 100 - i,
+    }));
+    feedback.stats.mockResolvedValueOnce({
+      buckets: [],
+      ratings: [],
+      reasons: [
+        { _id: 'promoter', reasons: many },
+        { _id: 'detractor', reasons: [{ reason: 'Late delivery', count: 1 }] },
+      ],
+    });
+    const s = await service.summary('2026-10-01', '2026-10-14');
+    expect(s.reasons).toEqual({
+      detractor: [{ reason: 'Late delivery', count: 1 }],
+      passive: [],
+      promoter: many,
     });
   });
 

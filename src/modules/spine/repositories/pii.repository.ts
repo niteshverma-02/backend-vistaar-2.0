@@ -55,16 +55,32 @@ export class PiiRepository {
       .exec();
   }
 
-  async nextPiiNumber(): Promise<number> {
+  async removeAddressRefs(piiId: string, addressIds: string[]): Promise<void> {
+    await this.piis
+      .updateOne(
+        { pii_id: piiId },
+        {
+          $pullAll: { addresses: addressIds },
+          $set: { updated_at: new Date() },
+        },
+      )
+      .exec();
+  }
+
+  /**
+   * ko-sales' `piis` series. Never an upsert: the row exists, and a missing
+   * one is a wrong database — `null`, for the caller to answer 503.
+   */
+  async nextPiiNumber(): Promise<number | null> {
     const doc = await this.counters
       .findOneAndUpdate(
         { _id: 'piis' },
         { $inc: { count: 1 }, $set: { updated_at: new Date() } },
-        { upsert: true, returnDocument: 'after' },
+        { returnDocument: 'after' },
       )
-      .lean<{ count: number }>()
+      .lean<{ count: number } | null>()
       .exec();
-    return doc.count;
+    return doc?.count ?? null;
   }
 
   /** `false` when the `pii_id` (or, on prod, the phone) was already taken. */

@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, mongo } from 'mongoose';
+import { Model } from 'mongoose';
+
+import { isDuplicateKey } from '@common/utils/mongo-error.util';
 
 import {
   DEFAULT_COHORT_ID,
@@ -18,12 +20,16 @@ export type EarningCohortRecord = EarningCohort;
 export type EarningCohortPatch = Partial<
   Pick<
     EarningCohort,
-    'name' | 'description' | 'conditions' | 'filters' | 'meeting_gig_payout'
+    | 'name'
+    | 'description'
+    | 'conditions'
+    | 'filters'
+    | 'meeting_gig_payout'
+    | 'starts_on'
+    | 'ends_on'
+    | 'commission_off'
   >
 >;
-
-const isDuplicateKey = (error: unknown): boolean =>
-  error instanceof mongo.MongoServerError && error.code === 11000;
 
 @Injectable()
 export class EarningCohortRepository {
@@ -55,7 +61,11 @@ export class EarningCohortRepository {
               filters: NO_FILTERS,
               priority: 0,
               status: 'active',
+              starts_on: null,
+              ends_on: null,
+              commission_off: [],
               meeting_gig_payout: null,
+              rules: [],
               version: 1,
               created_by: 'system',
               updated_by: 'system',

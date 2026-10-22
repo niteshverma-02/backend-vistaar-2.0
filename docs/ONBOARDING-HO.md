@@ -146,15 +146,17 @@ same entry the KYC review writes. Both changes go into `updated_data` (old and n
 It writes `vistaar_v2_onboarding_data` and, like a KYC verify, copies the proof to the
 person's org record `piis.documents.bank_details` (`source: 'vistaar'`; another portal's
 entry there is never replaced). The old proof file stays in storage. The partner profile's
-copy `profile.details.bank_account` is **not** updated — payouts and the bank file read the
+copy `profile.details.bank_account` is updated too; payouts and the bank file read the
 form, not that copy.
 
 **Reject** keeps the old account, still verified; writes `vistaar_v2_onboarding_data` only.
 
 Approve and reject act only on the change that is waiting; one decided or withdrawn meanwhile
-→ `409 BANK_CHANGE_NOT_PENDING`. A form with no payout account field → `409 CONFIG_INVALID`.
-While a change waits the partner cannot ask for a new withdrawal; withdrawals already
-requested or approved are not touched (COMMISSION-HO.md §2).
+→ `409 BANK_CHANGE_NOT_PENDING`. Exception: approve on a change already approved (the form
+still holding it) repeats only the `piis` and profile copies, so HO can retry when one of
+them failed after the approval was saved. A form with no payout account field → `409 CONFIG_INVALID`.
+While a change waits the partner cannot ask for a new withdrawal and HO cannot approve one;
+the bank file pays only the account a withdrawal was approved to (COMMISSION-HO.md §2).
 
 ### Duplicate Aadhaar / PAN — one-off backfill
 

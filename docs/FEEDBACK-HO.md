@@ -82,6 +82,7 @@ partner's owner at that time.
 
 - `nps` = % promoters − % detractors (−100…100), `null` with no answers.
 - `stars[0]` is 1 star … `stars[4]` is 5 stars.
+- `reasons`: each group's top 20, most picked first.
 - `follow_ups` counts **all** open call-backs, not only the range's.
 
 ## Close a call-back — `PATCH /admin/feedback/:id/follow-up`

@@ -2,18 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { Model } from 'mongoose';
 
+import { isDuplicateKey } from '@common/utils/mongo-error.util';
+
 import {
   OrderId,
   type OrderIdDocument,
   type OrderIdRecord,
 } from '../schemas/order-id.schema';
-
-const DUPLICATE_KEY = 11000;
-
-const isDuplicateKey = (err: unknown): boolean =>
-  typeof err === 'object' &&
-  err !== null &&
-  (err as { code?: unknown }).code === DUPLICATE_KEY;
 
 const attemptId = (agentId: string, requestId: string): string =>
   `${agentId}:${requestId}`;

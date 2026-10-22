@@ -214,7 +214,8 @@ describe('buildBook', () => {
       ctx({
         payouts: [
           { id: 'WD-1', amount: 500, paid_at: new Date('2026-10-12') },
-          { id: 'WD-2', amount: 300, paid_at: new Date('2026-10-15') },
+          // After B confirmed (17 Oct), before C (18 Oct noon IST).
+          { id: 'WD-2', amount: 300, paid_at: new Date('2026-10-18') },
         ],
         open: 200,
       }),
@@ -302,7 +303,8 @@ describe('buildBook', () => {
 
   it('owes a top-up when the month’s rate rises after a payout, and takes nothing back when it falls', () => {
     const paidOne = {
-      payouts: [{ id: 'WD-1', amount: 500, paid_at: new Date('2026-10-14') }],
+      // Paid once A confirmed (17 Oct).
+      payouts: [{ id: 'WD-1', amount: 500, paid_at: new Date('2026-10-18') }],
     };
     const rising = buildBook(
       [
@@ -327,6 +329,82 @@ describe('buildBook', () => {
     });
     expect(falling.withdrawable).toBe(0);
     expect(falling.totals.confirmed.amount).toBe(0);
+  });
+
+  it('never nets a payout that ran ahead from a later order, nor marks it paid by that payout', () => {
+    const at = (d: string) => new Date(`${d}T06:30:00Z`);
+    const facts = [
+      // ₹40,000 + ₹10,000 in September reach 7%: A earns ₹2,800, paid by WD-1.
+      fact({
+        order_id: 'A',
+        order_status: 'delivered',
+        delivered_at: at('2026-09-20'),
+        lines: [{ sku: 'K-5', qty: 1, total: 42_000, free: false }],
+      }),
+      // B is returned inside its window after WD-1: September falls to 5%, A to ₹2,000.
+      fact({
+        order_id: 'B',
+        order_status: 'rto_delivered',
+        delivered_at: at('2026-09-25'),
+        off_at: at('2026-09-30'),
+      }),
+      // C confirms 12 Oct, after WD-1.
+      fact({
+        order_id: 'C',
+        order_status: 'delivered',
+        delivered_at: at('2026-10-05'),
+      }),
+    ];
+    const book = buildBook(
+      facts,
+      ctx({
+        payouts: [{ id: 'WD-1', amount: 2_800, paid_at: at('2026-09-28') }],
+      }),
+    );
+    const by = new Map(book.rows.map((r) => [r.order_id, r]));
+    expect(by.get('A')).toMatchObject({
+      amount: 2_000,
+      status: 'paid',
+      withdrawal_id: 'WD-1',
+    });
+    expect(by.get('C')).toMatchObject({
+      amount: 500,
+      status: 'confirmed',
+      paid_amount: 0,
+      withdrawal_id: null,
+    });
+    expect(book).toMatchObject({
+      earned: 2_500,
+      paid: 2_800,
+      withdrawable: 500,
+    });
+    expect(book.totals.confirmed).toEqual({ count: 1, amount: 500 });
+  });
+
+  it('a back-dated payment date still covers what was confirmed when it was approved', () => {
+    const at = (d: string) => new Date(`${d}T06:30:00Z`);
+    // A confirms 27 Sep; HO approves 28 Sep but enters the bank date as 25 Sep.
+    const facts = [
+      fact({
+        order_id: 'A',
+        order_status: 'delivered',
+        delivered_at: at('2026-09-20'),
+      }),
+    ];
+    const { earned } = buildBook(facts, ctx());
+    const payout = { id: 'WD-1', amount: earned, paid_at: at('2026-09-25') };
+    expect(buildBook(facts, ctx({ payouts: [payout] })).withdrawable).toBe(
+      earned,
+    );
+    const book = buildBook(
+      facts,
+      ctx({ payouts: [{ ...payout, covers_to: at('2026-09-28') }] }),
+    );
+    expect(book.rows[0]).toMatchObject({
+      status: 'paid',
+      withdrawal_id: 'WD-1',
+    });
+    expect(book.withdrawable).toBe(0);
   });
 
   it('rates a month on the plan in effect then', () => {

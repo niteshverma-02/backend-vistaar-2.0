@@ -1,18 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import { mongo } from 'mongoose';
 
 import { conflict, notFound } from '@common/errors/api-error';
+import { isDuplicateKey } from '@common/utils/mongo-error.util';
 
 import type {
   CreateFaqSectionDto,
   UpdateFaqSectionDto,
 } from '../dto/faq-section.dto';
 import { FaqSectionRepository } from '../repositories/faq-section.repository';
-import type { FaqSection } from '../schemas/faq-section.schema';
+import type { FaqSection } from '../schemas/faq.schema';
 import { FaqsService } from './faqs.service';
-
-const isDuplicateKey = (error: unknown): boolean =>
-  error instanceof mongo.MongoServerError && error.code === 11000;
 
 /** HO's FAQ sections — the category chips on the app's FAQs screen. */
 @Injectable()

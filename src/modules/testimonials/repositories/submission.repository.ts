@@ -1,19 +1,76 @@
 import { Injectable } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, mongo, type QueryFilter, type Types } from 'mongoose';
+import { InjectConnection } from '@nestjs/mongoose';
+import { Types, mongo, type Connection } from 'mongoose';
+
+import { isDuplicateKey } from '@common/utils/mongo-error.util';
+import { escapeRegex } from '@common/utils/regex.util';
 
 import {
-  TestimonialSubmission,
-  type TestimonialSubmissionDocument,
-} from '../schemas/testimonial-submission.schema';
-import {
+  PRODUCT_REVIEWS_COLLECTION,
   SUBMISSION_STATUSES,
-  escapeRegex,
+  VISTAAR_SOURCE,
+  reviewIdOf,
+  sharedFlagsOf,
   type SubmissionKind,
   type SubmissionStatus,
+  type TestimonialType,
 } from '../testimonials.domain';
 
-export type SubmissionRow = TestimonialSubmission;
+/** A partner's testimonial as the service sees it, whichever field holds what. */
+export interface SubmissionRow {
+  /** The app's UUID. */
+  _id: string;
+  /** The partner (`VST-…`), from the token. */
+  agent_id: string;
+  /** Copy for the library's "Shared by"; the partner's name when sent. */
+  partner_name: string | null;
+
+  /** The farmer — one of the partner's own leads. */
+  pii_id: string;
+  farmer_name: string;
+  /** `+91…`, as Stockship stores `user.contact`. */
+  farmer_contact: string;
+  village: string | null;
+  district: string | null;
+  state: string | null;
+
+  type: TestimonialType;
+  bulk: string | null;
+  family: string | null;
+  /** `bulk_v2.trade_name` / `combos_v2.name` when sent. */
+  product_name: string | null;
+  crop: string;
+
+  kind: SubmissionKind;
+  text: string;
+  /** The partner's stars; Stockship's own `rating` holds them only once approved. */
+  rating: number;
+  /** Private object path; `null` for a quote. */
+  media_path: string | null;
+  /** The token URL product pages play — set on approval, gone on removal. */
+  media_url: string | null;
+  duration_sec: number | null;
+
+  status: SubmissionStatus;
+  reason: string | null;
+  decided_by: string | null;
+  decided_at: Date | null;
+  approved_at: Date | null;
+
+  /** `product_reviews._id` — the row this is, derived from `_id`. */
+  review_id: Types.ObjectId;
+  /** `product_testimonials._id`, reserved at submit; `null` for a quote. */
+  testimonial_id: Types.ObjectId | null;
+
+  /** Reserved for meeting gigs; nothing sets it yet. */
+  gig_id: string | null;
+
+  views: number;
+  shares: number;
+
+  created_at: Date;
+  updated_at: Date;
+}
 
 export type NewSubmission = Omit<
   SubmissionRow,
@@ -25,9 +82,30 @@ export type NewSubmission = Omit<
   | 'media_url'
   | 'views'
   | 'shares'
+  | 'review_id'
   | 'created_at'
   | 'updated_at'
 >;
+
+type Decision = Partial<
+  Pick<
+    SubmissionRow,
+    | 'reason'
+    | 'text'
+    | 'media_path'
+    | 'media_url'
+    | 'decided_by'
+    | 'decided_at'
+    | 'approved_at'
+  >
+>;
+
+/** A status move. Approving puts the stars on Stockship's `rating`, so it carries them. */
+export type SubmissionChange = Decision &
+  (
+    | { status: 'approved'; rating: number }
+    | { status: Exclude<SubmissionStatus, 'approved' | 'submitted'> }
+  );
 
 export interface LibraryFilter {
   q?: string;
@@ -46,20 +124,86 @@ export interface AdminSubmissionFilter {
   q?: string;
 }
 
-const isDuplicateKey = (error: unknown): boolean =>
-  error instanceof mongo.MongoServerError && error.code === 11000;
+/** Ours, on Vistaar's review rows only: what Stockship's shape has no field for. */
+type VistaarPart = Omit<
+  SubmissionRow,
+  | '_id'
+  | 'pii_id'
+  | 'farmer_name'
+  | 'farmer_contact'
+  | 'type'
+  | 'bulk'
+  | 'family'
+  | 'text'
+  | 'review_id'
+  | 'created_at'
+  | 'updated_at'
+> & { id: string };
 
+/** A `product_reviews` row in the shape Stockship's writers use, plus `vistaar`. */
+interface SubmissionDoc {
+  _id: Types.ObjectId;
+  source: string;
+  verified: boolean;
+  deleted: boolean;
+  verified_by: string | null;
+  deleted_by: string | null;
+  /** `null` until approved — Stockship's averages count every row not deleted. */
+  rating: number | null;
+  review: string;
+  images: string[];
+  pii_id: string | null;
+  user: {
+    contact: string | null;
+    email: string | null;
+    name: string | null;
+    profile_image: string | null;
+  };
+  type: TestimonialType;
+  bulk: string | null;
+  family: string | null;
+  created_at: Date;
+  updated_at: Date;
+  __v: number;
+  vistaar: VistaarPart;
+}
+
+type Query = mongo.Filter<SubmissionDoc>;
+
+/** Every partner testimonial; another app's review (or HO's) never matches. */
+const BASE: Query = {
+  source: VISTAAR_SOURCE,
+  'vistaar.id': { $type: 'string' },
+};
+
+const byId = (id: string): Query => ({
+  ...BASE,
+  _id: new Types.ObjectId(reviewIdOf(id)),
+});
+
+/** The DTO's sort keys that live under `vistaar`. */
+const SORT_PATHS: Record<string, string> = { shares: 'vistaar.shares' };
+
+/**
+ * Partner testimonials, kept on Stockship's shared `product_reviews` through
+ * the raw driver — no Mongoose model, so no schema or index is ever declared
+ * on it from here (the indexes these reads want are in PROD-CHECKLIST). Every
+ * read and write filters on `source: 'vistaar'` and a `vistaar` part.
+ */
 @Injectable()
 export class SubmissionRepository {
-  constructor(
-    @InjectModel(TestimonialSubmission.name)
-    private readonly model: Model<TestimonialSubmissionDocument>,
-  ) {}
+  constructor(@InjectConnection() private readonly connection: Connection) {}
+
+  private get rows() {
+    return this.connection.collection<SubmissionDoc>(
+      PRODUCT_REVIEWS_COLLECTION,
+    );
+  }
 
   /** `false` when the id is taken — a retried submit, or someone else's. */
   async insert(row: NewSubmission): Promise<boolean> {
     try {
-      await this.model.create(row);
+      await this.rows.insertOne(toDoc(row, new Date()));
       return true;
     } catch (error) {
       if (isDuplicateKey(error)) return false;
@@ -67,34 +211,34 @@ export class SubmissionRepository {
     }
   }
 
-  find(id: string): Promise<SubmissionRow | null> {
-    return this.model.findById(id).lean<SubmissionRow | null>().exec();
+  async find(id: string): Promise<SubmissionRow | null> {
+    return fromDoc(await this.rows.findOne(byId(id)));
   }
 
-  /** Is this file already on one of the partner's testimonials? Rides `{agent_id, created_at}`. */
+  /** Is this file already on one of the partner's testimonials? */
   async mediaTaken(agentId: string, path: string): Promise<boolean> {
     return (
-      (await this.model
-        .exists({ agent_id: agentId, media_path: path })
-        .exec()) !== null
+      (await this.rows.countDocuments(
+        { ...BASE, 'vistaar.agent_id': agentId, 'vistaar.media_path': path },
+        { limit: 1 },
+      )) > 0
     );
   }
 
-  findMine(agentId: string, id: string): Promise<SubmissionRow | null> {
-    return this.model
-      .findOne({ _id: id, agent_id: agentId })
-      .lean<SubmissionRow | null>()
-      .exec();
+  async findMine(agentId: string, id: string): Promise<SubmissionRow | null> {
+    return fromDoc(
+      await this.rows.findOne({ ...byId(id), 'vistaar.agent_id': agentId }),
+    );
   }
 
-  async pageMine(
+  pageMine(
     agentId: string,
     status: SubmissionStatus | undefined,
     skip: number,
     limit: number,
   ): Promise<{ rows: SubmissionRow[]; total: number }> {
-    const query: QueryFilter<TestimonialSubmission> = { agent_id: agentId };
-    if (status) query.status = status;
+    const query: Query = { ...BASE, 'vistaar.agent_id': agentId };
+    if (status) query['vistaar.status'] = status;
     return this.page(query, skip, limit, { created_at: -1 });
   }
 
@@ -105,25 +249,24 @@ export class SubmissionRepository {
     limit: number,
     sort: 'shared' | 'newest',
   ): Promise<{ rows: SubmissionRow[]; total: number }> {
-    const query: QueryFilter<TestimonialSubmission> = { status: 'approved' };
+    const query: Query = { ...BASE, 'vistaar.status': 'approved' };
     if (filter.bulk) query.bulk = filter.bulk;
     if (filter.family) query.family = filter.family;
-    if (filter.kind) query.kind = filter.kind;
-    // Exact values: the app's chips are built from the library's own rows,
-    // and an exact match is what the indexes can serve.
-    if (filter.crop) query.crop = filter.crop;
-    if (filter.state) query.state = filter.state;
-    if (filter.district) query.district = filter.district;
+    if (filter.kind) query['vistaar.kind'] = filter.kind;
+    // Exact values: the app's chips are built from the library's own rows.
+    if (filter.crop) query['vistaar.crop'] = filter.crop;
+    if (filter.state) query['vistaar.state'] = filter.state;
+    if (filter.district) query['vistaar.district'] = filter.district;
     const q = filter.q?.trim();
     if (q) {
       const re = { $regex: escapeRegex(q), $options: 'i' };
       query.$or = [
-        { farmer_name: re },
-        { village: re },
-        { district: re },
-        { product_name: re },
-        { crop: re },
-        { text: re },
+        { 'user.name': re },
+        { 'vistaar.village': re },
+        { 'vistaar.district': re },
+        { 'vistaar.product_name': re },
+        { 'vistaar.crop': re },
+        { review: re },
       ];
     }
     return this.page(
@@ -131,7 +274,7 @@ export class SubmissionRepository {
       skip,
       limit,
       sort === 'shared'
-        ? { shares: -1, created_at: -1 }
+        ? { 'vistaar.shares': -1, created_at: -1 }
         : { created_at: -1, _id: -1 },
     );
   }
@@ -142,32 +285,42 @@ export class SubmissionRepository {
     limit: number,
     sort: Record<string, 1 | -1>,
   ): Promise<{ rows: SubmissionRow[]; total: number }> {
-    const query: QueryFilter<TestimonialSubmission> = {};
-    if (filter.status) query.status = filter.status;
-    if (filter.kind) query.kind = filter.kind;
-    if (filter.agent_id) query.agent_id = filter.agent_id;
+    const query: Query = { ...BASE };
+    if (filter.status) query['vistaar.status'] = filter.status;
+    if (filter.kind) query['vistaar.kind'] = filter.kind;
+    if (filter.agent_id) query['vistaar.agent_id'] = filter.agent_id;
     const q = filter.q?.trim();
     if (q) {
       const re = { $regex: escapeRegex(q), $options: 'i' };
       query.$or = [
-        { farmer_name: re },
-        { farmer_contact: re },
-        { partner_name: re },
-        { agent_id: re },
-        { village: re },
-        { product_name: re },
+        { 'user.name': re },
+        { 'user.contact': re },
+        { 'vistaar.partner_name': re },
+        { 'vistaar.agent_id': re },
+        { 'vistaar.village': re },
+        { 'vistaar.product_name': re },
         { bulk: re },
-        { crop: re },
+        { 'vistaar.crop': re },
       ];
     }
-    return this.page(query, skip, limit, sort);
+    return this.page(
+      query,
+      skip,
+      limit,
+      Object.fromEntries(
+        Object.entries(sort).map(([k, d]) => [SORT_PATHS[k] ?? k, d]),
+      ),
+    );
   }
 
   async counts(): Promise<Record<SubmissionStatus, number>> {
     const entries = await Promise.all(
       SUBMISSION_STATUSES.map(
         async (s) =>
-          [s, await this.model.countDocuments({ status: s }).exec()] as const,
+          [
+            s,
+            await this.rows.countDocuments({ ...BASE, 'vistaar.status': s }),
+          ] as const,
       ),
     );
     return Object.fromEntries(entries) as Record<SubmissionStatus, number>;
@@ -175,80 +328,149 @@ export class SubmissionRepository {
 
   /**
    * The status move, only from a status it may start from — two HO users on
-   * the same one cannot both win. `null` when it had moved on.
+   * the same one cannot both win. Stockship's flags move with it in the same
+   * write, so its lists and averages never disagree with ours. `null` when it
+   * had moved on.
    */
-  transition(
+  async transition(
     id: string,
     from: readonly SubmissionStatus[],
-    set: Partial<SubmissionRow>,
+    change: SubmissionChange,
   ): Promise<SubmissionRow | null> {
-    return this.model
-      .findOneAndUpdate(
-        { _id: id, status: { $in: from } },
-        { $set: set },
+    return fromDoc(
+      await this.rows.findOneAndUpdate(
+        { ...byId(id), 'vistaar.status': { $in: [...from] } },
+        { $set: setOf(change) },
         { returnDocument: 'after' },
-      )
-      .lean<SubmissionRow | null>()
-      .exec();
+      ),
+    );
   }
 
   /** One more view or share — counted only while it is in the library. */
-  bump(
+  async bump(
     id: string,
     field: 'views' | 'shares',
   ): Promise<Pick<SubmissionRow, 'views' | 'shares'> | null> {
-    return this.model
-      .findOneAndUpdate(
-        { _id: id, status: 'approved' },
-        { $inc: { [field]: 1 } },
-        {
-          returnDocument: 'after',
-          projection: { _id: 0, views: 1, shares: 1 },
-          timestamps: false,
-        },
-      )
-      .lean<Pick<SubmissionRow, 'views' | 'shares'> | null>()
-      .exec();
-  }
-
-  /** Which of these `product_testimonials` ids a partner sent in. */
-  async linkedTestimonials(
-    ids: readonly Types.ObjectId[],
-  ): Promise<Set<string>> {
-    if (ids.length === 0) return new Set();
-    const rows = await this.model
-      .find({ testimonial_id: { $in: ids } }, { _id: 0, testimonial_id: 1 })
-      .lean<{ testimonial_id: Types.ObjectId }[]>()
-      .exec();
-    return new Set(rows.map((r) => r.testimonial_id.toHexString()));
+    const doc = await this.rows.findOneAndUpdate(
+      { ...byId(id), 'vistaar.status': 'approved' },
+      { $inc: { [`vistaar.${field}`]: 1 } },
+      {
+        returnDocument: 'after',
+        projection: { _id: 0, 'vistaar.views': 1, 'vistaar.shares': 1 },
+      },
+    );
+    return doc
+      ? { views: doc.vistaar.views, shares: doc.vistaar.shares }
+      : null;
   }
 
   /** Approved ones with words, newest first — the Farmer story template's picks. */
-  approvedQuotes(limit: number): Promise<SubmissionRow[]> {
-    return this.model
-      .find({ status: 'approved', text: { $ne: '' } })
+  async approvedQuotes(limit: number): Promise<SubmissionRow[]> {
+    const docs = await this.rows
+      .find({ ...BASE, 'vistaar.status': 'approved', review: { $ne: '' } })
       .sort({ created_at: -1 })
       .limit(limit)
-      .lean<SubmissionRow[]>()
-      .exec();
+      .toArray();
+    return docs.map((d) => fromDoc(d)!);
   }
 
   private async page(
-    query: QueryFilter<TestimonialSubmission>,
+    query: Query,
     skip: number,
     limit: number,
     sort: Record<string, 1 | -1>,
   ): Promise<{ rows: SubmissionRow[]; total: number }> {
-    const [rows, total] = await Promise.all([
-      this.model
-        .find(query)
-        .sort(sort)
-        .skip(skip)
-        .limit(limit)
-        .lean<SubmissionRow[]>()
-        .exec(),
-      this.model.countDocuments(query).exec(),
+    const [docs, total] = await Promise.all([
+      this.rows.find(query).sort(sort).skip(skip).limit(limit).toArray(),
+      this.rows.countDocuments(query),
     ]);
-    return { rows, total };
+    return { rows: docs.map((d) => fromDoc(d)!), total };
   }
+}
+
+function toDoc(row: NewSubmission, now: Date): SubmissionDoc {
+  const {
+    _id: id,
+    pii_id,
+    farmer_name,
+    farmer_contact,
+    type,
+    bulk,
+    family,
+    text,
+    ...ours
+  } = row;
+  return {
+    _id: new Types.ObjectId(reviewIdOf(id)),
+    source: VISTAAR_SOURCE,
+    ...sharedFlagsOf('submitted'),
+    verified_by: null,
+    deleted_by: null,
+    rating: null,
+    review: text,
+    images: [],
+    pii_id,
+    user: {
+      contact: farmer_contact,
+      email: null,
+      name: farmer_name,
+      profile_image: null,
+    },
+    type,
+    bulk,
+    family,
+    created_at: now,
+    updated_at: now,
+    __v: 0,
+    vistaar: {
+      ...ours,
+      id,
+      status: 'submitted',
+      reason: null,
+      media_url: null,
+      decided_by: null,
+      decided_at: null,
+      approved_at: null,
+      views: 0,
+      shares: 0,
+    },
+  };
+}
+
+function fromDoc(doc: SubmissionDoc | null): SubmissionRow | null {
+  if (!doc) return null;
+  const { id, ...ours } = doc.vistaar;
+  return {
+    ...ours,
+    _id: id,
+    pii_id: doc.pii_id ?? '',
+    farmer_name: doc.user?.name ?? '',
+    farmer_contact: doc.user?.contact ?? '',
+    type: doc.type,
+    bulk: doc.bulk,
+    family: doc.family,
+    text: doc.review ?? '',
+    review_id: doc._id,
+    created_at: doc.created_at,
+    updated_at: doc.updated_at,
+  };
+}
+
+/** Our fields under `vistaar`, the words on `review`, Stockship's flags from the status. */
+function setOf(change: SubmissionChange): Record<string, unknown> {
+  const { status, text, ...decision } = change;
+  const approved = change.status === 'approved';
+  const by = change.decided_by ?? null;
+  const set: Record<string, unknown> = {
+    ...sharedFlagsOf(status),
+    rating: approved ? change.rating : null,
+    ...(approved ? { verified_by: by, deleted_by: null } : { deleted_by: by }),
+    'vistaar.status': status,
+    updated_at: new Date(),
+  };
+  if (text !== undefined) set.review = text;
+  for (const [key, value] of Object.entries(decision)) {
+    if (key !== 'rating' && value !== undefined) set[`vistaar.${key}`] = value;
+  }
+  return set;
 }

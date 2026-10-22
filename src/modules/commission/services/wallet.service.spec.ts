@@ -70,10 +70,17 @@ describe('WalletService', () => {
   let partner: PartnerTerms;
   let facts: PayoutFacts;
   let repo: jest.Mocked<WithdrawalRepository>;
+  let commission: jest.Mocked<CommissionService>;
   let service: WalletService;
 
   beforeEach(() => {
-    book = { earned: 3_000, paid: 1_000, open: 0, withdrawable: 2_000 };
+    book = {
+      earned: 3_000,
+      paid: 1_000,
+      open: 0,
+      withdrawable: 2_000,
+      totals: { confirmed: { count: 2, amount: 2_000 } } as Book['totals'],
+    };
     partner = { ...PARTNER };
     facts = {
       pan_number: 'ABCDE1234F',
@@ -95,7 +102,8 @@ describe('WalletService', () => {
       list: jest.fn(),
     } as unknown as jest.Mocked<WithdrawalRepository>;
 
-    const commission = {
+    commission = {
+      forget: jest.fn(),
       forgetWithdrawals: jest.fn(),
       bookOf: jest.fn(() =>
         Promise.resolve({
@@ -105,7 +113,7 @@ describe('WalletService', () => {
           withdrawals: [],
         }),
       ),
-    } as unknown as CommissionService;
+    } as unknown as jest.Mocked<CommissionService>;
     const onboarding = {
       payoutFacts: jest.fn(() => Promise.resolve(new Map([['ref-1', facts]]))),
     } as unknown as OnboardingService;
@@ -213,7 +221,7 @@ describe('WalletService', () => {
 
   describe('approve', () => {
     it('counts the request itself as available, fixes the TDS rate, and moves it on', async () => {
-      // ₹1,000 open: earned 3,000 − paid 1,000 − open 1,000 leaves 1,000 to spare.
+      // ₹1,000 open: unpaid 2,000 − open 1,000 leaves 1,000 to spare.
       book.open = 1_000;
       facts.pan_verified = false;
       repo.transition.mockResolvedValue(withdrawal({ status: 'approved' }));
@@ -232,11 +240,29 @@ describe('WalletService', () => {
     });
 
     it('refuses when the balance has fallen below the request', async () => {
-      book.earned = 1_500;
+      book.totals!.confirmed.amount = 500;
       book.open = 1_000;
       await expect(
         service.approve('WD-000001', 'ho@k.com'),
       ).rejects.toMatchObject({ response: { error: 'NOT_ENOUGH_BALANCE' } });
+      expect(repo.transition).not.toHaveBeenCalled();
+    });
+
+    it('reads the partner fresh and refuses what the request would refuse', async () => {
+      partner.is_active = false;
+      await expect(
+        service.approve('WD-000001', 'ho@k.com'),
+      ).rejects.toMatchObject({
+        status: 403,
+        response: { error: 'PARTNER_NOT_APPROVED' },
+      });
+      expect(commission.forget).toHaveBeenCalledWith('VST-000001');
+
+      partner.is_active = true;
+      facts.bank_change_pending = true;
+      await expect(
+        service.approve('WD-000001', 'ho@k.com'),
+      ).rejects.toMatchObject({ response: { error: 'BANK_CHANGE_PENDING' } });
       expect(repo.transition).not.toHaveBeenCalled();
     });
 
@@ -287,6 +313,24 @@ describe('WalletService', () => {
     expect(line).toContain('000123454321,SBIN0001234,1000.00,20.00,980.00');
     // A name that looks like a formula is not run by the spreadsheet.
     expect(line).toContain(`"'=HYPERLINK(""x"")"`);
+  });
+
+  it('leaves out of the bank file an account not verified, under change, or not the approved one', async () => {
+    repo.all.mockResolvedValue([withdrawal({ status: 'approved' })]);
+    const reasonOf = async () => {
+      const file = await service.payoutFile();
+      expect(file.rows).toBe(0);
+      return file.skipped[0]?.reason;
+    };
+
+    facts.bank_verified = false;
+    expect(await reasonOf()).toMatch(/not verified/);
+    facts.bank_verified = true;
+    facts.bank_change_pending = true;
+    expect(await reasonOf()).toMatch(/change is waiting/);
+    facts.bank_change_pending = false;
+    facts.bank_account = { ...facts.bank_account!, account_number: '99998888' };
+    expect(await reasonOf()).toMatch(/changed after approval/);
   });
 
   it('marks each line of a paid batch on its own', async () => {

@@ -3,10 +3,12 @@ import { SchemaTypes, type HydratedDocument } from 'mongoose';
 
 import {
   COHORT_STATUSES,
+  type CommissionOffRange,
   type EarningFilters,
   type EarningStatus,
   type RuleCondition,
 } from '../earning.domain';
+import { EarningRule, EarningRuleSchema } from './earning-rule.schema';
 
 /**
  * An HO-built earning cohort (not the onboarding cohort). Never deleted:
@@ -37,9 +39,31 @@ export class EarningCohort {
   @Prop({ type: Number, required: true }) priority!: number;
   @Prop({ type: String, enum: COHORT_STATUSES, default: 'active' })
   status!: EarningStatus;
+  /**
+   * IST days `YYYY-MM-DD`, both included: the cohort takes partners only
+   * between them; `null` = open on that side. Absent on rows from before
+   * dates (read as `null`); never set on `ec_default`.
+   */
+  @Prop({ type: String, default: null }) starts_on?: string | null;
+  @Prop({ type: String, default: null }) ends_on?: string | null;
+  /**
+   * Months the cohort's own commission plan was switched off (its partners
+   * earn `ec_default`'s then). Absent on rows from before the switch (= none);
+   * never set on `ec_default`.
+   */
+  @Prop({ type: [SchemaTypes.Mixed], default: [] })
+  commission_off?: CommissionOffRange[];
   /** ₹ a meeting gig pays its partner when HO left the gig's payout empty; `null` = settings `gig_payout`. */
   @Prop({ type: Number, default: null }) meeting_gig_payout!: number | null;
-  /** 1 on create, +1 on every edit; an edit names the one it was made from. */
+  /**
+   * Its coin / gig rules, archived ones too. Written only by the rule
+   * repository, one rule at a time (guarded by that rule's own `version`),
+   * so a rule edit and a cohort edit never conflict. Missing on a row from
+   * before the merge (read as `[]`).
+   */
+  @Prop({ type: [EarningRuleSchema], default: [] })
+  rules!: EarningRule[];
+  /** 1 on create, +1 on every edit of the cohort's own fields (never a rule's). */
   @Prop({ type: Number, default: 1 }) version!: number;
   @Prop({ type: String, required: true }) created_by!: string;
   @Prop({ type: String, required: true }) updated_by!: string;
@@ -54,3 +78,12 @@ export const EarningCohortSchema = SchemaFactory.createForClass(EarningCohort);
 
 // Active cohorts in HO's order (also read whole — a few dozen rows).
 EarningCohortSchema.index({ status: 1, priority: 1 });
+// A rule by its id (HO's get / edit / archive), and no id in two cohorts.
+// Partial: a cohort with no rules would index `null` and clash with the next.
+EarningCohortSchema.index(
+  { 'rules._id': 1 },
+  {
+    unique: true,
+    partialFilterExpression: { 'rules._id': { $exists: true } },
+  },
+);

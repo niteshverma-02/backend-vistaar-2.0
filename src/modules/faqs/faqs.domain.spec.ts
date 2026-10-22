@@ -1,4 +1,15 @@
-import { liveSections, questionKey } from './faqs.domain';
+import { randomUUID } from 'node:crypto';
+
+import { liveSections, questionKey, SECTION_KEY } from './faqs.domain';
+
+describe('SECTION_KEY', () => {
+  it('can never be a FAQ id, so both kinds share one _id space', () => {
+    for (let i = 0; i < 50; i += 1) {
+      expect(SECTION_KEY.test(randomUUID())).toBe(false);
+    }
+    expect(SECTION_KEY.test('payments')).toBe(true);
+  });
+});
 
 describe('questionKey', () => {
   it('ignores case and surrounding space', () => {

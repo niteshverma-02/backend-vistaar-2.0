@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
-import { mongo } from 'mongoose';
 
 import { badRequest, conflict, notFound } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
+import { isDuplicateKey } from '@common/utils/mongo-error.util';
 import { TtlCache } from '@common/utils/ttl-cache';
 
 import type {
@@ -34,9 +34,6 @@ export interface LiveFaqs {
 
 const ACTIVE_TTL_MS = 60_000;
 
-const isDuplicateKey = (error: unknown): boolean =>
-  error instanceof mongo.MongoServerError && error.code === 11000;
-
 const duplicate = (q: string) =>
   conflict(
     'FAQ_EXISTS',
@@ -60,10 +57,7 @@ export class FaqsService {
   }
 
   private async load(): Promise<LiveFaqs> {
-    const [sections, faqs] = await Promise.all([
-      this.sections.list(true),
-      this.faqs.listActive(),
-    ]);
+    const { sections, faqs } = await this.faqs.listActive();
     const shown = liveSections(sections, faqs);
     return {
       sections: shown.sections.map((s) => ({

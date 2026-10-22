@@ -2,11 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Types, type Model, type PipelineStage } from 'mongoose';
 
-import {
-  escapeRegex,
-  type FollowUpStatus,
-  type NpsBucket,
-} from '../feedback.domain';
+import { escapeRegex } from '@common/utils/regex.util';
+
+import { type FollowUpStatus, type NpsBucket } from '../feedback.domain';
 import { Feedback } from '../schemas/feedback.schema';
 
 export type FeedbackRow = Feedback;
@@ -25,11 +23,15 @@ export interface FeedbackFilter {
 export interface FeedbackStats {
   buckets: { _id: NpsBucket; count: number }[];
   ratings: { _id: number; count: number }[];
-  reasons: { _id: { bucket: NpsBucket; reason: string }; count: number }[];
+  /** Each bucket's top reasons, most picked first. */
+  reasons: { _id: NpsBucket; reasons: { reason: string; count: number }[] }[];
 }
 
-/** A reason list is short; this only bounds a runaway summary. */
-const TOP_REASONS = 60;
+/**
+ * A reason list is short; this only bounds a runaway summary. Per bucket, so
+ * the busiest bucket never crowds the (usually smaller) detractors out.
+ */
+export const REASONS_PER_BUCKET = 20;
 
 @Injectable()
 export class FeedbackRepository {
@@ -121,8 +123,20 @@ export class FeedbackRepository {
                 count: { $sum: 1 },
               },
             },
-            { $sort: { count: -1 } },
-            { $limit: TOP_REASONS },
+            { $sort: { count: -1, '_id.reason': 1 } },
+            {
+              $group: {
+                _id: '$_id.bucket',
+                reasons: {
+                  $push: { reason: '$_id.reason', count: '$count' },
+                },
+              },
+            },
+            {
+              $project: {
+                reasons: { $slice: ['$reasons', REASONS_PER_BUCKET] },
+              },
+            },
           ],
         },
       },

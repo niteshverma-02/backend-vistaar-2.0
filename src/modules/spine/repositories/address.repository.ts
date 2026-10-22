@@ -36,6 +36,29 @@ export class AddressRepository {
       .exec();
   }
 
+  /** Every row this `source` filed for the person — one, unless two saves raced. */
+  ownRows(
+    piiId: string,
+    source: string,
+  ): Promise<{ address_id: string; is_primary: boolean }[]> {
+    return this.model
+      .find({ pii_id: piiId, source })
+      .select('address_id is_primary')
+      .lean<{ address_id: string; is_primary: boolean }[]>()
+      .exec();
+  }
+
+  /** Rows this `source` filed, by id — never another writer's. */
+  async removeOwn(
+    piiId: string,
+    source: string,
+    addressIds: string[],
+  ): Promise<void> {
+    await this.model
+      .deleteMany({ pii_id: piiId, source, address_id: { $in: addressIds } })
+      .exec();
+  }
+
   /** The farm's GPS on the row this source filed — never another writer's. */
   async setGeo(
     piiId: string,
@@ -70,7 +93,13 @@ export class AddressRepository {
     set: Partial<
       Pick<
         Address,
-        'address_line' | 'village' | 'district' | 'city' | 'state' | 'zipcode'
+        | 'address_line'
+        | 'village'
+        | 'district'
+        | 'city'
+        | 'state'
+        | 'zipcode'
+        | 'is_primary'
       >
     >,
   ): Promise<void> {

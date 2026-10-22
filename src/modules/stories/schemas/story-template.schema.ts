@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { SchemaTypes, type HydratedDocument } from 'mongoose';
+import { SchemaTypes } from 'mongoose';
 
 import type { Localized } from '@modules/onboarding/form.domain';
 
@@ -12,14 +12,17 @@ import type {
 /**
  * A "Choose a design" card in My Story: one of the six built-in ones, or a
  * custom card HO made on one of their layouts.
+ *
+ * The `template` kind of `vistaar_v2_story_content`; collection, timestamps
+ * and indexes come from `StoryContent`, which also stores the card key as
+ * `key` (never part of this row as the API sees it).
  */
-@Schema({
-  collection: 'vistaar_v2_story_templates',
-  timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
-  versionKey: false,
-})
+@Schema()
 export class StoryTemplateRow {
-  /** Card key: a layout name for the six built-in cards, else HO's own (`diwali_offer`). */
+  /**
+   * Card key: a layout name for the six built-in cards, else HO's own
+   * (`diwali_offer`). Stored as `template:<key>`.
+   */
   @Prop({ type: String }) _id!: string;
   /** The layout the app draws it with. */
   @Prop({ type: String, required: true }) base!: StoryTemplate;
@@ -54,6 +57,5 @@ export class StoryTemplateRow {
   updated_at!: Date;
 }
 
-export type StoryTemplateDocument = HydratedDocument<StoryTemplateRow>;
 export const StoryTemplateSchema =
   SchemaFactory.createForClass(StoryTemplateRow);

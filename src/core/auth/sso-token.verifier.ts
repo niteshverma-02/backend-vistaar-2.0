@@ -48,7 +48,12 @@ export class SsoTokenVerifier {
     try {
       key = (await this.jwks.getSigningKey(header.kid)).getPublicKey();
     } catch (error) {
-      if (error instanceof Error && error.name === 'SigningKeyNotFoundError') {
+      // A rate-limit hit is someone spamming random `kid`s, not an SSO outage.
+      if (
+        error instanceof Error &&
+        (error.name === 'SigningKeyNotFoundError' ||
+          error.name === 'JwksRateLimitError')
+      ) {
         return null;
       }
       this.logger.error(`SSO JWKS unreachable: ${String(error)}`);

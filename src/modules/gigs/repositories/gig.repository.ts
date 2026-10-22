@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, type QueryFilter, type UpdateQuery } from 'mongoose';
 
+import { escapeRegex } from '@common/utils/regex.util';
+
 import type { GigStatus } from '../gigs.domain';
 import { Gig, type GigDocument } from '../schemas/gig.schema';
 
@@ -44,6 +46,7 @@ const LIST = {
       'products',
       'requirements',
       'cohorts',
+      'earning_cohorts',
       'status',
       'agent_id',
       'accepted_at',
@@ -337,7 +340,7 @@ function queryOf(filter: GigFilter): QueryFilter<Gig> {
   if (filter.state) query.state = filter.state;
   if (filter.district) {
     query.district = {
-      $regex: `^${filter.district.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`,
+      $regex: `^${escapeRegex(filter.district)}$`,
       $options: 'i',
     };
   }

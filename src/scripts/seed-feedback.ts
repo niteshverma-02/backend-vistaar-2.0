@@ -28,6 +28,7 @@ import type {
   FollowUp,
   PartnerSnapshot,
 } from '../modules/feedback/schemas/feedback.schema';
+import { refuseUnlessTestDb } from './test-db-guard';
 
 const TAG = 'feedback-test';
 const BY = 'seed:feedback';
@@ -175,6 +176,8 @@ function snapshot(a: AgentRow): PartnerSnapshot {
 }
 
 async function main(): Promise<void> {
+  process.loadEnvFile?.('.env');
+  refuseUnlessTestDb();
   const apply = process.argv.includes('--apply');
   const remove = process.argv.includes('--remove');
   const log = (line: string) => console.log(`[seed-feedback] ${line}`);
@@ -188,10 +191,6 @@ async function main(): Promise<void> {
   );
 
   try {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('Test data is for beta only — NODE_ENV is production.');
-    }
-
     if (remove) {
       const f = await feedback.deleteMany({ seed: TAG });
       const s = await suggestions.deleteMany({ seed: TAG });

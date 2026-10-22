@@ -160,9 +160,12 @@ function setup(
     leadInserts?: InsertResult[];
     /** Partners whose account is blocked. */
     blocked?: string[];
+    /** The Vistaar partner whose number is being added. */
+    partner?: { pii_id: string | null };
   } = {},
 ) {
   const agents = {
+    findByPhone: jest.fn().mockResolvedValue(opts.partner ?? null),
     isOutOfWork: jest.fn((id: string) =>
       Promise.resolve((opts.blocked ?? []).includes(id)),
     ),
@@ -452,6 +455,8 @@ describe('LeadsService.upsert', () => {
     [{ cohort: 'ex_employee' }, {}, 'VALIDATION_FAILED'],
     [{}, { next_follow_up: '2020-01-01T00:00:00Z' }, 'VALIDATION_FAILED'],
     [{ known: 'PII-1' }, {}, 'SELF_LEAD'],
+    [{ known: 'PII-2', partner: { pii_id: 'PII-2' } }, {}, 'PARTNER_NUMBER'],
+    [{ partner: { pii_id: 'PII-2' } }, {}, 'PARTNER_NUMBER'],
     [
       { known: 'PII-9', seed: [myRow({ agent_id: 'VST-000002' })] },
       {},
@@ -465,6 +470,18 @@ describe('LeadsService.upsert', () => {
     expect(rows.insert).not.toHaveBeenCalled();
     expect(org.insertLead).not.toHaveBeenCalled();
     expect(piis.resolve).not.toHaveBeenCalled();
+  });
+
+  it('refuses another partner’s number in the check and the OTP too, not a bare OTP request', async () => {
+    const { service, otp } = setup({ partner: { pii_id: 'PII-2' } });
+    expect(await codeOf(service.check(ME, dto.phone))).toBe('PARTNER_NUMBER');
+    expect(await codeOf(service.sendFarmerOtp(ME, dto.phone, false))).toBe(
+      'PARTNER_NUMBER',
+    );
+    expect(otp.send).not.toHaveBeenCalled();
+
+    const signupOnly = setup({ partner: { pii_id: null } });
+    expect((await signupOnly.service.check(ME, dto.phone)).status).toBe('new');
   });
 
   it('accepts an ex-employee who declared', async () => {
@@ -1035,6 +1052,24 @@ describe('LeadsService — HO list and map', () => {
     );
     const [byFollowUp] = listRecent.mock.calls[1] as [Record<string, unknown>];
     expect(byFollowUp.has_follow_up).toBe(true);
+  });
+
+  it('reads a from / to day as the IST day', async () => {
+    const { service, rows } = setup();
+    const listRecent = jest.fn().mockResolvedValue({ items: [], total: 0 });
+    Object.assign(rows, { listRecent });
+    await service.list(
+      Object.assign(new AdminLeadQueryDto(), {
+        from: '2026-10-22',
+        to: '2026-10-22',
+        sort: '-created_at',
+      }),
+    );
+    const [filter] = listRecent.mock.calls[0] as [{ from: Date; to: Date }];
+    const inRange = (at: string) =>
+      filter.from <= new Date(at) && new Date(at) < filter.to;
+    expect(inRange('2026-10-22T01:00:00+05:30')).toBe(true);
+    expect(inRange('2026-10-23T03:00:00+05:30')).toBe(false);
   });
 
   it('gives the map one dot per placed farmer and says when it stopped at the cap', async () => {

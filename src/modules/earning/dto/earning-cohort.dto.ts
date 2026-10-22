@@ -23,6 +23,7 @@ import { PageQueryDto } from '@common/dto/page-query.dto';
 import {
   COHORT_ID_PATTERN,
   COHORT_KEY_PATTERN,
+  DAY_KEY_PATTERN,
   MAX_COHORT_CONDITIONS,
   MAX_DISTRICTS,
   MAX_PINCODES,
@@ -54,6 +55,10 @@ const toBool = ({ value }: { value: unknown }) =>
       : value;
 
 const PINCODE = /^[1-9]\d{5}$/;
+const STARTS_ON =
+  'IST day the cohort starts taking partners, included (`YYYY-MM-DD`); null / left out = open. Not on ec_default (400 EARNING_COHORT_LOCKED)';
+const ENDS_ON =
+  'IST day the cohort stops taking partners, included (`YYYY-MM-DD`), on or after starts_on; null / left out = open. Not on ec_default (400 EARNING_COHORT_LOCKED)';
 const PAYOUT_MAX = 100_000;
 const COUNT_MAX = 100_000;
 
@@ -183,6 +188,26 @@ export class CreateEarningCohortDto {
   @Min(0)
   @Max(PAYOUT_MAX)
   meeting_gig_payout?: number | null;
+
+  @ApiPropertyOptional({
+    example: '2026-11-01',
+    nullable: true,
+    type: String,
+    description: STARTS_ON,
+  })
+  @IsOptional()
+  @Matches(DAY_KEY_PATTERN, { message: 'Use a date like 2026-11-01.' })
+  starts_on?: string | null;
+
+  @ApiPropertyOptional({
+    example: '2026-11-30',
+    nullable: true,
+    type: String,
+    description: ENDS_ON,
+  })
+  @IsOptional()
+  @Matches(DAY_KEY_PATTERN, { message: 'Use a date like 2026-11-30.' })
+  ends_on?: string | null;
 }
 
 /** Only what is sent changes; `filters` keys merge over the stored ones. */
@@ -238,6 +263,35 @@ export class UpdateEarningCohortDto {
   @Min(0)
   @Max(PAYOUT_MAX)
   meeting_gig_payout?: number | null;
+
+  @ApiPropertyOptional({
+    example: '2026-11-01',
+    nullable: true,
+    type: String,
+    description: `${STARTS_ON}. \`null\` clears it.`,
+  })
+  @IsOptional()
+  @Matches(DAY_KEY_PATTERN, { message: 'Use a date like 2026-11-01.' })
+  starts_on?: string | null;
+
+  @ApiPropertyOptional({
+    example: '2026-11-30',
+    nullable: true,
+    type: String,
+    description: `${ENDS_ON}. \`null\` clears it.`,
+  })
+  @IsOptional()
+  @Matches(DAY_KEY_PATTERN, { message: 'Use a date like 2026-11-30.' })
+  ends_on?: string | null;
+
+  @ApiPropertyOptional({
+    example: false,
+    description:
+      'The cohort’s own commission plan ON / OFF from this IST month: off = its partners earn ec_default’s plan (past months never change). `{ version, commission_enabled }` alone is valid; the state it already has changes nothing. ec_default cannot be switched off (400 EARNING_COHORT_LOCKED)',
+  })
+  @ValidateIf((_, v) => v !== undefined)
+  @IsBoolean()
+  commission_enabled?: boolean;
 }
 
 export class ReorderEarningCohortsDto {

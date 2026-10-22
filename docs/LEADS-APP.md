@@ -314,6 +314,7 @@ stay. A customer (`won`) cannot be removed — `409 STAGE_NOT_ALLOWED`.
 | `OTP_UNAVAILABLE` | 503 | the SMS service did not answer — try again |
 | `INVALID_PHONE` | 400 | not a 10-digit Indian mobile |
 | `SELF_LEAD` | 400 | your own number |
+| `PARTNER_NUMBER` | 409 | the number is a Vistaar partner's — `GET /leads/check`, `POST /leads/otp/send` and `POST /leads` all refuse it |
 | `FARMER_TAKEN` | 409 | another partner's farmer |
 | `NOT_A_FARMER` | 409 | registered as a retailer / business |
 | `CONSENT_OUTDATED` | 409 | wording changed — reload `GET /leads/consent`, show it, ask again |

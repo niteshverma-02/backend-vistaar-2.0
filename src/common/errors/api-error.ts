@@ -120,6 +120,7 @@ export const API_ERROR_CODES = [
   // Farmer leads. A partner adds farmers only, and each farmer once.
   'PARTNER_NOT_APPROVED',
   'SELF_LEAD',
+  'PARTNER_NUMBER',
   'FARMER_TAKEN',
   'NOT_A_FARMER',
   'CONSENT_OUTDATED',
@@ -158,6 +159,8 @@ export const API_ERROR_CODES = [
   'EARNING_COHORT_LOCKED',
   'EARNING_ARCHIVED',
   'EARNING_ORDER_CHANGED',
+  // A gig (HO) named an earning cohort that does not exist or is archived (400).
+  'EARNING_COHORT_NOT_FOUND',
   // Farmer OTP on lead add (400): no token sent, or one that is not this
   // partner's, not this phone's, or past its 15 minutes.
   'LEAD_OTP_REQUIRED',

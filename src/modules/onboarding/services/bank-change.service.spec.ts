@@ -182,7 +182,7 @@ function setup() {
   );
   const service = new BankChangeService(repo, forms, configs, agents, storage);
   const facts = async () => (await forms.payoutFacts(['ref-1'])).get('ref-1');
-  return { service, facts, piis, repo, row: () => row };
+  return { service, facts, piis, repo, agents, row: () => row };
 }
 
 describe('BankChangeService', () => {
@@ -245,6 +245,32 @@ describe('BankChangeService', () => {
       {
         id: null,
         image: 'https://bucket/KO-documents/PII-1/bank/new.jpg',
+      },
+    );
+  });
+
+  it('approve can be run again when a copy after the approval failed', async () => {
+    const { service, piis, agents, repo, row } = setup();
+    await service.request('ref-1', NEW_REQUEST);
+    jest
+      .mocked(agents.setProfileBankAccount)
+      .mockRejectedValueOnce(new Error('network'));
+    await expect(service.approve('VST-000001', 'ho@k.com')).rejects.toThrow(
+      'network',
+    );
+    expect(row().bank_change?.status).toBe('approved');
+
+    await expect(
+      service.approve('VST-000001', 'ho@k.com'),
+    ).resolves.toMatchObject({ status: 'approved' });
+    expect(repo.closeBankChange).toHaveBeenCalledTimes(1);
+    expect(piis.recordVerifiedDocument).toHaveBeenCalledTimes(2);
+    expect(agents.setProfileBankAccount).toHaveBeenLastCalledWith(
+      expect.objectContaining({ agent_id: 'VST-000001' }),
+      {
+        account_holder: 'Suresh Kumar',
+        account_number: '998877665544',
+        ifsc: 'HDFC0000123',
       },
     );
   });

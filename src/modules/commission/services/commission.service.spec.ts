@@ -1,3 +1,4 @@
+import { istMonthKey } from '@common/utils/ist-day.util';
 import type {
   AgentRecord,
   AgentsService,
@@ -277,6 +278,39 @@ describe('CommissionService', () => {
         kind: 'slabs',
         slabs: defaultPlan('vistaar_agent').slabs,
       },
+    });
+  });
+
+  it('My plan says when the cohort’s commission is off this month: ec_default’s plan', async () => {
+    const month = istMonthKey(new Date());
+    current.mockResolvedValue({
+      cohort: {
+        _id: 'ec_paddy',
+        name: 'Paddy belt',
+        commission_off: [{ from: month, to: null }],
+      },
+      since: new Date('2026-09-10T00:00:00Z'),
+    });
+    // What CommissionPlansService.saved() answers for an off month.
+    saved = (cohort) =>
+      cohort === 'ec_default'
+        ? paddy({ cohort: 'ec_default', plan_id: 'ec_default@2026-09' })
+        : null;
+    const { my_plan } = await service.plansFor('VST-000001');
+    expect(my_plan).toMatchObject({
+      earning_cohort: { id: 'ec_paddy' },
+      inherits: 'ec_default',
+      inherits_reason: 'commission_off',
+      plan_id: 'ec_default@2026-09',
+    });
+
+    current.mockResolvedValue({
+      cohort: { _id: 'ec_paddy', name: 'Paddy belt' },
+      since: new Date('2026-09-10T00:00:00Z'),
+    });
+    expect((await service.plansFor('VST-000001')).my_plan).toMatchObject({
+      inherits: 'ec_default',
+      inherits_reason: 'no_plan',
     });
   });
 

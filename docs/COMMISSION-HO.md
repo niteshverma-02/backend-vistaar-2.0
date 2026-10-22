@@ -85,13 +85,45 @@ earlier state, oldest first: `at`, `by`, `action: "created" | "updated"`, `kind`
 `rate` alone changes a fixed plan, `slabs` alone a slab plan.
 
 **In effect** rows: the plan fields + `cohort`, `label` (cohort name), `plan_id`,
-`effective_from`, and `inherits`:
+`effective_from`, `inherits` and `inherits_reason`:
 
 | `inherits` | Meaning | Show |
 |---|---|---|
 | `null` | the cohort's own plan | its rates |
-| `"ec_default"` | no plan of its own by that month: `ec_default`'s (`plan_id` is `ec_default@…`) | "As Everyone else" + the rates |
+| `"ec_default"` | no plan of its own by that month, or its commission is switched off that month: `ec_default`'s (`plan_id` is `ec_default@…`) | "As Everyone else" + the rates |
 | `"partner_type"` | no plan here or on `ec_default`: each partner earns their partner type's plan (`slabs: []`) | "Each partner's partner-type rates — save a plan to set one" |
+
+| `inherits_reason` | Meaning |
+|---|---|
+| `null` | its own plan (`inherits: null`), and every partner-type row |
+| `"commission_off"` | HO switched the cohort's commission **off** for that month (below) — say "Commission off" |
+| `"no_plan"` | it has no plan of its own by that month |
+
+### Commission ON/OFF per earning cohort (2026-10-22)
+
+`PATCH /admin/earning-cohorts/:id` with `{ "version": 3, "commission_enabled": false }`
+(EARNINGS-HO.md). **Off** = the cohort's own plan stops from **this IST month** and its
+partners earn `ec_default`'s plan instead — never nothing (with no `ec_default` plan
+either: their partner-type plan). **On** again = its own plan back from the month it is
+switched on. Past months never change (they are paid on).
+
+- Stored on the cohort as `commission_off: [{ from: "2026-11", to: null }]` — IST months,
+  both included, `to: null` = still off. Off pushes `{ from: <this month>, to: null }`;
+  on in the **same** month removes that range (it never covered a paid month), on in a
+  **later** month sets its `to` to the month before.
+- A switch in the current month works this month's commission out again on the new
+  rates — the whole month, orders already placed in it included — exactly as a plan
+  edit in the current month does: commission is worked out on every read, and the
+  switch drops this server's cached plan view at once (other servers within a minute).
+- Every place a cohort's rates for a month are picked reads it: each order's rate
+  (ledger, summary, statements, wallet, payouts, the partners table and board), the
+  month's headline rate, these in-effect rows and the app's "My plan". A plan saved for
+  an off month stays saved and applies again when the cohort is switched on.
+- `ec_default` cannot be switched off (`400 EARNING_COHORT_LOCKED`); an archived cohort
+  is refused as any edit (`409 EARNING_ARCHIVED`). Sending the state it already has
+  writes nothing and answers the cohort as it is (`200`, `version` unchanged).
+- **Show:** an ON/OFF toggle on the cohort's Commission tab, from `commission_enabled`;
+  a past range from `commission_off` as "Commission off Nov 2026 – Dec 2026".
 
 **Editor:** per earning cohort (Earnings → cohort → Commission tab): fixed / slabs switch,
 a rate or a slab table, optional minimum order value, month picker, notes, "Signed off"
@@ -115,7 +147,7 @@ requested ──approve──► approved ──paid (UTR)──► paid
 | GET | `/admin/withdrawals?status=&agent_id=&page=&limit=` | a queue (`requested`, `approved`) oldest first; anything else newest first |
 | GET | `/admin/withdrawals/totals` | cards: requested, approved (to pay), paid this month, paid this FY |
 | GET | `/admin/withdrawals/:id` | one |
-| POST | `/admin/withdrawals/:id/approve` | balance and bank proof checked again; TDS rate fixed |
+| POST | `/admin/withdrawals/:id/approve` | checked again as at request (partner approved and active, bank proof verified, no bank change waiting, balance); TDS rate fixed |
 | POST | `/admin/withdrawals/:id/reject` | `{ "reason": "…" }` (shown to the partner); requested or approved |
 | GET | `/admin/withdrawals/payout-file` | approved withdrawals as a bank CSV |
 | POST | `/admin/withdrawals/:id/paid` | `{ "utr": "SBIN526287123456", "paid_at": "…" }` (`paid_at` optional, not in the future) |
@@ -132,19 +164,20 @@ bank sends.
 content, skipped[] }` — save `content` as `file_name`. Columns: `withdrawal_id, agent_id,
 partner_name, account_holder, account_number, ifsc, amount, tds, net_amount, requested_at`
 (generic; send the bank's own template when Finance picks a bank and it is mapped). An
-approved withdrawal whose form has no account number / IFSC is in `skipped` with the
-reason, not in the file. At most 500 per file. The file holds full account numbers: keep it
+approved withdrawal is in `skipped` with the reason, not in the file, when the form has no
+account number / IFSC, the bank proof is not verified, a bank change is waiting, or the
+account's last 4 digits are no longer the withdrawal's `account_last4` (reject it; the
+partner asks again). At most 500 per file. The file holds full account numbers: keep it
 behind `payouts.manage` and do not store it in the browser.
 
 **Batch paid** answers `{ paid, results: [ { id, ok, error } ] }` — each line succeeds or
 fails on its own (e.g. already paid).
 
 **Bank account change** (ONBOARDING-HO.md §3): while a partner's new account waits for HO,
-the partner cannot ask for a new withdrawal (`409 BANK_CHANGE_PENDING`). Withdrawals already
-requested or approved are not touched, and approve and the bank file still work. Approve
-and the bank file read the account on the form at that moment: once a change is approved,
-the bank file pays the new account, even for a withdrawal approved before it (its
-`account_last4` still shows the old one).
+neither the partner can ask for a withdrawal nor HO approve one (`409 BANK_CHANGE_PENDING`),
+and the bank file leaves approved ones out. Approve fixes `account_last4` from the form;
+the bank file pays only that account, so a withdrawal approved before a change was approved
+stays in `skipped` until HO rejects it and the partner asks again.
 
 ## 3. TDS and Form 16A
 

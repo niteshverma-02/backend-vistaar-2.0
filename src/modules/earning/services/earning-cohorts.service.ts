@@ -1,7 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  type OnModuleDestroy,
+  type OnModuleInit,
+} from '@nestjs/common';
 
 import { badRequest, conflict, notFound } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
+import { istDate, istMonthKey } from '@common/utils/ist-day.util';
 import { KeyedSerialQueue } from '@common/utils/keyed-serial-queue';
 import {
   AgentsService,
@@ -24,17 +30,26 @@ import {
   checkConditionIn,
   cohortIdOf,
   cohortOrder,
+  cohortWindow,
+  commissionOffIn,
   conditionsToFilters,
   describeCohortConditions,
+  describeCohortWindow,
   filtersToConditions,
   hasFilters,
+  isRunning,
   normalizeFilters,
   opsOf,
   orderError,
   pickCohort,
+  switchCommission,
+  windowError,
+  windowsCrossed,
   withSuffix,
   type AssignmentReason,
   type CatalogField,
+  type CohortWindow,
+  type CommissionOffRange,
   type EarningFilters,
   type FiltersInput,
   type Operator,
@@ -51,6 +66,7 @@ import {
   type EarningCohortPatch,
   type EarningCohortRecord,
 } from '../repositories/earning-cohort.repository';
+import { EarningWindowRepository } from '../repositories/earning-window.repository';
 
 export type { EarningCohortRecord } from '../repositories/earning-cohort.repository';
 
@@ -88,11 +104,27 @@ export type EarningAssignmentRow = Pick<
   'agent_id' | 'cohort_id' | 'from' | 'to'
 >;
 
+/** Its rules are served by the rules routes, never on the cohort. */
 export type EarningCohortView = Omit<
   EarningCohortRecord,
-  '_id' | 'conditions' | 'filters'
+  | '_id'
+  | 'conditions'
+  | 'filters'
+  | 'starts_on'
+  | 'ends_on'
+  | 'commission_off'
+  | 'rules'
 > & {
   id: string;
+  /** Its own commission plan is on in this IST month (off = `ec_default`'s). */
+  commission_enabled: boolean;
+  /** Every month range it was off, oldest first; `[]` = never. */
+  commission_off: CommissionOffRange[];
+  /** IST days, both included; `null` = open on that side. */
+  starts_on: string | null;
+  ends_on: string | null;
+  /** At IST today; `null` when the cohort has no dates. */
+  window: CohortWindow | null;
   /** Authoritative for matching; `[]` only on the default cohort. */
   conditions: RuleCondition[];
   /** The legacy view, derived from `conditions` (best effort). */
@@ -131,6 +163,11 @@ const ID_TRIES = 20;
 /** Reads again after losing a race to another process. */
 const TRIES = 2;
 const HISTORY = 100;
+/** How often a process with no reads looks whether a cohort's day has come. */
+const WINDOW_CHECK_MS = 60 * 60 * 1000;
+
+/** The IST calendar day now — what cohort dates are compared against. */
+const istToday = (): string => istDate(new Date());
 
 const message = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
@@ -159,7 +196,7 @@ function factsOf(
  * `recompute` is one of those events.
  */
 @Injectable()
-export class EarningCohortsService {
+export class EarningCohortsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(EarningCohortsService.name);
   private holdings: HoldingsSource | null = null;
   /** One partner's recomputes run one after another in this process. */
@@ -167,16 +204,52 @@ export class EarningCohortsService {
   /** The bulk run in flight here, and whether another was asked for meanwhile. */
   private bulk: Promise<void> | null = null;
   private bulkAgain = false;
+  /** The IST day this process last asked about (the shared row decides who runs it). */
+  private windowDay: string | null = null;
+  private windowTimer: NodeJS.Timeout | null = null;
+  /** Told when a cohort's commission is switched (the commission module's plan cache). */
+  private readonly commissionListeners: (() => void)[] = [];
 
   constructor(
     private readonly cohorts: EarningCohortRepository,
     private readonly assignments: EarningAssignmentRepository,
     private readonly agents: AgentsService,
+    private readonly window: EarningWindowRepository,
   ) {}
 
   /** Called once by the leads module at start-up. */
   useHoldings(source: HoldingsSource): void {
     this.holdings = source;
+  }
+
+  /**
+   * Called by the commission module at start-up, so a switch reaches its plan
+   * cache at once (as a plan edit does) without this module importing it.
+   */
+  onCommissionChange(listener: () => void): void {
+    this.commissionListeners.push(listener);
+  }
+
+  /**
+   * Cohort dates move partners without a cron: there is no scheduler here,
+   * and a free instance that sleeps would miss one anyway. `all()` — which
+   * every placement and pay read goes through — notices a new IST day, and
+   * this hourly read covers a process that gets no traffic. Either way at
+   * most one bulk recompute runs (`recomputeAllLater` queues the rest).
+   */
+  onModuleInit(): void {
+    this.windowTimer = setInterval(() => {
+      this.all().catch((error: unknown) =>
+        this.logger.warn(`Cohort dates not checked: ${message(error)}`),
+      );
+    }, WINDOW_CHECK_MS);
+    // Never what keeps the process alive.
+    this.windowTimer.unref();
+  }
+
+  onModuleDestroy(): void {
+    if (this.windowTimer) clearInterval(this.windowTimer);
+    this.windowTimer = null;
   }
 
   // ── For other modules ────────────────────────────────────────────────
@@ -198,7 +271,9 @@ export class EarningCohortsService {
         (a, b) =>
           (b.archived_at?.getTime() ?? 0) - (a.archived_at?.getTime() ?? 0),
       );
-    return [...cohortOrder(rows), ...archived].map(withConditions);
+    const out = [...cohortOrder(rows), ...archived].map(normalized);
+    await this.noteDay(out);
+    return out;
   }
 
   async find(id: string): Promise<EarningCohortRecord | null> {
@@ -206,7 +281,7 @@ export class EarningCohortsService {
       return (await this.all()).find((c) => c._id === id) ?? null;
     }
     const row = await this.cohorts.find(id);
-    return row && withConditions(row);
+    return row && normalized(row);
   }
 
   async get(id: string): Promise<EarningCohortRecord> {
@@ -233,24 +308,18 @@ export class EarningCohortsService {
         ref = { id: done.cohort_id, since: done.since };
       }
     }
-    // An archived cohort pays nothing from the moment it is archived, not
-    // only once the recompute it starts has moved its partners.
-    const cohort =
-      cohorts.find((c) => c._id === ref?.id && c.status === 'active') ??
-      cohorts.find((c) => c._id === DEFAULT_COHORT_ID);
+    // An archived cohort pays nothing from the moment it is archived, and a
+    // cohort outside its dates from its day on — not only once a recompute
+    // has moved its partners. The move for this one follows.
+    const own = cohorts.find((c) => c._id === ref?.id && c.status === 'active');
+    const running = own && isRunning(own, istToday()) ? own : undefined;
+    if (own && !running && isWorking(partner)) {
+      this.recomputeLater([id], 'cohort_window');
+    }
+    const cohort = running ?? cohorts.find((c) => c._id === DEFAULT_COHORT_ID);
     // `all()` writes the default when it is missing; this is a broken database.
     if (!cohort) throw new Error('The default earning cohort is missing.');
     return { cohort, since: ref?.since ?? null };
-  }
-
-  /**
-   * The cohort the partner was in at `at` (an order's placing time); `null`
-   * before their first assignment — the caller keeps its older rules then.
-   */
-  async cohortAt(agentId: string, at: Date): Promise<string | null> {
-    return (
-      (await this.assignments.at(agentId.toUpperCase(), at))?.cohort_id ?? null
-    );
   }
 
   /** Every stretch of these partners, oldest first — for `cohortAtIn` over many orders. */
@@ -303,11 +372,16 @@ export class EarningCohortsService {
     const openBy = new Map(open.map((r) => [r.agent_id, r]));
     const syncs: { agent_id: string; cohort: EarningCohortRef }[] = [];
     const moves: CohortMove[] = [];
+    const today = istToday();
     let working = 0;
     for (const p of partners) {
       if (!p.agent_id || !isWorking(p)) continue;
       working += 1;
-      const target = pickCohort(cohorts, factsOf(p, holdings.get(p.agent_id)));
+      const target = pickCohort(
+        cohorts,
+        factsOf(p, holdings.get(p.agent_id)),
+        today,
+      );
       const now = openBy.get(p.agent_id);
       if (now?.cohort_id === target) {
         if (p.earning_cohort?.id !== target) {
@@ -395,10 +469,11 @@ export class EarningCohortsService {
     const rows = cohorts.filter(
       (c) => query.include_archived || c.status === 'active',
     );
+    const today = istToday();
     return new PageResult(
       rows
         .slice(query.skip, query.skip + query.limit)
-        .map((c) => viewOf(c, counts.get(c._id) ?? 0)),
+        .map((c) => viewOf(c, counts.get(c._id) ?? 0, today)),
       rows.length,
       query,
     );
@@ -409,7 +484,7 @@ export class EarningCohortsService {
       this.get(id),
       this.agents.earningCohortCounts(),
     ]);
-    return viewOf(cohort, counts.get(id) ?? 0);
+    return viewOf(cohort, counts.get(id) ?? 0, istToday());
   }
 
   /** What the HO portal builds the condition form from. */
@@ -429,6 +504,9 @@ export class EarningCohortsService {
       dto.conditions !== undefined
         ? this.checkConditions(dto.conditions, dto.filters)
         : filtersToConditions(this.checkFilters(dto.filters));
+    const starts_on = dto.starts_on ?? null;
+    const ends_on = dto.ends_on ?? null;
+    checkDates(starts_on, ends_on);
     const cohorts = await this.all();
     const taken = new Set(cohorts.map((c) => c._id));
     const priority =
@@ -466,7 +544,11 @@ export class EarningCohortsService {
         filters: conditionsToFilters(conditions),
         priority,
         status: 'active',
+        starts_on,
+        ends_on,
+        commission_off: [],
         meeting_gig_payout: dto.meeting_gig_payout ?? null,
+        rules: [],
         version: 1,
         created_by: by,
         updated_by: by,
@@ -535,7 +617,51 @@ export class EarningCohortsService {
       moved =
         JSON.stringify(set.conditions) !== JSON.stringify(current.conditions);
     }
+    if (dto.starts_on !== undefined || dto.ends_on !== undefined) {
+      const was = {
+        starts_on: current.starts_on ?? null,
+        ends_on: current.ends_on ?? null,
+      };
+      const starts_on =
+        dto.starts_on !== undefined ? dto.starts_on : was.starts_on;
+      const ends_on = dto.ends_on !== undefined ? dto.ends_on : was.ends_on;
+      if (id === DEFAULT_COHORT_ID) {
+        // `null` is what the default already has: a form that always sends
+        // both fields still saves its other edits.
+        if (starts_on !== null || ends_on !== null) {
+          throw badRequest(
+            'EARNING_COHORT_LOCKED',
+            'The default cohort takes every partner no other cohort takes, on every day, so it has no start or end date.',
+          );
+        }
+      } else {
+        checkDates(starts_on, ends_on);
+        if (dto.starts_on !== undefined) set.starts_on = starts_on;
+        if (dto.ends_on !== undefined) set.ends_on = ends_on;
+        moved ||= starts_on !== was.starts_on || ends_on !== was.ends_on;
+      }
+    }
+    let switched = false;
+    if (dto.commission_enabled !== undefined) {
+      if (id === DEFAULT_COHORT_ID && !dto.commission_enabled) {
+        throw badRequest(
+          'EARNING_COHORT_LOCKED',
+          'Every cohort whose commission is off earns the default cohort’s plan, so the default’s cannot be switched off.',
+        );
+      }
+      const next = switchCommission(
+        current.commission_off ?? [],
+        dto.commission_enabled,
+        istMonthKey(new Date()),
+      );
+      if (next) {
+        set.commission_off = next;
+        switched = true;
+      }
+    }
     if (Object.keys(set).length === 0) {
+      // The switch already stands as sent (a second click, another tab).
+      if (dto.commission_enabled !== undefined) return this.adminGet(id);
       throw badRequest('VALIDATION_FAILED', 'Nothing to change was sent.');
     }
     const saved = await this.cohorts.save(id, dto.version, set, by);
@@ -546,6 +672,7 @@ export class EarningCohortsService {
       );
     }
     if (moved) this.recomputeAllLater('cohorts_changed');
+    if (switched) this.commissionChanged();
     return this.adminGet(id);
   }
 
@@ -641,7 +768,11 @@ export class EarningCohortsService {
         this.all(),
         this.holdingsOf([id]),
       ]);
-      const target = pickCohort(cohorts, factsOf(partner, holdings.get(id)));
+      const target = pickCohort(
+        cohorts,
+        factsOf(partner, holdings.get(id)),
+        istToday(),
+      );
       if (open?.cohort_id === target) {
         if (partner.earning_cohort?.id !== target) {
           await this.agents.setEarningCohorts([
@@ -673,6 +804,42 @@ export class EarningCohortsService {
       changed: false,
       since: open?.from ?? null,
     };
+  }
+
+  /**
+   * On the first read of a new IST day: a cohort that started or ended since
+   * the last look moves its partners. Each process asks once a day (noted
+   * before the write, so concurrent reads ask once); only the one whose write
+   * moves the shared row to today runs it, from the day the row held.
+   */
+  private async noteDay(
+    cohorts: readonly EarningCohortRecord[],
+  ): Promise<void> {
+    const today = istToday();
+    if (this.windowDay === today) return;
+    const last = this.windowDay;
+    this.windowDay = today;
+    try {
+      const claimed = await this.window.claimDay(today);
+      if (claimed && windowsCrossed(cohorts, claimed.since, today)) {
+        this.recomputeAllLater('cohort_window');
+      }
+    } catch (error) {
+      // Asked again on the next read or the hourly look.
+      this.windowDay = last;
+      this.logger.warn(`Cohort dates not checked: ${message(error)}`);
+    }
+  }
+
+  /** A listener's failure must not fail HO's saved switch: the cache lapses in a minute anyway. */
+  private commissionChanged(): void {
+    for (const listener of this.commissionListeners) {
+      try {
+        listener();
+      } catch (error) {
+        this.logger.warn(`Commission switch not passed on: ${message(error)}`);
+      }
+    }
   }
 
   private holdingsOf(
@@ -732,22 +899,43 @@ export class EarningCohortsService {
   }
 }
 
-function withConditions(c: EarningCohortRecord): EarningCohortRecord {
-  // A row from before conditions: its legacy filters say what it means.
-  return c.conditions
-    ? c
-    : { ...c, conditions: filtersToConditions(c.filters) };
+function normalized(c: EarningCohortRecord): EarningCohortRecord {
+  return {
+    ...c,
+    // A row from before conditions: its legacy filters say what it means.
+    conditions: c.conditions ?? filtersToConditions(c.filters),
+    // A row from before rules moved in (not migrated yet) has none.
+    rules: c.rules ?? [],
+  };
 }
 
-function viewOf(c: EarningCohortRecord, count: number): EarningCohortView {
-  const { _id, conditions, ...rest } = withConditions(c);
+/** Dates as stored must be real days in order; every problem is a 400. */
+function checkDates(starts_on: string | null, ends_on: string | null): void {
+  const error = windowError(starts_on, ends_on);
+  if (error) throw badRequest('VALIDATION_FAILED', error);
+}
+
+function viewOf(
+  c: EarningCohortRecord,
+  count: number,
+  today: string,
+): EarningCohortView {
+  const { _id, conditions, rules, ...rest } = normalized(c);
   const list = conditions ?? [];
+  const dates = describeCohortWindow(c);
   return {
     id: _id,
     ...rest,
+    starts_on: c.starts_on ?? null,
+    ends_on: c.ends_on ?? null,
+    window: cohortWindow(c, today),
+    commission_enabled: !commissionOffIn(c.commission_off, today.slice(0, 7)),
+    commission_off: c.commission_off ?? [],
     conditions: list,
     filters: conditionsToFilters(list),
-    summary: describeCohortConditions(list),
+    summary: [describeCohortConditions(list), dates]
+      .filter((part) => part !== null)
+      .join(' · '),
     is_default: _id === DEFAULT_COHORT_ID,
     partners_count: count,
   };

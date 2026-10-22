@@ -60,6 +60,7 @@ function setup(
   row: Gig,
   moved: Gig | null = row,
   cohortPayout: number | null = 300,
+  agent: Record<string, unknown> = {},
 ) {
   const gigs = {
     find: jest.fn().mockResolvedValue(row),
@@ -74,6 +75,7 @@ function setup(
       cohort: 'vistaar_agent',
       preview: {},
       profile: null,
+      ...agent,
     }),
   };
   const settings = {
@@ -237,6 +239,113 @@ describe('GigsService', () => {
         payout: 300,
         payout_source: 'cohort',
       });
+    });
+  });
+
+  describe('earning cohorts (a second list, ANDed with cohorts)', () => {
+    const since = new Date('2026-10-01T00:00:00Z');
+    const inCohort = (id: string) => ({ earning_cohort: { id, since } });
+    const forBelt = (overrides: Partial<Gig> = {}) =>
+      gig({ earning_cohorts: ['ec_bhopal_belt'], ...overrides });
+
+    const available = async (row: Gig, agent: Record<string, unknown>) => {
+      const { service } = setup(row, row, 300, agent);
+      const page = await service.list(AGENT, {
+        tab: 'available',
+        skip: 0,
+        limit: 50,
+      } as GigsQueryDto);
+      return page.items.map((g) => g.id);
+    };
+
+    it('an empty list, or a gig from before the field, is for everyone', async () => {
+      const old = gig();
+      expect(old).not.toHaveProperty('earning_cohorts');
+      for (const row of [gig({ earning_cohorts: [] }), old]) {
+        expect(await available(row, inCohort('ec_indore'))).toEqual([ID]);
+        expect(await available(row, {})).toEqual([ID]);
+      }
+    });
+
+    it('a partner in a listed earning cohort sees it', async () => {
+      expect(await available(forBelt(), inCohort('ec_bhopal_belt'))).toEqual([
+        ID,
+      ]);
+    });
+
+    it('a partner in another earning cohort, or in none, does not', async () => {
+      expect(await available(forBelt(), inCohort('ec_indore'))).toEqual([]);
+      expect(await available(forBelt(), {})).toEqual([]);
+      expect(await available(forBelt(), { earning_cohort: null })).toEqual([]);
+    });
+
+    it('both lists must let the partner in', async () => {
+      const row = forBelt({ cohorts: ['shop_owner'] });
+      // vistaar_agent in the belt: the partner type list keeps them out.
+      expect(await available(row, inCohort('ec_bhopal_belt'))).toEqual([]);
+      expect(
+        await available(row, {
+          cohort: 'shop_owner',
+          ...inCohort('ec_bhopal_belt'),
+        }),
+      ).toEqual([ID]);
+    });
+
+    it('detail and accept answer 404 outside the earning cohorts', async () => {
+      const { service, gigs } = setup(
+        forBelt(),
+        held(),
+        300,
+        inCohort('ec_indore'),
+      );
+      expect(await failure(service.get(AGENT, ID))).toEqual({
+        status: 404,
+        code: 'NOT_FOUND',
+      });
+      expect(await failure(service.accept(AGENT, ID))).toEqual({
+        status: 404,
+        code: 'NOT_FOUND',
+      });
+      expect(gigs.transition).not.toHaveBeenCalled();
+
+      const inside = setup(forBelt(), held(), 300, inCohort('ec_bhopal_belt'));
+      expect((await inside.service.accept(AGENT, ID)).status).toBe('accepted');
+    });
+  });
+
+  describe('same state (gig ids run in order, so a partner can try any)', () => {
+    const inUP = { profile: { state: 'Uttar Pradesh' } };
+
+    it('detail and accept answer 404 for another state’s open gig', async () => {
+      const { service, gigs } = setup(gig(), held(), 300, inUP);
+      expect(await failure(service.get(AGENT, ID))).toEqual({
+        status: 404,
+        code: 'NOT_FOUND',
+      });
+      expect(await failure(service.accept(AGENT, ID))).toEqual({
+        status: 404,
+        code: 'NOT_FOUND',
+      });
+      expect(gigs.transition).not.toHaveBeenCalled();
+    });
+
+    it('the partner’s own gig still opens and answers accept, whatever its state', async () => {
+      const { service, gigs } = setup(held(), held(), 300, inUP);
+      expect((await service.get(AGENT, ID)).status).toBe('accepted');
+      expect((await service.accept(AGENT, ID)).status).toBe('accepted');
+      expect(gigs.transition).not.toHaveBeenCalled();
+    });
+
+    it('the same state, or a state not known on either side, may take it', async () => {
+      for (const agent of [
+        { preview: { state: 'Madhya Pradesh' } },
+        { preview: {} },
+      ]) {
+        const { service } = setup(gig(), held(), 300, agent);
+        expect((await service.accept(AGENT, ID)).status).toBe('accepted');
+      }
+      const { service } = setup(gig({ state: null }), held(), 300, inUP);
+      expect((await service.accept(AGENT, ID)).status).toBe('accepted');
     });
   });
 });

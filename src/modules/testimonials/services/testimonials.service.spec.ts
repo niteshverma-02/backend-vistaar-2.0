@@ -57,10 +57,9 @@ function setup() {
     remove: jest.fn().mockResolvedValue(true),
     productExists: jest.fn().mockResolvedValue(true),
     comboExists: jest.fn().mockResolvedValue(true),
+    fromPartners: jest.fn().mockResolvedValue(new Set<string>()),
   };
-  const submissions = {
-    linkedTestimonials: jest.fn().mockResolvedValue(new Set<string>()),
-  };
+  const submissions = {};
   const storage = {
     savePublic: jest.fn(
       (folder: string, _b: Buffer, _m: string, _e: unknown, ext: string) =>
@@ -220,14 +219,23 @@ describe('TestimonialsService', () => {
   });
 
   it("refuses to change or delete a partner's testimonial from this desk", async () => {
-    const { repo, submissions, service } = setup();
-    submissions.linkedTestimonials.mockResolvedValue(new Set([ID]));
+    const { repo, service } = setup();
+    repo.fromPartners.mockResolvedValue(new Set([ID]));
     expect(await code(service.update(ID, { verified: false }, BY))).toBe(
       'TESTIMONIAL_FROM_PARTNER',
     );
     expect(await code(service.remove(ID))).toBe('TESTIMONIAL_FROM_PARTNER');
     expect(repo.update).not.toHaveBeenCalled();
     expect(repo.remove).not.toHaveBeenCalled();
+  });
+
+  it("knows a partner's row by its own marker", async () => {
+    const { repo, service } = setup();
+    repo.find.mockResolvedValue(
+      row({ vistaar: { id: 'x', agent_id: 'VST-000001' } }),
+    );
+    expect((await service.get(ID)).from_partner).toBe(true);
+    expect(repo.fromPartners).not.toHaveBeenCalled();
   });
 });
 

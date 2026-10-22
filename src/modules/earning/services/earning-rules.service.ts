@@ -14,15 +14,20 @@ import type {
 } from '../dto/earning-rule.dto';
 import {
   EARNING_TRIGGERS,
+  MAX_RULES_PER_COHORT,
   OPERATORS,
   OPERATOR_LABELS,
   REWARD_KINDS,
   TRIGGER_CATALOG,
+  activeRules,
   checkCondition,
   describeConditions,
+  nextRuleOrder,
   opsOf,
   orderError,
   pickRewards,
+  ruleEnabled,
+  rulePays,
   type CatalogField,
   type EarningTrigger,
   type Facts,
@@ -50,8 +55,10 @@ export interface EarnedReward {
   amount: number;
 }
 
-export type EarningRuleView = Omit<EarningRuleRecord, '_id'> & {
+export type EarningRuleView = Omit<EarningRuleRecord, '_id' | 'enabled'> & {
   id: string;
+  /** HO's ON/OFF switch; `true` on rules from before it. */
+  enabled: boolean;
   /** The conditions in words. */
   summary: string;
 };
@@ -100,7 +107,8 @@ export class EarningRulesService {
 
   /**
    * What `trigger` earns this partner now: from their current cohort's
-   * active rules in HO's order, at most one per reward kind. Writes nothing.
+   * active rules in HO's order, at most one per reward kind. Writes nothing;
+   * the rules come inside the cohort `current` read, so no second read.
    */
   async evaluate(
     agentId: string,
@@ -111,8 +119,7 @@ export class EarningRulesService {
     // Not placed = not approved yet: no cohort, so nothing to earn — the app
     // shows such a partner no "How to earn" either.
     if (!since) return [];
-    const rules = await this.rules.active(cohort._id, trigger);
-    return pickRewards(rules, trigger, facts).map((r) => ({
+    return pickRewards(cohort.rules, trigger, facts).map((r) => ({
       rule_id: r._id,
       rule_name: r.name,
       cohort_id: cohort._id,
@@ -124,7 +131,8 @@ export class EarningRulesService {
   /** The partner's cohort and what it pays for, for the app. */
   async appCohort(agentId: string): Promise<AppEarningCohort> {
     const { cohort, since } = await this.cohorts.current(agentId);
-    const rules = await this.rules.active(cohort._id);
+    // A switched-off rule pays nothing, so it is no "how to earn" card either.
+    const rules = activeRules(cohort.rules).filter(rulePays);
     return {
       id: cohort._id,
       name: cohort.name,
@@ -164,6 +172,7 @@ export class EarningRulesService {
       cohort_id: query.cohort_id,
       trigger: query.trigger,
       status: query.include_archived ? undefined : 'active',
+      enabled: query.enabled,
     });
     return new PageResult(
       rows.slice(query.skip, query.skip + query.limit).map(viewOf),
@@ -182,32 +191,35 @@ export class EarningRulesService {
     by: string,
   ): Promise<EarningRuleView> {
     const cohort = await this.cohorts.get(dto.cohort_id);
-    if (cohort.status !== 'active') {
-      throw conflict(
-        'EARNING_ARCHIVED',
-        'This cohort is archived — rules can be added only to an active cohort.',
-      );
-    }
+    if (cohort.status !== 'active') throw cohortArchived();
     const conditions = checkConditions(dto.trigger, dto.conditions ?? []);
-    const saved = await this.rules.create({
+    if (cohort.rules.length >= MAX_RULES_PER_COHORT) throw rulesFull();
+    const saved = await this.rules.add(cohort._id, {
       _id: randomUUID(),
-      cohort_id: cohort._id,
       name: dto.name,
       trigger: dto.trigger,
       conditions,
       reward: { kind: dto.reward.kind, amount: dto.reward.amount },
-      order: (await this.rules.maxOrder(cohort._id)) + 1,
+      order: nextRuleOrder(cohort.rules),
       status: 'active',
+      enabled: dto.enabled ?? true,
       version: 1,
       created_by: by,
       updated_by: by,
       archived_by: null,
       archived_at: null,
     });
-    return viewOf(saved);
+    if (saved) return viewOf(saved);
+    // Archived or filled up by another screen since the read above.
+    const now = await this.cohorts.get(cohort._id);
+    if (now.status !== 'active') throw cohortArchived();
+    throw rulesFull();
   }
 
-  /** Name, conditions, reward. The trigger and cohort stay — archive and add a new rule instead. */
+  /**
+   * Name, conditions, reward, the ON/OFF switch. The trigger and cohort stay —
+   * archive and add a new rule instead.
+   */
   async update(
     id: string,
     dto: UpdateEarningRuleDto,
@@ -226,6 +238,7 @@ export class EarningRulesService {
       set.conditions = checkConditions(current.trigger, dto.conditions);
     if (dto.reward !== undefined)
       set.reward = { kind: dto.reward.kind, amount: dto.reward.amount };
+    if (dto.enabled !== undefined) set.enabled = dto.enabled;
     if (Object.keys(set).length === 0) {
       throw badRequest('VALIDATION_FAILED', 'Nothing to change was sent.');
     }
@@ -254,8 +267,8 @@ export class EarningRulesService {
     dto: ReorderEarningRulesDto,
     by: string,
   ): Promise<{ cohort_id: string; ids: string[] }> {
-    await this.cohorts.get(dto.cohort_id);
-    const active = (await this.rules.active(dto.cohort_id)).map((r) => r._id);
+    const cohort = await this.cohorts.get(dto.cohort_id);
+    const active = activeRules(cohort.rules).map((r) => r._id);
     const error = orderError(dto.ids, active);
     if (error) throw conflict('EARNING_ORDER_CHANGED', error, [error]);
     await this.rules.setOrder(dto.cohort_id, dto.ids, by);
@@ -268,6 +281,18 @@ export class EarningRulesService {
     return rule;
   }
 }
+
+const cohortArchived = () =>
+  conflict(
+    'EARNING_ARCHIVED',
+    'This cohort is archived — rules can be added only to an active cohort.',
+  );
+
+const rulesFull = () =>
+  badRequest(
+    'VALIDATION_FAILED',
+    `A cohort holds at most ${MAX_RULES_PER_COHORT} rules, archived ones too. Add the rule to a new cohort.`,
+  );
 
 /** Each condition checked against the catalog; every problem is listed. */
 function checkConditions(
@@ -290,6 +315,7 @@ function viewOf(r: EarningRuleRecord): EarningRuleView {
   return {
     id: _id,
     ...rest,
+    enabled: ruleEnabled(r),
     summary: describeConditions(r.trigger, r.conditions),
   };
 }

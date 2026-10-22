@@ -1,17 +1,15 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { type HydratedDocument } from 'mongoose';
 
 /**
  * A ready-made farmer quote for the "Farmer story" template, written by HO.
  * Vistaar's own — never shown on a product page, unlike `product_testimonials`.
+ *
+ * The `sample` kind of `vistaar_v2_story_content`; collection, timestamps and
+ * indexes come from `StoryContent`.
  */
-@Schema({
-  collection: 'vistaar_v2_story_samples',
-  timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
-  versionKey: false,
-})
+@Schema()
 export class StorySample {
-  /** UUID. */
+  /** UUID — the API's id; stored as `sample:<uuid>`. */
   @Prop({ type: String }) _id!: string;
   /** Stable key, e.g. `wheat_humic_lucknow`; a saved story's `selection.testimonial_id`. */
   @Prop({ type: String, required: true }) key!: string;
@@ -33,8 +31,4 @@ export class StorySample {
   updated_at!: Date;
 }
 
-export type StorySampleDocument = HydratedDocument<StorySample>;
 export const StorySampleSchema = SchemaFactory.createForClass(StorySample);
-
-StorySampleSchema.index({ key: 1 }, { unique: true });
-StorySampleSchema.index({ is_active: 1, order: 1 });

@@ -23,6 +23,7 @@ import {
 import { PageQueryDto } from '@common/dto/page-query.dto';
 import { MOBILE_EXAMPLE } from '@common/utils/phone.util';
 import { DATE_PATTERN } from '@modules/attendance/attendance.domain';
+import { COHORT_ID_PATTERN } from '@modules/earning/earning.domain';
 
 import {
   GIG_STATUSES,
@@ -286,6 +287,20 @@ export class UpdateGigDto {
   @ArrayMaxSize(20)
   @Matches(COHORT_KEY, { each: true })
   cohorts?: string[];
+
+  @ApiPropertyOptional({
+    example: ['ec_bhopal_belt'],
+    description:
+      'Earning cohort ids; empty = every earning cohort. A partner must match both lists. Each must exist and not be archived (400 EARNING_COHORT_NOT_FOUND)',
+  })
+  @ValidateIf((_, v) => v !== undefined)
+  @IsArray()
+  @ArrayMaxSize(20)
+  @Matches(COHORT_ID_PATTERN, {
+    each: true,
+    message: 'Each earning cohort id looks like ec_bhopal_belt.',
+  })
+  earning_cohorts?: string[];
 }
 
 export class CreateGigDto extends UpdateGigDto {

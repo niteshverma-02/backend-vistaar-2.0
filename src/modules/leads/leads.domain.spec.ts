@@ -1,4 +1,5 @@
 import {
+  addedRange,
   contactDocOf,
   cropsOf,
   farmerBand,
@@ -237,5 +238,31 @@ describe('inviteOrder', () => {
       'Anil',
       'Suresh',
     ]);
+  });
+});
+
+describe('addedRange', () => {
+  const within = (r: { from?: Date; to?: Date }, at: string) => {
+    const t = new Date(at).getTime();
+    return r.from!.getTime() <= t && t < r.to!.getTime();
+  };
+
+  it('reads a bare day as the whole IST day', () => {
+    const r = addedRange('2026-10-22', '2026-10-22');
+    expect(within(r, '2026-10-22T01:00:00+05:30')).toBe(true);
+    expect(within(r, '2026-10-22T23:59:59.999+05:30')).toBe(true);
+    expect(within(r, '2026-10-21T23:59:59.999+05:30')).toBe(false);
+    expect(within(r, '2026-10-23T03:00:00+05:30')).toBe(false);
+  });
+
+  it('takes the portal’s IST date-times as sent, the end included', () => {
+    const r = addedRange(
+      '2026-10-22T00:00:00+05:30',
+      '2026-10-22T23:59:59.999+05:30',
+    );
+    expect(within(r, '2026-10-22T01:00:00+05:30')).toBe(true);
+    expect(within(r, '2026-10-22T23:59:59.999+05:30')).toBe(true);
+    expect(within(r, '2026-10-23T03:00:00+05:30')).toBe(false);
+    expect(addedRange()).toEqual({ from: undefined, to: undefined });
   });
 });

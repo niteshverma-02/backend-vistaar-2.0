@@ -1,4 +1,5 @@
 import { isIndiaFix } from '@common/utils/geo.util';
+import { istDayRange } from '@common/utils/ist-day.util';
 
 /**
  * Farmer leads partners add (PRD C2, C4, C9; Lovable add-lead / leads / lead
@@ -51,12 +52,23 @@ export const LEAD_STAGES = [
 ] as const;
 export type LeadStage = (typeof LEAD_STAGES)[number];
 
-/** What a partner may move a lead to; `won` comes only from the first order (PRD C2). */
-export const PARTNER_STAGES = LEAD_STAGES.filter(
-  (s): s is Exclude<LeadStage, 'won'> => s !== 'won',
-);
-
 export const CLOSED_STAGES: readonly LeadStage[] = ['won', 'lost'];
+
+/**
+ * HO's `from` / `to` filter as `[from, to)`: a bare `YYYY-MM-DD` is a whole
+ * IST day; a date-time (what the portal sends) is taken as sent, `to` included.
+ */
+export function addedRange(
+  from?: string,
+  to?: string,
+): { from?: Date; to?: Date } {
+  const day = (v?: string) => (v?.length === 10 ? v : undefined);
+  const days = istDayRange(day(from), day(to));
+  return {
+    from: days.from ?? (from ? new Date(from) : undefined),
+    to: days.to ?? (to ? new Date(new Date(to).getTime() + 1) : undefined),
+  };
+}
 
 /** The app's stage names (`leadStageMeta`), for the activity log. */
 export const STAGE_LABELS: Record<LeadStage, string> = {

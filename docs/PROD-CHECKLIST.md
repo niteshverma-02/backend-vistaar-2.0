@@ -10,7 +10,7 @@ What must exist in production before the matching feature is switched on.
 | `NODE_ENV` | `production` — otherwise index builds run at boot |
 | `MONGODB_URI` | Production `CRM-Database`. **Same region as the app**: a 28 ms round trip (beta, from outside) is most of every request's time |
 | `MONGODB_MAX_POOL_SIZE` / `MONGODB_MIN_POOL_SIZE` | `50` / `5` per process. Processes × max must fit the Mongo server's connection limit |
-| (OTP limits) | 3 SMS and 5 guesses per number per 10 min are counted in **`vistaar_v2_otp_attempts`** (Mongo), so they hold across every process. No Redis is used |
+| (OTP limits) | 3 SMS and 5 guesses per number per 10 min, and 15 guesses per number per 24 h, are counted in **`vistaar_v2_otp_attempts`** (Mongo), so they hold across every process. No Redis is used |
 | `WEB_CONCURRENCY` | `pnpm start:cluster` workers; `0` = one per CPU core |
 | `LOG_LEVEL` | `info`: one short line per request (id, method, URL, status, time); `/health` not logged |
 | `CORS_ORIGINS` | HO portal hosts only, never `*` |
@@ -48,16 +48,11 @@ db.vistaar_v2_banners.createIndex({ is_active: 1, order: 1 })
 db.vistaar_v2_stories.createIndex({ agent_id: 1, signature: 1 }, { unique: true })
 db.vistaar_v2_stories.createIndex({ agent_id: 1, last_used_at: -1 })
 db.vistaar_v2_story_stats.createIndex({ date: 1, agent_id: 1 })
-db.vistaar_v2_story_festivals.createIndex({ key: 1 }, { unique: true })
-db.vistaar_v2_story_festivals.createIndex({ is_active: 1, order: 1 })
-db.vistaar_v2_story_samples.createIndex({ key: 1 }, { unique: true })
-db.vistaar_v2_story_samples.createIndex({ is_active: 1, order: 1 })
-db.vistaar_v2_story_designs.createIndex({ key: 1 }, { unique: true })
-db.vistaar_v2_story_designs.createIndex({ is_active: 1, order: 1 })
-db.vistaar_v2_faqs.createIndex({ q_key: 1 }, { unique: true })
+db.vistaar_v2_story_content.createIndex({ kind: 1, key: 1 }, { unique: true })
+db.vistaar_v2_story_content.createIndex({ kind: 1, is_active: 1, order: 1 })
+db.vistaar_v2_faqs.createIndex({ q_key: 1 }, { unique: true, partialFilterExpression: { kind: 'faq' } })
 db.vistaar_v2_faqs.createIndex({ is_active: 1, order: 1 })
 db.vistaar_v2_faqs.createIndex({ category: 1, order: 1 })
-db.vistaar_v2_faq_sections.createIndex({ is_active: 1, order: 1 })
 db.vistaar_v2_events.createIndex({ is_active: 1, starts_at: 1 })
 db.vistaar_v2_event_registrations.createIndex({ event_id: 1, created_at: 1 })
 db.vistaar_v2_meetings.createIndex({ agent_id: 1, starts_at: -1, _id: -1 })
@@ -73,14 +68,6 @@ db.vistaar_v2_leads.createIndex({ agent_id: 1, next_follow_up: 1 })
 db.vistaar_v2_leads.createIndex({ created_at: -1 })
 db.vistaar_v2_leads.createIndex({ stage: 1, created_at: -1 })
 db.vistaar_v2_leads.createIndex({ phone: 1 })
-db.vistaar_v2_testimonials.createIndex({ agent_id: 1, created_at: -1 })
-db.vistaar_v2_testimonials.createIndex({ status: 1, created_at: -1, _id: -1 })
-db.vistaar_v2_testimonials.createIndex({ status: 1, shares: -1, created_at: -1 })
-db.vistaar_v2_testimonials.createIndex({ status: 1, bulk: 1, created_at: -1, _id: -1 })
-db.vistaar_v2_testimonials.createIndex({ status: 1, crop: 1, created_at: -1, _id: -1 })
-db.vistaar_v2_testimonials.createIndex({ status: 1, state: 1, district: 1, created_at: -1, _id: -1 })
-db.vistaar_v2_testimonials.createIndex({ testimonial_id: 1 }, { partialFilterExpression: { testimonial_id: { $type: 'objectId' } } })
-db.vistaar_v2_testimonials.createIndex({ pii_id: 1 })
 db.vistaar_v2_testimonial_consents.createIndex({ pii_id: 1, given_at: -1 })
 db.vistaar_v2_testimonial_consents.createIndex({ agent_id: 1, given_at: -1 })
 db.vistaar_v2_feedback.createIndex({ agent_id: 1, created_at: -1 })
@@ -106,7 +93,7 @@ db.vistaar_v2_withdrawals.createIndex({ status: 1, paid_at: 1 })
 db.vistaar_v2_withdrawals.createIndex({ agent_id: 1 }, { unique: true, partialFilterExpression: { open: true } })
 db.vistaar_v2_tds_certificates.createIndex({ quarter: 1, agent_id: 1 })
 db.vistaar_v2_earning_cohorts.createIndex({ status: 1, priority: 1 })
-db.vistaar_v2_earning_rules.createIndex({ cohort_id: 1, trigger: 1, status: 1, order: 1 })
+db.vistaar_v2_earning_cohorts.createIndex({ 'rules._id': 1 }, { unique: true, partialFilterExpression: { 'rules._id': { $exists: true } } })
 db.vistaar_v2_earning_assignments.createIndex({ agent_id: 1, from: -1 })
 db.vistaar_v2_earning_assignments.createIndex({ agent_id: 1 }, { unique: true, partialFilterExpression: { open: true } })
 db.vistaar_v2_rewards.createIndex({ status: 1, created_at: -1, _id: 1 })
@@ -126,12 +113,13 @@ race; onboarding create re-reads on a race; sessions are deleted on refresh (no 
 - Forms published before 2026-10-09 by the seed: `seed-onboarding.js --apply --republish` (12-digit Aadhaar, `org_document`).
 - Partners saved or approved before state/district came from the pincode (2026-10-14): `node dist/scripts/backfill-partner-place.js` (dry run), then `--apply`. Only `vistaar_v2_agents`; safe to run again. Beta done 2026-10-14 (VST-000006).
 - Aadhaar / PAN duplicate check (2026-10-16): after deploy, `node dist/scripts/backfill-id-keys.js` (dry run), then `--apply` — fills `id_keys` on forms saved before the check, which cannot see them until then. Only `vistaar_v2_onboarding_data`; safe to run again. Hand the printed duplicate groups (agent ids) to HO. Build the two `id_keys` indexes above first.
+- My Story content merged into `vistaar_v2_story_content` (2026-10-22): build its two indexes above first, then after the deploy `node dist/scripts/migrate-story-content.js` (dry run — read the per-kind counts and any `SKIP`), then `--apply`, then the dry run once more: every kind must read `insert 0 · skipped 0`, and `vistaar_v2_story_content` per kind must equal the old collection's count (`db.vistaar_v2_story_content.countDocuments({ kind: 'design' })` against `db.vistaar_v2_story_designs.countDocuments()`, and so on). Until it has run, the app shows only its bundled designs and cards and no festivals or farmer stories — to close that gap, also `--apply` once just before the deploy; the run after it then brings over only what HO edited in between (not a deletion: delete that row again in the portal). Safe to run again (newer `updated_at` wins; it never writes the old collections). Only once the counts match: `db.vistaar_v2_story_designs.drop()`, `db.vistaar_v2_story_festivals.drop()`, `db.vistaar_v2_story_samples.drop()`, `db.vistaar_v2_story_templates.drop()`. A database that never had the old four (seeded after this deploy) has nothing to copy. Beta dry run 2026-10-22: 5 designs, 4 festivals, 8 samples, 11 cards to insert, nothing skipped — not applied yet.
 
 ## Owed by other teams
 
 - SMS template / DLT for Vistaar on the utilities OTP service.
 - Firebase service account for uploads (same project as ko-sales, or a new one).
-- **Stockship (testimonials):** add `vistaar` to `REVIEW_SOURCES` (`product_reviews`), so their list filter and desk accept our rows; recompute `bulk_v2` / `combos_v2` average ratings over **verified** rows only (today unverified count too) and know that our approvals do not trigger their `syncRating` — the average catches up on their next write for that product; build `{ source, verified, deleted, created_at }` and `{ bulk, verified, deleted }` indexes on `product_reviews` and `product_testimonials` (both have only `_id` today).
+- **Stockship (testimonials):** add `vistaar` to `REVIEW_SOURCES` (`product_reviews`), so their list filter and desk accept our rows; recompute `bulk_v2` / `combos_v2` average ratings over **verified** rows only (today unverified count too) and know that our approvals do not trigger their `syncRating` — the average catches up on their next write for that product; build `{ source, verified, deleted, created_at }` and `{ bulk, verified, deleted }` indexes on `product_reviews` and `product_testimonials` (both have only `_id` today); and, for Vistaar's partner testimonials on `product_reviews` (partial `{ 'vistaar.id': { $type: 'string' } }`, so their rows pay nothing): `{ 'vistaar.agent_id': 1, created_at: -1 }`, `{ 'vistaar.status': 1, created_at: -1, _id: -1 }`, `{ 'vistaar.status': 1, 'vistaar.shares': -1, created_at: -1 }`. Their moderation desk should leave `source: 'vistaar'` rows to us — approving one there skips the consent check and the media's link.
 ### `carts` (shared, owned by B2B Sales — build with their sign-off)
 
 Nothing to build: every Vistaar read and write is by `_id` (derived from the
@@ -166,7 +154,7 @@ Nothing to build: the lookups use the existing `pii_id`, `phone_number`,
 - [ ] `vistaar_v2_leads` indexes built — `{pii_id}` unique is what keeps one farmer with one partner
 - [ ] Optional: HO sets the farmer-consent wording (`PUT /admin/settings { farmer_consent_text }`); until then the app's own sentence is version 1
 - [ ] Sales-operation asked to add source `vistaar` to its cohort and profiled-router exclusions (offline channel — never telecaller-routed)
-- [ ] `app_counters` has `leads`, `contacts`, `addresses` rows in production (always true: ko-sales writes them)
+- [ ] `app_counters` has `leads`, `contacts`, `addresses`, `piis` rows in production (always true: ko-sales writes them)
 - [ ] ko-sales / sales-operation told: `source: 'vistaar'` leads are inserted directly (no pipeline, no LQS, no webhook), `created_by` = `VST-…`
 - [ ] Optional: a `lead_sources` row `{ source_code: 'vistaar', display_name: 'Vistaar Agent' }` so CRM source filters list it (ko-sales adds one itself only for leads it writes)
 
@@ -234,10 +222,17 @@ few thousand orders per partner; past that, ask Stockship for
 
 ## My Story — before switching on
 
-- [ ] The nine story / event indexes built (above) — the unique `{agent_id, signature}` is what stops a double tap saving two copies.
+- [ ] The story indexes (`vistaar_v2_stories`, `vistaar_v2_story_stats`, `vistaar_v2_story_content`) and event indexes built (above) — the unique `{agent_id, signature}` is what stops a double tap saving two copies, `{kind, key}` a second design / festival / sample / card on one key.
+- [ ] `migrate-story-content` run and the four old story-content collections dropped (see *Data*).
 - [ ] `FIREBASE_*` set; story images go private under `vistaar/stories/<agent_id>/`. Without it uploads answer `503 UPLOADS_NOT_CONFIGURED` and the app shares without saving.
-- [ ] The four FAQ / FAQ-section indexes built (above) — the unique `{q_key}` is what refuses a duplicate question.
-- [ ] `node dist/scripts/seed-faqs.js --apply` once (the app's 5 sections and 11 built-in FAQs; re-running skips existing ones).
+- [ ] The three FAQ indexes built (above) — the unique partial `{q_key}` is what refuses a duplicate question. A database that already had FAQs before the merge may hold the old `q_key_1` (unique for **every** row): `db.vistaar_v2_faqs.dropIndex('q_key_1')` first, then build the partial one — the same name with other options is refused, and the old one breaks on the second section (no `q_key` = `null`).
+- [ ] `node dist/scripts/seed-faqs.js --apply` once (the app's 5 sections and 11 built-in FAQs; re-running skips existing ones). On a database that still has `vistaar_v2_faq_sections`, merge first (below).
+- [ ] **FAQ sections merged into `vistaar_v2_faqs` (2026-10-22)** — only where `vistaar_v2_faq_sections` has rows (beta: 5 sections, 11 FAQs). The new code reads sections only from `vistaar_v2_faqs`, so until the merge the app's FAQs screen is empty and HO sees no sections; the old code ignores the copied section rows on `GET /faqs` (no `category`). So:
+  1. The `{q_key}` index swap above, if the old one is there (`--apply` refuses while it is).
+  2. Just before the deploy: `node dist/scripts/migrate-faqs-merge.js` (dry run — read the counts and any `BLOCKED` line), then `--apply`.
+  3. Right after the deploy: the dry run, then `--apply` again. It picks up what the old code wrote in between (a FAQ added → tagged, a section added or edited → copied) and otherwise says "nothing to do".
+  4. Compare counts: `db.vistaar_v2_faqs.countDocuments({ kind: 'section' })` = `db.vistaar_v2_faq_sections.countDocuments()`; `countDocuments({ kind: { $exists: false } })` = 0; the `faq` count = the FAQ rows before. `GET /faqs` shows the same sections and FAQs as before.
+  5. After a release with nothing left on the old one: `db.vistaar_v2_faq_sections.drop()` (the script never drops it).
 - [ ] `node dist/scripts/seed-story-content.js --apply` once (6 template cards + 5 example custom cards, 5 designs, 4 festivals, 8 farmer stories, 3 events). Done on beta 2026-10-12 (designs and template cards 2026-10-13). On production, skip the 3 sample events — HO adds real ones — and delete the `diwali_lights` test design (generated art).
 - [ ] HO replaces or switches off the 8 sample farmer stories — they are the prototype's made-up quotes, not real customers.
 - [ ] App build on `/stories/*` shipped: `FestivalId` enum → string key, snake_case mapping, save after share (see `STORIES-APP.md`).
@@ -277,10 +272,16 @@ few thousand orders per partner; past that, ask Stockship for
 
 ## Earning cohorts — before switching on
 
-- [ ] The four `vistaar_v2_earning_*` indexes built (above) — the unique partial `{ agent_id }` (`open: true`) on assignments first: it keeps one current cohort per partner when two processes recompute at once
+- [ ] The four `vistaar_v2_earning_*` indexes built (above; the rules are inside the cohorts, `{ 'rules._id' }` unique partial — `vistaar_v2_earning_rules` needs none) — the unique partial `{ agent_id }` (`open: true`) on assignments first: it keeps one current cohort per partner when two processes recompute at once
 - [ ] After deploy, `POST /api/v2/admin/earning-cohorts/recompute` once (any head): places every approved partner (the default cohort until HO adds others). Orders placed before a partner's first placing keep the onboarding-cohort commission plans
 - [ ] HO grants itself nothing new: `earning.read` / `earning.write` go to heads and admins like `gigs.*`
-- [ ] Nothing in shared collections: only `vistaar_v2_earning_cohorts`, `vistaar_v2_earning_rules`, `vistaar_v2_earning_assignments` and `vistaar_v2_agents.earning_cohort` are written
+- [ ] Nothing in shared collections: only `vistaar_v2_earning_cohorts` (rules in its `rules[]`), `vistaar_v2_earning_assignments`, `vistaar_v2_earning_window` (one row, `_id` index only — which process runs the day's cohort-date recompute) and `vistaar_v2_agents.earning_cohort` are written
+- [ ] **Earning rules moved into the cohorts (2026-10-22)** — `vistaar_v2_earning_rules` → `vistaar_v2_earning_cohorts.rules[]`; the API is unchanged. Until a cohort has `rules[]` the new code sees no rules there (events pay nothing), so:
+  1. Just **before** the deploy (the old code never reads `rules[]`): `node dist/scripts/migrate-earning-rules-into-cohorts.js` (dry run — check the per-cohort add / replace / keep lines and that no rule is reported without a cohort), then `--apply`.
+  2. Build the `{ 'rules._id' }` index (above), then deploy.
+  3. **After** the deploy: the dry run again — it should say add 0, replace 0 for every cohort; a rule HO added or edited in the old code in between shows as *add* / *replace* (missing, or its version is higher) → `--apply` again. Re-running never overwrites a rule edited in the new code (same or higher version is kept).
+  4. Compare counts: `db.vistaar_v2_earning_rules.countDocuments()` = the script's `check: N of N … are embedded` line (and active / archived per cohort in the HO rules list). Beta, 2026-10-22: 4 rules (all active) → `ec_default` 3, `ec_bhopal_commission_5_percent` 1, no orphan; applied, field-checked and the old collection dropped (a dry run now says it does not exist and lists what each cohort holds). Rules carry `enabled` only when it was set (absent = on).
+  5. Only then, by hand: `db.vistaar_v2_earning_rules.drop()` (the script never drops it).
 - [ ] ⚠️ **Agree the `ec_default` commission plan with Finance before saving it.** Saving an `ec_default` plan (`POST /admin/commission-plans { cohort: "ec_default", … }`) moves every approved partner's **new** orders (placed after their first assignment) onto it, and every earning cohort without its own plan inherits it. Until an earning plan is saved, commission is exactly as before (partner-type plans)
 - [ ] No new index for commission by cohort or cohort-paid gigs: commission reads stretches on `{ agent_id, from }` (above); `vistaar_v2_commission_plans` (new `kind`, `min_order_value`, `ec_…` ids) and `vistaar_v2_gigs` (`payout: null`, `payout_source`) need none
 - [ ] Gigs posted without a payout now pay the taker's cohort `meeting_gig_payout` (else settings `gig_payout`) — HO told before it posts gigs with the payout left empty
@@ -297,7 +298,8 @@ few thousand orders per partner; past that, ask Stockship for
 
 ## Testimonials (partner submissions) — before switching on
 
-- [ ] The ten `vistaar_v2_testimonials` / `vistaar_v2_testimonial_consents` indexes built (above).
+- [ ] The two `vistaar_v2_testimonial_consents` indexes built (above). Partner testimonials live on Stockship's `product_reviews` (see *Owed by other teams* for its indexes).
+- [ ] After this code is deployed: `node dist/scripts/migrate-testimonials-to-shared.js` (dry run), then `--apply`; once `product_reviews` holds as many `vistaar.id` rows as `vistaar_v2_testimonials` has, drop `vistaar_v2_testimonials`.
 - [ ] `FIREBASE_*` set; videos and photos go **private** under `vistaar/testimonials/<agent_id>/<kind>/`, uploaded by the app straight to the bucket with a signed PUT (≤ 60 MB video, ≤ 10 MB photo). On approval the file gets a Firebase download token (the link product pages play); removal takes the token away, a consent withdrawal deletes the file.
 - [ ] Only for a **web** build of the app: bucket CORS allows `PUT` with `Content-Type` and `x-goog-content-length-range` from the app's origin. The mobile app needs nothing.
 - [ ] Stockship team told and agreed (see *Owed by other teams*).
@@ -317,6 +319,13 @@ Build `pnpm install --frozen-lockfile && pnpm build`, then either:
 
 - **Kubernetes / several hosts:** `node dist/main` — one process per pod, scale pods.
 - **One VM:** `pnpm start:cluster` — one worker per core on the same port, a dead worker is restarted.
+
+`main.ts` believes `X-Forwarded-For` only from private addresses (the load
+balancer, ingress) and Cloudflare's ranges (`core/http/trusted-proxies.ts`), so
+`req.ip` — which the per-IP limit on public routes keys on — is the real caller
+however many of those hops sit in front (beta: Cloudflare → Render). A new proxy
+in front with a **public** address (another CDN) must be added to that list, or
+every caller shares its IP.
 
 **No Redis.** Caching is in each server process's memory (lists ≤ 60 s,
 cohort ≤ 60 s, signed image URLs ≤ 45 min) — each process lags an HO edit by

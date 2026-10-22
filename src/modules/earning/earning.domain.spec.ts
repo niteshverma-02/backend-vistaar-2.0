@@ -2,20 +2,31 @@ import {
   COHORT_FIELD_CATALOG,
   DEFAULT_COHORT_ID,
   NO_FILTERS,
+  activeRules,
   checkCondition,
   checkConditionIn,
   cohortAtIn,
   cohortIdOf,
+  cohortWindow,
+  commissionOffIn,
   conditionsToFilters,
   describeCohortConditions,
+  describeCohortWindow,
   describeConditions,
   filtersToConditions,
+  isCalendarDay,
   matchesCondition,
   matchesConditions,
+  nextRuleOrder,
   normalizeFilters,
   orderError,
   pickCohort,
   pickRewards,
+  ruleEnabled,
+  rulePays,
+  switchCommission,
+  windowError,
+  windowsCrossed,
   withSuffix,
   type CohortLike,
   type EarningFilters,
@@ -46,6 +57,9 @@ const cohort = (
 ): CohortLike => ({ _id: id, priority, status, filters: filters(f) });
 
 const DEFAULT = cohort(DEFAULT_COHORT_ID, 0, {});
+
+/** IST "today" for every pick: the domain never reads the clock. */
+const TODAY = '2026-11-15';
 
 const over = (
   conditions: RuleCondition[],
@@ -222,15 +236,19 @@ describe('pickCohort', () => {
 
   it('takes the first match in priority order', () => {
     const cohorts = [DEFAULT, mp, big];
-    expect(pickCohort(cohorts, partner({ open_leads: 12 }))).toBe('ec_big');
-    expect(pickCohort(cohorts, partner({ open_leads: 3 }))).toBe('ec_mp');
+    expect(pickCohort(cohorts, partner({ open_leads: 12 }), TODAY)).toBe(
+      'ec_big',
+    );
+    expect(pickCohort(cohorts, partner({ open_leads: 3 }), TODAY)).toBe(
+      'ec_mp',
+    );
   });
 
   it('falls back to the default, which is always last whatever its priority', () => {
-    expect(pickCohort([DEFAULT, mp], partner({ state: 'GUJARAT' }))).toBe(
-      DEFAULT_COHORT_ID,
-    );
-    expect(pickCohort([], partner())).toBe(DEFAULT_COHORT_ID);
+    expect(
+      pickCohort([DEFAULT, mp], partner({ state: 'GUJARAT' }), TODAY),
+    ).toBe(DEFAULT_COHORT_ID);
+    expect(pickCohort([], partner(), TODAY)).toBe(DEFAULT_COHORT_ID);
   });
 
   it('skips archived cohorts', () => {
@@ -240,13 +258,15 @@ describe('pickCohort', () => {
       { states: ['MADHYA PRADESH'] },
       'archived',
     );
-    expect(pickCohort([DEFAULT, archived], partner())).toBe(DEFAULT_COHORT_ID);
+    expect(pickCohort([DEFAULT, archived], partner(), TODAY)).toBe(
+      DEFAULT_COHORT_ID,
+    );
   });
 
   it('breaks a priority tie by id, so every process agrees', () => {
     const a = cohort('ec_a', 1, { states: ['MADHYA PRADESH'] });
     const b = cohort('ec_b', 1, { states: ['MADHYA PRADESH'] });
-    expect(pickCohort([b, a, DEFAULT], partner())).toBe('ec_a');
+    expect(pickCohort([b, a, DEFAULT], partner(), TODAY)).toBe('ec_a');
   });
 
   it('reads conditions when a cohort has them, legacy filters when not', () => {
@@ -259,8 +279,187 @@ describe('pickCohort', () => {
     };
     const legacy = cohort('ec_mp_old', 2, { states: ['MADHYA PRADESH'] });
     const cohorts = [DEFAULT, conditioned, legacy];
-    expect(pickCohort(cohorts, partner({ open_leads: 2 }))).toBe('ec_small');
-    expect(pickCohort(cohorts, partner({ open_leads: 9 }))).toBe('ec_mp_old');
+    expect(pickCohort(cohorts, partner({ open_leads: 2 }), TODAY)).toBe(
+      'ec_small',
+    );
+    expect(pickCohort(cohorts, partner({ open_leads: 9 }), TODAY)).toBe(
+      'ec_mp_old',
+    );
+  });
+});
+
+describe('cohort dates', () => {
+  const dated = (
+    starts_on: string | null,
+    ends_on: string | null,
+    id = 'ec_mela',
+  ): CohortLike => ({
+    ...cohort(id, 1, { states: ['MADHYA PRADESH'] }),
+    starts_on,
+    ends_on,
+  });
+
+  it('pickCohort takes a running cohort and skips an upcoming or ended one', () => {
+    const running = dated('2026-11-01', '2026-11-30');
+    expect(pickCohort([DEFAULT, running], partner(), TODAY)).toBe('ec_mela');
+    const upcoming = dated('2026-11-16', '2026-11-30');
+    expect(pickCohort([DEFAULT, upcoming], partner(), TODAY)).toBe(
+      DEFAULT_COHORT_ID,
+    );
+    const ended = dated('2026-11-01', '2026-11-14');
+    expect(pickCohort([DEFAULT, ended], partner(), TODAY)).toBe(
+      DEFAULT_COHORT_ID,
+    );
+  });
+
+  it('a skipped cohort lets the next one in priority order take the partner', () => {
+    const ended = dated('2026-10-01', '2026-10-31', 'ec_first');
+    const next = { ...cohort('ec_second', 2, { states: ['MADHYA PRADESH'] }) };
+    expect(pickCohort([DEFAULT, next, ended], partner(), TODAY)).toBe(
+      'ec_second',
+    );
+  });
+
+  it('both days are included', () => {
+    const c = dated(TODAY, TODAY);
+    expect(cohortWindow(c, TODAY)).toBe('running');
+    expect(pickCohort([DEFAULT, c], partner(), TODAY)).toBe('ec_mela');
+    expect(cohortWindow(c, '2026-11-14')).toBe('upcoming');
+    expect(cohortWindow(c, '2026-11-16')).toBe('ended');
+  });
+
+  it('a null side is open; no dates at all has no window', () => {
+    expect(cohortWindow(dated(null, '2026-11-30'), '2020-01-01')).toBe(
+      'running',
+    );
+    expect(cohortWindow(dated('2026-11-01', null), '2099-12-31')).toBe(
+      'running',
+    );
+    expect(cohortWindow(dated(null, null), TODAY)).toBeNull();
+    expect(cohortWindow({}, TODAY)).toBeNull();
+    expect(pickCohort([DEFAULT, dated(null, null)], partner(), TODAY)).toBe(
+      'ec_mela',
+    );
+  });
+
+  it('dates must be real days, the end on or after the start', () => {
+    expect(isCalendarDay('2026-02-28')).toBe(true);
+    expect(isCalendarDay('2028-02-29')).toBe(true);
+    expect(isCalendarDay('2026-02-30')).toBe(false);
+    expect(isCalendarDay('2026-13-01')).toBe(false);
+    expect(isCalendarDay('2026-1-01')).toBe(false);
+    expect(windowError('2026-11-01', '2026-11-01')).toBeNull();
+    expect(windowError(null, null)).toBeNull();
+    expect(windowError('2026-02-30', null)).toMatch(/start date/);
+    expect(windowError(null, '2026-04-31')).toMatch(/end date/);
+    expect(windowError('2026-11-30', '2026-11-01')).toBe(
+      'The end date must be on or after the start date.',
+    );
+  });
+
+  it('notices a start or an end since the day last looked at', () => {
+    const starts = { status: 'active' as const, starts_on: '2026-11-15' };
+    const ends = { status: 'active' as const, ends_on: '2026-11-14' };
+    // Starts today; ended yesterday (its last day was the 14th).
+    expect(windowsCrossed([starts], '2026-11-14', TODAY)).toBe(true);
+    expect(windowsCrossed([ends], '2026-11-14', TODAY)).toBe(true);
+    // Already looked at today, or the day is still ahead / was long gone.
+    expect(windowsCrossed([starts, ends], TODAY, TODAY)).toBe(false);
+    expect(
+      windowsCrossed(
+        [{ status: 'active', starts_on: '2026-11-20' }],
+        '2026-11-14',
+        TODAY,
+      ),
+    ).toBe(false);
+    expect(
+      windowsCrossed(
+        [{ status: 'active', ends_on: '2026-10-01' }],
+        '2026-11-14',
+        TODAY,
+      ),
+    ).toBe(false);
+    // Several days asleep still sees what happened meanwhile.
+    expect(windowsCrossed([ends], '2026-11-10', TODAY)).toBe(true);
+    // A fresh process cannot know: any dated active cohort counts.
+    expect(
+      windowsCrossed(
+        [{ status: 'active', ends_on: '2026-10-01' }],
+        null,
+        TODAY,
+      ),
+    ).toBe(true);
+    expect(windowsCrossed([{ status: 'active' }], null, TODAY)).toBe(false);
+    expect(
+      windowsCrossed(
+        [{ status: 'archived', starts_on: TODAY }],
+        '2026-11-14',
+        TODAY,
+      ),
+    ).toBe(false);
+  });
+
+  it('says the dates in the summary line', () => {
+    expect(
+      describeCohortWindow({ starts_on: '2026-11-01', ends_on: '2026-11-30' }),
+    ).toBe('1 Nov 2026 – 30 Nov 2026');
+    expect(describeCohortWindow({ starts_on: '2026-11-01' })).toBe(
+      'From 1 Nov 2026',
+    );
+    expect(describeCohortWindow({ ends_on: '2026-11-30' })).toBe(
+      'Until 30 Nov 2026',
+    );
+    expect(describeCohortWindow({})).toBeNull();
+  });
+});
+
+describe('commission switch', () => {
+  const M = '2026-11';
+
+  it('off while on opens a range from this month', () => {
+    expect(switchCommission([], false, M)).toEqual([{ from: M, to: null }]);
+    const past = [{ from: '2026-05', to: '2026-06' }];
+    expect(switchCommission(past, false, M)).toEqual([
+      ...past,
+      { from: M, to: null },
+    ]);
+  });
+
+  it('on in the month it went off removes the range: it never covered a paid month', () => {
+    expect(switchCommission([{ from: M, to: null }], true, M)).toEqual([]);
+  });
+
+  it('on in a later month closes the range at the month before', () => {
+    expect(switchCommission([{ from: '2026-09', to: null }], true, M)).toEqual([
+      { from: '2026-09', to: '2026-10' },
+    ]);
+  });
+
+  it('off again in the month it came back on carries the old range on', () => {
+    expect(
+      switchCommission([{ from: '2026-09', to: '2026-10' }], false, M),
+    ).toEqual([{ from: '2026-09', to: null }]);
+  });
+
+  it('the state it already has is no change', () => {
+    expect(switchCommission([], true, M)).toBeNull();
+    expect(
+      switchCommission([{ from: '2026-09', to: null }], false, M),
+    ).toBeNull();
+  });
+
+  it('a month is off inside a range, both ends included; open ranges run on', () => {
+    const ranges = [
+      { from: '2026-05', to: '2026-06' },
+      { from: '2026-09', to: null },
+    ];
+    expect(commissionOffIn(ranges, '2026-04')).toBe(false);
+    expect(commissionOffIn(ranges, '2026-05')).toBe(true);
+    expect(commissionOffIn(ranges, '2026-06')).toBe(true);
+    expect(commissionOffIn(ranges, '2026-07')).toBe(false);
+    expect(commissionOffIn(ranges, '2026-09')).toBe(true);
+    expect(commissionOffIn(ranges, '2027-03')).toBe(true);
+    expect(commissionOffIn(undefined, M)).toBe(false);
   });
 });
 
@@ -470,6 +669,58 @@ describe('pickRewards', () => {
       rule('other', 2, 'coin', { trigger: 'follow_up_done' }),
     ];
     expect(pickRewards(rules, 'lead_created', {})).toEqual([]);
+  });
+
+  it('a switched-off rule never pays: the next matching rule of its kind does', () => {
+    const rules = [
+      rule('coin-big', 1, 'coin', { conditions: big, enabled: false }),
+      rule('coin-any', 2, 'coin'),
+      rule('gig-off', 3, 'gig', { enabled: false }),
+    ];
+    expect(
+      pickRewards(rules, 'lead_created', { acreage: 6 }).map((r) => r._id),
+    ).toEqual(['coin-any']);
+    expect(
+      pickRewards(
+        [rule('only', 1, 'coin', { enabled: false })],
+        'lead_created',
+        {},
+      ),
+    ).toEqual([]);
+  });
+
+  it('a rule saved before the switch (no field) is on', () => {
+    const old = rule('old', 1, 'coin');
+    expect(old).not.toHaveProperty('enabled');
+    expect(ruleEnabled(old)).toBe(true);
+    expect(rulePays(old)).toBe(true);
+    expect(rulePays({ status: 'active', enabled: false })).toBe(false);
+    expect(rulePays({ status: 'archived', enabled: true })).toBe(false);
+    expect(pickRewards([old], 'lead_created', {})).toEqual([old]);
+  });
+
+  it('lists a cohort’s active rules in HO order, a tie by id', () => {
+    const rules = [
+      rule('b', 2, 'coin'),
+      rule('old', 1, 'coin', { status: 'archived' }),
+      rule('a', 2, 'gig'),
+      rule('f', 1, 'coin', { trigger: 'follow_up_done' }),
+    ];
+    expect(activeRules(rules).map((r) => r._id)).toEqual(['f', 'a', 'b']);
+    expect(activeRules(rules, 'lead_created').map((r) => r._id)).toEqual([
+      'a',
+      'b',
+    ]);
+  });
+
+  it('puts a new rule after the last active one (1 in an empty cohort)', () => {
+    expect(nextRuleOrder([])).toBe(1);
+    expect(
+      nextRuleOrder([
+        rule('a', 3, 'coin'),
+        rule('old', 9, 'coin', { status: 'archived' }),
+      ]),
+    ).toBe(4);
   });
 });
 

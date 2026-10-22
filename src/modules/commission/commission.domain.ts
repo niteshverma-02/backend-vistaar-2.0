@@ -83,6 +83,19 @@ export interface PlanInEffect extends PlanTerms {
 export const PLAN_INHERITS = ['ec_default', 'partner_type'] as const;
 export type PlanInherit = (typeof PLAN_INHERITS)[number];
 
+/**
+ * Why an earning cohort inherits in a month: HO switched its own commission
+ * off for that month (user, 2026-10-22), or it has no plan of its own by then.
+ */
+export const INHERIT_REASONS = ['commission_off', 'no_plan'] as const;
+export type InheritReason = (typeof INHERIT_REASONS)[number];
+
+export const inheritReasonOf = (
+  inherits: PlanInherit | null,
+  commissionOff: boolean,
+): InheritReason | null =>
+  inherits === null ? null : commissionOff ? 'commission_off' : 'no_plan';
+
 const bands = (low: number, mid: number, top: number): Slab[] => [
   { from: 0, to: 50_000, rate: low },
   { from: 50_000, to: 100_000, rate: mid },
@@ -315,10 +328,15 @@ export interface Book {
   paid: number;
   /** Σ withdrawals asked for and not yet paid or closed. */
   open: number;
+  /** Σ confirmed (with gigs) not covered by a payout, less `open`; never below 0. */
   withdrawable: number;
 }
 
-/** Saved plans by cohort and month: the one in effect, or `null` when none is saved by then. */
+/**
+ * Saved plans by cohort and month: the one in effect, or `null` when none is
+ * saved by then — or when the earning cohort's own commission is switched off
+ * that month, so it falls to `ec_default`'s exactly as with no plan.
+ */
 export type SavedPlans = (cohort: string, month: string) => PlanInEffect | null;
 
 /** The partner's earning cohorts, as commission reads them. */
@@ -339,7 +357,13 @@ export interface BookContext {
   earning?: EarningContext;
   gstOf: (sku: string) => number;
   /** Paid withdrawals, oldest payout first. */
-  payouts: readonly { id: string; amount: number; paid_at: Date }[];
+  /** `covers_to`: the later of paid and approved, so a back-dated payment date never uncovers what it paid for. */
+  payouts: readonly {
+    id: string;
+    amount: number;
+    paid_at: Date;
+    covers_to?: Date;
+  }[];
   /** Σ withdrawals requested or approved. */
   open: number;
   /** Approved meeting gigs' pay; none while settings `gig_pay_enabled` is off. */
@@ -553,25 +577,29 @@ export function buildBook(facts: readonly OrderFact[], ctx: BookContext): Book {
       row: null,
     })),
   ].sort((a, b) => a.at - b.at);
-  let p = 0;
-  let left = ctx.payouts[0]?.amount ?? 0;
-  for (const { amount, row: r } of due) {
-    let need = amount;
-    while (need > 0 && p < ctx.payouts.length) {
-      const take = Math.min(need, left);
-      need -= take;
+  // A payout covers only what had confirmed when it was paid, oldest first.
+  // What is left of it (a rate that fell after it) covers nothing later.
+  const owing = due.map((d) => ({ ...d, owed: d.amount }));
+  let i = 0;
+  for (const w of ctx.payouts) {
+    let left = w.amount;
+    const until = (w.covers_to ?? w.paid_at).getTime();
+    while (left > 0 && i < owing.length && owing[i].at <= until) {
+      const d = owing[i];
+      const take = Math.min(left, d.owed);
       left -= take;
-      if (r) {
-        r.paid_amount += take;
-        if (need === 0) {
-          r.status = 'paid';
-          r.paid_at = ctx.payouts[p].paid_at;
-          r.withdrawal_id = ctx.payouts[p].id;
-        }
+      d.owed -= take;
+      if (d.row) d.row.paid_amount += take;
+      if (d.owed > 0) break;
+      if (d.row && take > 0) {
+        d.row.status = 'paid';
+        d.row.paid_at = w.paid_at;
+        d.row.withdrawal_id = w.id;
       }
-      if (left <= 0) left = ctx.payouts[++p]?.amount ?? 0;
+      i++;
     }
   }
+  const unpaid = owing.reduce((sum, d) => sum + d.owed, 0);
 
   const totals: StatusTotals = {
     pending: { count: 0, amount: 0 },
@@ -592,7 +620,7 @@ export function buildBook(facts: readonly OrderFact[], ctx: BookContext): Book {
   const paid = ctx.payouts.reduce((sum, w) => sum + w.amount, 0);
   // A payout can run ahead of today's amounts (a rate that fell after it);
   // nothing is taken back, it is only not paid twice.
-  totals.confirmed.amount = Math.max(0, earned - paid);
+  totals.confirmed.amount = unpaid;
   totals.paid.amount = paid;
 
   const current = month(thisMonth);
@@ -610,7 +638,7 @@ export function buildBook(facts: readonly OrderFact[], ctx: BookContext): Book {
     gig_earned: gigEarned,
     paid,
     open: ctx.open,
-    withdrawable: Math.max(0, earned - paid - ctx.open),
+    withdrawable: Math.max(0, unpaid - ctx.open),
   };
 }
 

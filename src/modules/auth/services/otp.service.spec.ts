@@ -105,11 +105,36 @@ describe('OtpService scopes', () => {
     ).toEqual([
       ['lead-send:9000000001', 3],
       ['lead-verify:9000000001', 5],
+      ['lead-verify:9000000001:day', 15],
       ['verify:9000000001', 5],
+      ['verify:9000000001:day', 15],
     ]);
     expect(attempts.reset.mock.calls).toEqual([
       ['lead-verify:9000000001'],
+      ['lead-verify:9000000001:day'],
       ['verify:9000000001'],
+      ['verify:9000000001:day'],
     ]);
+  });
+
+  it('caps guesses per day even when the 10-minute window has room', async () => {
+    const attempts = {
+      take: jest.fn().mockResolvedValueOnce(0).mockResolvedValueOnce(3600),
+      reset: jest.fn(),
+    };
+    const service = new OtpService(
+      config,
+      attempts as unknown as OtpAttemptRepository,
+    );
+    await expect(
+      service.verify('9000000001', '+91', '1234'),
+    ).rejects.toMatchObject({ response: { error: 'OTP_LIMIT' } });
+    expect(attempts.take).toHaveBeenLastCalledWith(
+      'verify:9000000001:day',
+      15,
+      86_400_000,
+      expect.any(Date),
+    );
+    expect(attempts.reset).not.toHaveBeenCalled();
   });
 });

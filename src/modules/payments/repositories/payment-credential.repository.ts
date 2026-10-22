@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, mongo, type QueryFilter } from 'mongoose';
+import { Model, type QueryFilter } from 'mongoose';
+
+import { isDuplicateKey } from '@common/utils/mongo-error.util';
 
 import type { CredentialStatus } from '../payment-credentials.domain';
 import type { PaymentProvider } from '../payments.domain';
@@ -25,9 +27,6 @@ const retire = (
   retired_by: by,
   reason,
 });
-
-const isDuplicateKey = (error: unknown): boolean =>
-  error instanceof mongo.MongoServerError && error.code === 11000;
 
 @Injectable()
 export class PaymentCredentialRepository {

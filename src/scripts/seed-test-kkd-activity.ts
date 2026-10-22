@@ -21,6 +21,8 @@
  */
 import mongoose from 'mongoose';
 
+import { refuseUnlessTestDb } from './test-db-guard';
+
 const PARTNER = 'VST-000006';
 const TAG = 'seed-test-kkd-activity';
 const BY = `seed:test-kkd-activity`;
@@ -411,11 +413,7 @@ function rows(by: Map<string, Farmer>) {
 
 async function main() {
   process.loadEnvFile?.('.env');
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error(
-      'Test data is for beta and local only — not run in production.',
-    );
-  }
+  refuseUnlessTestDb();
   const apply = process.argv.includes('--apply');
   const remove = process.argv.includes('--remove');
   const log = (line: string) => console.log(`[seed-test-kkd-activity] ${line}`);

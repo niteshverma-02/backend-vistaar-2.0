@@ -31,6 +31,7 @@ import {
   distanceKm,
   isMissed,
   istDayOf,
+  mayTake,
   payoutOnRelease,
   payoutOnTake,
   payoutSourceOf,
@@ -132,9 +133,6 @@ const changed = () => closed('This gig changed — reload it and try again.');
 const photoFolder = (agentId: string, gigId: string) =>
   `vistaar/gigs/${agentId}/${gigId}/`;
 
-const forCohort = (g: { cohorts: string[] }, cohort: string | null) =>
-  g.cohorts.length === 0 || (cohort !== null && g.cohorts.includes(cohort));
-
 /**
  * The partner's side of gigs. Partners never create or delete a gig (HO's
  * desk does); accept / release is their take and give-back, the rest is the
@@ -212,10 +210,7 @@ export class GigsService {
       this.agents.requireByAgentId(agentId),
     ]);
     const own = row?.agent_id === agentId;
-    if (
-      !row ||
-      (!own && !(row.status === 'open' && forCohort(row, agent.cohort)))
-    ) {
+    if (!row || (!own && !(row.status === 'open' && mayTake(row, agent)))) {
       throw notFound(NOT_FOUND);
     }
     const rate = row.payout === null ? await this.takerRate(agentId) : null;
@@ -229,7 +224,7 @@ export class GigsService {
     const agent = await this.requireWorkingPartner(agentId);
     const now = new Date();
     const row = await this.gigs.find(id);
-    if (!row || !(row.agent_id === agentId || forCohort(row, agent.cohort))) {
+    if (!row || !(row.agent_id === agentId || mayTake(row, agent))) {
       throw notFound(NOT_FOUND);
     }
     // A double tap, or a later step already done, answers with the gig as it is.
@@ -458,16 +453,11 @@ export class GigsService {
 
   // ── helpers ────────────────────────────────────────────────────────────
 
-  /** Open gigs this partner may take: cohort, same state when both are known; nearest first. */
+  /** Open gigs this partner may take: cohort and earning cohort, same state when both are known; nearest first. */
   private async available(agent: AgentRecord, now: Date): Promise<ListedGig[]> {
-    const state =
-      (agent.profile?.state ?? agent.preview.state)?.toUpperCase() ?? null;
     const at = pointOf(agent);
     const rows = (await this.openRows()).filter(
-      (g) =>
-        g.starts_at > now &&
-        forCohort(g, agent.cohort) &&
-        (!state || !g.state || g.state === state),
+      (g) => g.starts_at > now && mayTake(g, agent),
     );
     if (!at) return rows;
     // Stable: unknown distances keep the soonest-first order, after the known ones.

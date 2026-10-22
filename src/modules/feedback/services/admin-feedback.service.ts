@@ -153,9 +153,7 @@ export class AdminFeedbackService {
     const reasons = Object.fromEntries(
       NPS_BUCKETS.map((b) => [b, [] as { reason: string; count: number }[]]),
     ) as FeedbackSummary['reasons'];
-    for (const r of stats.reasons) {
-      reasons[r._id.bucket].push({ reason: r._id.reason, count: r.count });
-    }
+    for (const r of stats.reasons) reasons[r._id] = r.reasons;
 
     return {
       from,

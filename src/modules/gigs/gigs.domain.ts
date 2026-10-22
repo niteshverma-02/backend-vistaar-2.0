@@ -79,12 +79,71 @@ export function payoutOnRelease(g: { payout_source?: PayoutSource | null }): {
   return payoutSourceOf(g) === 'cohort' ? { payout: null } : {};
 }
 
-/** Defaults from settings, HO-changeable per gig (user's decision, 2026-10-15). */
-export interface GigRules {
-  payout: number;
-  min_farmers: number;
-  photos_required: number;
-  checkin_radius_m: number;
+/**
+ * Who an open gig is for (user, 2026-10-22): two independent lists, and both
+ * must let the partner in. `cohorts` = partner types (the onboarding cohort,
+ * e.g. `vistaar_agent`); `earning_cohorts` = HO's earning cohorts (`ec_…`,
+ * built from place and holdings). An empty list lets everyone in.
+ */
+export interface GigAudience {
+  cohorts: string[];
+  /** Gigs posted before 2026-10-22 have none: read as every earning cohort. */
+  earning_cohorts?: string[] | null;
+}
+
+export const earningCohortsOf = (g: {
+  earning_cohorts?: string[] | null;
+}): string[] => g.earning_cohorts ?? [];
+
+/** The partner's type is on the gig's `cohorts`, or the gig names none. */
+export const forCohort = (
+  g: Pick<GigAudience, 'cohorts'>,
+  cohort: string | null,
+): boolean =>
+  g.cohorts.length === 0 || (cohort !== null && g.cohorts.includes(cohort));
+
+/**
+ * The partner's earning cohort now is on the gig's `earning_cohorts`, or the
+ * gig names none. A partner not placed in one yet (not approved) is in none.
+ */
+export function forEarningCohort(
+  g: Pick<GigAudience, 'earning_cohorts'>,
+  earningCohortId: string | null,
+): boolean {
+  const ids = earningCohortsOf(g);
+  return (
+    ids.length === 0 ||
+    (earningCohortId !== null && ids.includes(earningCohortId))
+  );
+}
+
+/** Both lists at once — what the Available tab, gig detail and accept check. */
+export const isForPartner = (
+  g: GigAudience,
+  partner: {
+    cohort: string | null;
+    earning_cohort?: { id: string } | null;
+  },
+): boolean =>
+  forCohort(g, partner.cohort) &&
+  forEarningCohort(g, partner.earning_cohort?.id ?? null);
+
+/**
+ * What a partner may see and take of a gig that is not theirs: `isForPartner`,
+ * and the same state when both are known. Gig ids run in order, so detail and
+ * accept check this too, not only the Available tab.
+ */
+export function mayTake(
+  g: GigAudience & { state: string | null },
+  partner: Parameters<typeof isForPartner>[1] & {
+    profile?: { state?: string } | null;
+    preview: { state?: string };
+  },
+): boolean {
+  const state = (
+    partner.profile?.state ?? partner.preview.state
+  )?.toUpperCase();
+  return isForPartner(g, partner) && (!state || !g.state || g.state === state);
 }
 
 /** Accepted or checked in, and the gig's IST day has passed: HO cancels or reopens it. */

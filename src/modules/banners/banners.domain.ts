@@ -1,3 +1,8 @@
+import {
+  type ScheduleWindow,
+  windowStatus,
+} from '@common/utils/schedule-window.util';
+
 /**
  * Home-screen banners HO pushes to partners (PRD H3), targeted by cohort
  * (PRD AD10). Pure rules — what is live, for whom, and what HO may save.
@@ -7,13 +12,15 @@
 export const BANNER_TONES = ['primary', 'warning', 'success', 'info'] as const;
 export type BannerTone = (typeof BANNER_TONES)[number];
 
-export const BANNER_STATUSES = [
-  'live',
-  'scheduled',
-  'expired',
-  'inactive',
-] as const;
-export type BannerStatus = (typeof BANNER_STATUSES)[number];
+export {
+  WINDOW_STATUSES as BANNER_STATUSES,
+  windowError,
+  windowStatus as statusOf,
+} from '@common/utils/schedule-window.util';
+export type {
+  ScheduleWindow as BannerWindow,
+  WindowStatus as BannerStatus,
+} from '@common/utils/schedule-window.util';
 
 /** A carousel past this many slides is never swiped to the end. */
 export const MAX_LIVE_BANNERS = 10;
@@ -82,37 +89,13 @@ export function contentError(banner: BannerContent): string | null {
   return null;
 }
 
-export interface BannerWindow {
-  is_active: boolean;
-  starts_at: Date | null;
-  ends_at: Date | null;
-}
-
-export function statusOf(banner: BannerWindow, now: Date): BannerStatus {
-  if (!banner.is_active) return 'inactive';
-  if (banner.ends_at && banner.ends_at <= now) return 'expired';
-  if (banner.starts_at && banner.starts_at > now) return 'scheduled';
-  return 'live';
-}
-
 /** An empty `cohorts` list means every partner. */
 export function isShownTo(
-  banner: BannerWindow & { cohorts: string[] },
+  banner: ScheduleWindow & { cohorts: string[] },
   cohort: string | null,
   now: Date,
 ): boolean {
-  if (statusOf(banner, now) !== 'live') return false;
+  if (windowStatus(banner, now) !== 'live') return false;
   if (banner.cohorts.length === 0) return true;
   return cohort !== null && banner.cohorts.includes(cohort);
-}
-
-/** The sentence the HO screen shows, or `null` when the window is fine. */
-export function windowError(
-  startsAt: Date | null,
-  endsAt: Date | null,
-): string | null {
-  if (startsAt && endsAt && endsAt <= startsAt) {
-    return 'The end date must be after the start date.';
-  }
-  return null;
 }

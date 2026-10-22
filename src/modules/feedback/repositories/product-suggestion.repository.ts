@@ -2,7 +2,9 @@ import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import type { Model, PipelineStage } from 'mongoose';
 
-import { escapeRegex, type SuggestionStatus } from '../feedback.domain';
+import { escapeRegex } from '@common/utils/regex.util';
+
+import { type SuggestionStatus } from '../feedback.domain';
 import { ProductSuggestion } from '../schemas/product-suggestion.schema';
 
 export type SuggestionRow = ProductSuggestion;
