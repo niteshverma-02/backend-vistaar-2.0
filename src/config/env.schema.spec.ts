@@ -32,7 +32,20 @@ describe('validateEnv', () => {
       WEB_CONCURRENCY: 0,
       // No environment takes online payment until ops turns it on.
       PAYMENTS_ONLINE_ENABLED: false,
+      // No ko-sales customer pass until the admin's platform key is set.
+      KATYAYANI_PLATFORM_KEY: '',
     });
+  });
+
+  it('accepts only a kp.<platform>.<secret> platform key', () => {
+    const key = `kp.vistaar.${'A'.repeat(43)}`;
+    expect(
+      validateEnv({ ...BASE, KATYAYANI_PLATFORM_KEY: ` ${key} ` })
+        .KATYAYANI_PLATFORM_KEY,
+    ).toBe(key);
+    expect(() =>
+      validateEnv({ ...BASE, KATYAYANI_PLATFORM_KEY: 'praveen.dev' }),
+    ).toThrow(/KATYAYANI_PLATFORM_KEY/);
   });
 
   it('refuses a minimum pool above the maximum', () => {

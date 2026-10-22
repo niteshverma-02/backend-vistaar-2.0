@@ -8,8 +8,10 @@ import { AuthController } from './controllers/auth.controller';
 import { OtpAttemptRepository } from './repositories/otp-attempt.repository';
 import { SessionRepository } from './repositories/session.repository';
 import { OtpAttempt, OtpAttemptSchema } from './schemas/otp-attempt.schema';
+import { KoSalesCustomerClient } from './providers/ko-sales-customer.client';
 import { Session, SessionSchema } from './schemas/session.schema';
 import { AuthService } from './services/auth.service';
+import { CustomerSessionService } from './services/customer-session.service';
 import { OtpService } from './services/otp.service';
 
 @Module({
@@ -22,7 +24,14 @@ import { OtpService } from './services/otp.service';
     SpineModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, OtpService, SessionRepository, OtpAttemptRepository],
+  providers: [
+    AuthService,
+    OtpService,
+    SessionRepository,
+    OtpAttemptRepository,
+    CustomerSessionService,
+    KoSalesCustomerClient,
+  ],
   // Farmer OTP on lead add (leads module): the same SMS service and limits.
   exports: [OtpService],
 })

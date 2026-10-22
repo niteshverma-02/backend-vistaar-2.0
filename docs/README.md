@@ -9,6 +9,7 @@ Contract docs, one per feature, named by who reads them:
 | Doc | For | What |
 |---|---|---|
 | [AUTH-APP.md](./AUTH-APP.md) | app | Phone + OTP login, sessions, `GET /me` status screen (timeline, reporting officer) |
+| [CUSTOMER-SESSION-APP.md](./CUSTOMER-SESSION-APP.md) | app | The partner's ko-sales customer pass (Customer Session Phase 2): get, refresh on ko-sales, logout |
 | [ONBOARDING-APP.md](./ONBOARDING-APP.md) | app | Dynamic onboarding form, saves, uploads, submit; Edit Profile (`PATCH /me`), bank account change |
 | [ONBOARDING-HO.md](./ONBOARDING-HO.md) | HO portal | Access, pipeline, KYC review, verification calls, approval, name and bank changes, form editor, settings |
 | [CART-APP.md](./CART-APP.md) | app | Cart and Checkout screens, "Ordering for" |

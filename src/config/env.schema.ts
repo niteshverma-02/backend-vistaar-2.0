@@ -95,6 +95,23 @@ export const envSchema = z.object({
     .regex(/^\d{4,6}$/)
     .optional(),
 
+  // ── ko-sales Customer Session (Phase 2) ───────────────────────────────
+  /**
+   * The Vistaar platform key from sales-operations → Customer Session →
+   * Generate key (`kp.vistaar.…`, shown once). With it this server asks
+   * ko-sales (`B2B_API_URL`) for a partner's customer pass after our own OTP
+   * (`POST /auth/customer-session`). Never sent to the app, never logged.
+   * Empty = that route answers 503 CUSTOMER_SESSION_OFF.
+   */
+  KATYAYANI_PLATFORM_KEY: z
+    .string()
+    .trim()
+    .regex(
+      /^(kp\.[a-z0-9-]+\.[A-Za-z0-9_-]{20,})?$/,
+      'KATYAYANI_PLATFORM_KEY must look like kp.<platform>.<secret>',
+    )
+    .default(''),
+
   // ── Order events (server to server) ────────────────────────────────────
   /**
    * Shared secret the order service sends (`x-webhook-secret`) when Stockship

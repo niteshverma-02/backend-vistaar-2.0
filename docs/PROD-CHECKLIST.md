@@ -21,6 +21,7 @@ What must exist in production before the matching feature is switched on.
 | `SSO_JWKS_URL` | `https://sso.ko-tech.in/.well-known/jwks.json` |
 | `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY`, `FIREBASE_STORAGE_BUCKET` | KYC uploads: the org bucket (ko-sales', `micro-dealer.appspot.com`), private objects under `KO-documents/<pii_id>/`, signed URLs on read. Without them `POST /uploads` answers 503 |
 | `B2B_API_URL` | Production B2B Sales API — required, boot fails without it. No token here: each request brings the app's in `x-b2b-token` |
+| `KATYAYANI_PLATFORM_KEY` | The `vistaar` key from sales-operations → Customer Session → Generate key (`kp.vistaar.…`). Empty = no ko-sales customer pass (`/auth/customer-session` → 503). Regenerated in the portal → replace here at once |
 | `B2B_MARKETPLACE_CODE` | `MKTP-1` unless the partner marketplace changes |
 | `CATALOG_CACHE_TTL_SECONDS` | `60` default |
 | `ORDER_EVENTS_SECRET` | 24+ random characters (`openssl rand -base64 32`), shared **only** with the order service (`POST /hooks/orders/confirmed`). Unset = the route answers 503 and leads never turn into customers. Set it when the TL's order API is ready |
