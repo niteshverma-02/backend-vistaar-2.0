@@ -4,7 +4,7 @@ import {
   CreateEarningRuleDto,
   type EarningRulesQueryDto,
 } from '../dto/earning-rule.dto';
-import { NO_FILTERS } from '../earning.domain';
+import { MAX_RULES_PER_COHORT, NO_FILTERS } from '../earning.domain';
 import type {
   EarningRuleRecord,
   EarningRuleRepository,
@@ -39,18 +39,25 @@ const rule = (
 function setup(rules: EarningRuleRecord[] = [], status = 'active') {
   const repo = {
     list: jest.fn().mockResolvedValue(rules),
-    active: jest.fn().mockResolvedValue(rules),
     find: jest.fn().mockResolvedValue(rules[0] ?? null),
-    maxOrder: jest.fn().mockResolvedValue(3),
-    create: jest.fn((r: EarningRuleRecord) => Promise.resolve(r)),
+    add: jest.fn(
+      (
+        cohortId: string,
+        r: EarningRuleRecord,
+      ): Promise<EarningRuleRecord | null> =>
+        Promise.resolve({ ...r, cohort_id: cohortId }),
+    ),
     save: jest.fn().mockResolvedValue(null),
     archive: jest.fn().mockResolvedValue(null),
+    setOrder: jest.fn().mockResolvedValue(undefined),
   };
   const big = {
     _id: 'ec_big',
     name: 'Big books',
     status,
     filters: NO_FILTERS,
+    // The cohort read brings its rules: an event reads nothing else.
+    rules,
   };
   const cohorts = {
     current: jest.fn().mockResolvedValue({ cohort: big, since: new Date() }),
@@ -92,7 +99,8 @@ describe('EarningRulesService.evaluate', () => {
       crops: ['wheat'],
     });
 
-    expect(repo.active).toHaveBeenCalledWith('ec_big', 'lead_created');
+    expect(repo.list).not.toHaveBeenCalled();
+    expect(repo.find).not.toHaveBeenCalled();
     expect(earned).toEqual([
       {
         rule_id: 'coin-wheat',
@@ -139,7 +147,34 @@ describe('EarningRulesService.evaluate', () => {
     expect(await service.evaluate('VST-000001', 'lead_created', {})).toEqual(
       [],
     );
-    expect(repo.active).not.toHaveBeenCalled();
+    expect(repo.list).not.toHaveBeenCalled();
+  });
+
+  it('never pays an archived rule or another trigger’s, and orders by HO order then id', async () => {
+    const { service } = setup([
+      rule('coin-archived', {
+        order: 1,
+        status: 'archived',
+        reward: { kind: 'coin', amount: 99 },
+      }),
+      rule('coin-follow-up', { order: 1, trigger: 'follow_up_done' }),
+      rule('coin-b', { order: 2 }),
+      rule('coin-a', { order: 2 }),
+    ]);
+    const earned = await service.evaluate('VST-000001', 'lead_created', {});
+    expect(earned.map((e) => e.rule_id)).toEqual(['coin-a']);
+  });
+});
+
+describe('EarningRulesService.appCohort', () => {
+  it('shows the cohort’s active rules only, in HO order', async () => {
+    const { service } = setup([
+      rule('second', { order: 2 }),
+      rule('gone', { order: 1, status: 'archived' }),
+      rule('first', { order: 1, trigger: 'follow_up_done' }),
+    ]);
+    const app = await service.appCohort('VST-000001');
+    expect(app.rules.map((r) => r.name)).toEqual(['first', 'second']);
   });
 });
 
@@ -169,28 +204,60 @@ describe('EarningRulesService — HO', () => {
     );
     expect(out.error).toBe('VALIDATION_FAILED');
     expect(out.details).toHaveLength(2);
-    expect(repo.create).not.toHaveBeenCalled();
+    expect(repo.add).not.toHaveBeenCalled();
   });
 
-  it('adds a valid rule last in its cohort', async () => {
-    const { service, repo } = setup();
+  it('adds a valid rule after the last active one in its cohort', async () => {
+    const { service, repo } = setup([
+      rule('a', { order: 3 }),
+      rule('gone', { order: 9, status: 'archived' }),
+    ]);
     const saved = await service.create(dto(), HO);
-    expect(repo.create).toHaveBeenCalledWith(
+    expect(repo.add).toHaveBeenCalledWith(
+      'ec_big',
       expect.objectContaining({ order: 4, status: 'active', version: 1 }),
     );
-    expect(saved.summary).toBe('Acreage at least 2');
+    expect(saved).toMatchObject({
+      cohort_id: 'ec_big',
+      summary: 'Acreage at least 2',
+    });
+  });
+
+  it('adds no rule to a full cohort, archived rules counted', async () => {
+    const { service, repo } = setup(
+      Array.from({ length: MAX_RULES_PER_COHORT }, (_, i) =>
+        rule(`r${i}`, { status: 'archived' }),
+      ),
+    );
+    expect((await errorOf(service.create(dto(), HO))).error).toBe(
+      'VALIDATION_FAILED',
+    );
+    expect(repo.add).not.toHaveBeenCalled();
+  });
+
+  it('answers EARNING_ARCHIVED when the cohort was archived between the read and the write', async () => {
+    const { service, repo, cohorts } = setup();
+    repo.add.mockResolvedValueOnce(null);
+    cohorts.get
+      .mockResolvedValueOnce({ _id: 'ec_big', status: 'active', rules: [] })
+      .mockResolvedValueOnce({ _id: 'ec_big', status: 'archived', rules: [] });
+    expect((await errorOf(service.create(dto(), HO))).error).toBe(
+      'EARNING_ARCHIVED',
+    );
   });
 
   it('a new rule is on unless HO sends `enabled: false`', async () => {
     const { service, repo } = setup();
     expect((await service.create(dto(), HO)).enabled).toBe(true);
-    expect(repo.create).toHaveBeenLastCalledWith(
+    expect(repo.add).toHaveBeenLastCalledWith(
+      'ec_big',
       expect.objectContaining({ enabled: true }),
     );
     expect((await service.create(dto({ enabled: false }), HO)).enabled).toBe(
       false,
     );
-    expect(repo.create).toHaveBeenLastCalledWith(
+    expect(repo.add).toHaveBeenLastCalledWith(
+      'ec_big',
       expect.objectContaining({ enabled: false }),
     );
   });
@@ -251,10 +318,40 @@ describe('EarningRulesService — HO', () => {
       (await errorOf(live.service.update('r1', { version: 1, name: 'x' }, HO)))
         .error,
     ).toBe('VERSION_CONFLICT');
+    // The rule's own version is the guard — never the cohort's.
+    expect(live.repo.save).toHaveBeenCalledWith('r1', 1, { name: 'x' }, HO);
     const gone = setup([rule('r1', { status: 'archived' })]);
     expect(
       (await errorOf(gone.service.update('r1', { version: 1, name: 'x' }, HO)))
         .error,
     ).toBe('EARNING_ARCHIVED');
+  });
+});
+
+describe('EarningRulesService.reorder', () => {
+  const rules = [
+    rule('a', { order: 1 }),
+    rule('b', { order: 2 }),
+    rule('gone', { order: 3, status: 'archived' }),
+  ];
+
+  it('takes every active rule of the cohort once, archived ones left out', async () => {
+    const { service, repo } = setup(rules);
+    expect(
+      await service.reorder({ cohort_id: 'ec_big', ids: ['b', 'a'] }, HO),
+    ).toEqual({ cohort_id: 'ec_big', ids: ['b', 'a'] });
+    expect(repo.setOrder).toHaveBeenCalledWith('ec_big', ['b', 'a'], HO);
+  });
+
+  it('answers EARNING_ORDER_CHANGED for a stale list', async () => {
+    const { service, repo } = setup(rules);
+    expect(
+      (
+        await errorOf(
+          service.reorder({ cohort_id: 'ec_big', ids: ['a', 'gone', 'b'] }, HO),
+        )
+      ).error,
+    ).toBe('EARNING_ORDER_CHANGED');
+    expect(repo.setOrder).not.toHaveBeenCalled();
   });
 });

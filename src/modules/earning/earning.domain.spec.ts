@@ -2,6 +2,7 @@ import {
   COHORT_FIELD_CATALOG,
   DEFAULT_COHORT_ID,
   NO_FILTERS,
+  activeRules,
   checkCondition,
   checkConditionIn,
   cohortAtIn,
@@ -16,6 +17,7 @@ import {
   isCalendarDay,
   matchesCondition,
   matchesConditions,
+  nextRuleOrder,
   normalizeFilters,
   orderError,
   pickCohort,
@@ -695,6 +697,30 @@ describe('pickRewards', () => {
     expect(rulePays({ status: 'active', enabled: false })).toBe(false);
     expect(rulePays({ status: 'archived', enabled: true })).toBe(false);
     expect(pickRewards([old], 'lead_created', {})).toEqual([old]);
+  });
+
+  it('lists a cohort’s active rules in HO order, a tie by id', () => {
+    const rules = [
+      rule('b', 2, 'coin'),
+      rule('old', 1, 'coin', { status: 'archived' }),
+      rule('a', 2, 'gig'),
+      rule('f', 1, 'coin', { trigger: 'follow_up_done' }),
+    ];
+    expect(activeRules(rules).map((r) => r._id)).toEqual(['f', 'a', 'b']);
+    expect(activeRules(rules, 'lead_created').map((r) => r._id)).toEqual([
+      'a',
+      'b',
+    ]);
+  });
+
+  it('puts a new rule after the last active one (1 in an empty cohort)', () => {
+    expect(nextRuleOrder([])).toBe(1);
+    expect(
+      nextRuleOrder([
+        rule('a', 3, 'coin'),
+        rule('old', 9, 'coin', { status: 'archived' }),
+      ]),
+    ).toBe(4);
   });
 });
 

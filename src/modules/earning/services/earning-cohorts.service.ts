@@ -104,9 +104,16 @@ export type EarningAssignmentRow = Pick<
   'agent_id' | 'cohort_id' | 'from' | 'to'
 >;
 
+/** Its rules are served by the rules routes, never on the cohort. */
 export type EarningCohortView = Omit<
   EarningCohortRecord,
-  '_id' | 'conditions' | 'filters' | 'starts_on' | 'ends_on' | 'commission_off'
+  | '_id'
+  | 'conditions'
+  | 'filters'
+  | 'starts_on'
+  | 'ends_on'
+  | 'commission_off'
+  | 'rules'
 > & {
   id: string;
   /** Its own commission plan is on in this IST month (off = `ec_default`'s). */
@@ -263,7 +270,7 @@ export class EarningCohortsService implements OnModuleInit, OnModuleDestroy {
         (a, b) =>
           (b.archived_at?.getTime() ?? 0) - (a.archived_at?.getTime() ?? 0),
       );
-    const out = [...cohortOrder(rows), ...archived].map(withConditions);
+    const out = [...cohortOrder(rows), ...archived].map(normalized);
     this.noteDay(out);
     return out;
   }
@@ -273,7 +280,7 @@ export class EarningCohortsService implements OnModuleInit, OnModuleDestroy {
       return (await this.all()).find((c) => c._id === id) ?? null;
     }
     const row = await this.cohorts.find(id);
-    return row && withConditions(row);
+    return row && normalized(row);
   }
 
   async get(id: string): Promise<EarningCohortRecord> {
@@ -550,6 +557,7 @@ export class EarningCohortsService implements OnModuleInit, OnModuleDestroy {
         ends_on,
         commission_off: [],
         meeting_gig_payout: dto.meeting_gig_payout ?? null,
+        rules: [],
         version: 1,
         created_by: by,
         updated_by: by,
@@ -890,11 +898,14 @@ export class EarningCohortsService implements OnModuleInit, OnModuleDestroy {
   }
 }
 
-function withConditions(c: EarningCohortRecord): EarningCohortRecord {
-  // A row from before conditions: its legacy filters say what it means.
-  return c.conditions
-    ? c
-    : { ...c, conditions: filtersToConditions(c.filters) };
+function normalized(c: EarningCohortRecord): EarningCohortRecord {
+  return {
+    ...c,
+    // A row from before conditions: its legacy filters say what it means.
+    conditions: c.conditions ?? filtersToConditions(c.filters),
+    // A row from before rules moved in (not migrated yet) has none.
+    rules: c.rules ?? [],
+  };
 }
 
 /** Dates as stored must be real days in order; every problem is a 400. */
@@ -908,7 +919,7 @@ function viewOf(
   count: number,
   today: string,
 ): EarningCohortView {
-  const { _id, conditions, ...rest } = withConditions(c);
+  const { _id, conditions, rules, ...rest } = normalized(c);
   const list = conditions ?? [];
   const dates = describeCohortWindow(c);
   return {

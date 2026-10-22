@@ -809,10 +809,7 @@ export function pickRewards<T extends RuleLike>(
   // A switched-off rule is left out as if it were not there, so the next
   // matching rule of its kind in the cohort pays instead: turning off a
   // bonus rule falls back to the catch-all after it, not to nothing.
-  const ordered = rules
-    .filter((r) => rulePays(r) && r.trigger === trigger)
-    .sort((a, b) => a.order - b.order || a._id.localeCompare(b._id));
-  for (const rule of ordered) {
+  for (const rule of activeRules(rules, trigger).filter(rulePays)) {
     if (paid.has(rule.reward.kind)) continue;
     if (rule.conditions.every((c) => matchesCondition(c, facts))) {
       paid.add(rule.reward.kind);
@@ -821,6 +818,27 @@ export function pickRewards<T extends RuleLike>(
   }
   return out;
 }
+
+/**
+ * Rules one cohort document holds, archived ones too (they are never
+ * removed): a bound on the embedded array, far above what HO writes, so the
+ * document stays small.
+ */
+export const MAX_RULES_PER_COHORT = 100;
+
+/** Active rules (one trigger's when given) in HO's order; a tie by id, so every process agrees. */
+export function activeRules<T extends RuleLike>(
+  rules: readonly T[],
+  trigger?: EarningTrigger,
+): T[] {
+  return rules
+    .filter((r) => r.status === 'active' && (!trigger || r.trigger === trigger))
+    .sort((a, b) => a.order - b.order || a._id.localeCompare(b._id));
+}
+
+/** Where a new rule goes: after every active one. */
+export const nextRuleOrder = (rules: readonly RuleLike[]): number =>
+  Math.max(0, ...activeRules(rules).map((r) => r.order)) + 1;
 
 /** A long list reads "462001, … +1,994 more", not two thousand values. */
 const SUMMARY_VALUES = 8;

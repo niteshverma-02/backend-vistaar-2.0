@@ -93,7 +93,7 @@ db.vistaar_v2_withdrawals.createIndex({ status: 1, paid_at: 1 })
 db.vistaar_v2_withdrawals.createIndex({ agent_id: 1 }, { unique: true, partialFilterExpression: { open: true } })
 db.vistaar_v2_tds_certificates.createIndex({ quarter: 1, agent_id: 1 })
 db.vistaar_v2_earning_cohorts.createIndex({ status: 1, priority: 1 })
-db.vistaar_v2_earning_rules.createIndex({ cohort_id: 1, trigger: 1, status: 1, order: 1 })
+db.vistaar_v2_earning_cohorts.createIndex({ 'rules._id': 1 }, { unique: true, partialFilterExpression: { 'rules._id': { $exists: true } } })
 db.vistaar_v2_earning_assignments.createIndex({ agent_id: 1, from: -1 })
 db.vistaar_v2_earning_assignments.createIndex({ agent_id: 1 }, { unique: true, partialFilterExpression: { open: true } })
 db.vistaar_v2_rewards.createIndex({ status: 1, created_at: -1, _id: 1 })
@@ -272,10 +272,16 @@ few thousand orders per partner; past that, ask Stockship for
 
 ## Earning cohorts — before switching on
 
-- [ ] The four `vistaar_v2_earning_*` indexes built (above) — the unique partial `{ agent_id }` (`open: true`) on assignments first: it keeps one current cohort per partner when two processes recompute at once
+- [ ] The four `vistaar_v2_earning_*` indexes built (above; the rules are inside the cohorts, `{ 'rules._id' }` unique partial — `vistaar_v2_earning_rules` needs none) — the unique partial `{ agent_id }` (`open: true`) on assignments first: it keeps one current cohort per partner when two processes recompute at once
 - [ ] After deploy, `POST /api/v2/admin/earning-cohorts/recompute` once (any head): places every approved partner (the default cohort until HO adds others). Orders placed before a partner's first placing keep the onboarding-cohort commission plans
 - [ ] HO grants itself nothing new: `earning.read` / `earning.write` go to heads and admins like `gigs.*`
-- [ ] Nothing in shared collections: only `vistaar_v2_earning_cohorts`, `vistaar_v2_earning_rules`, `vistaar_v2_earning_assignments` and `vistaar_v2_agents.earning_cohort` are written
+- [ ] Nothing in shared collections: only `vistaar_v2_earning_cohorts` (rules in its `rules[]`), `vistaar_v2_earning_assignments` and `vistaar_v2_agents.earning_cohort` are written
+- [ ] **Earning rules moved into the cohorts (2026-10-22)** — `vistaar_v2_earning_rules` → `vistaar_v2_earning_cohorts.rules[]`; the API is unchanged. Until a cohort has `rules[]` the new code sees no rules there (events pay nothing), so:
+  1. Just **before** the deploy (the old code never reads `rules[]`): `node dist/scripts/migrate-earning-rules-into-cohorts.js` (dry run — check the per-cohort add / replace / keep lines and that no rule is reported without a cohort), then `--apply`.
+  2. Build the `{ 'rules._id' }` index (above), then deploy.
+  3. **After** the deploy: the dry run again — it should say add 0, replace 0 for every cohort; a rule HO added or edited in the old code in between shows as *add* / *replace* (missing, or its version is higher) → `--apply` again. Re-running never overwrites a rule edited in the new code (same or higher version is kept).
+  4. Compare counts: `db.vistaar_v2_earning_rules.countDocuments()` = the script's `check: N of N … are embedded` line (and active / archived per cohort in the HO rules list). Beta, 2026-10-22: 4 rules (all active) → `ec_default` 3, `ec_bhopal_commission_5_percent` 1, no orphan; applied, field-checked and the old collection dropped (a dry run now says it does not exist and lists what each cohort holds). Rules carry `enabled` only when it was set (absent = on).
+  5. Only then, by hand: `db.vistaar_v2_earning_rules.drop()` (the script never drops it).
 - [ ] ⚠️ **Agree the `ec_default` commission plan with Finance before saving it.** Saving an `ec_default` plan (`POST /admin/commission-plans { cohort: "ec_default", … }`) moves every approved partner's **new** orders (placed after their first assignment) onto it, and every earning cohort without its own plan inherits it. Until an earning plan is saved, commission is exactly as before (partner-type plans)
 - [ ] No new index for commission by cohort or cohort-paid gigs: commission reads stretches on `{ agent_id, from }` (above); `vistaar_v2_commission_plans` (new `kind`, `min_order_value`, `ec_…` ids) and `vistaar_v2_gigs` (`payout: null`, `payout_source`) need none
 - [ ] Gigs posted without a payout now pay the taker's cohort `meeting_gig_payout` (else settings `gig_payout`) — HO told before it posts gigs with the payout left empty
