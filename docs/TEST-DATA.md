@@ -11,12 +11,11 @@ Every test seed (`seed-test-*`, `seed-feedback`, `seed-banners`) refuses unless 
 `MONGODB_URI` is listed in **`SEED_ALLOW_HOSTS`** (comma-separated) in your `.env` — set it to
 the beta Mongo host, never to production's.
 
-New farmers need an owner: **one active Offline Head (USR-1037)** in `agents_v2`, or
-`settings.lead_owner_agent_id`. On beta the Offline Head is **A0-2691**
-(manavbarodiya@katyayaniorganics.com, moved from USR-1001 Admin on 2026-10-14, at his
-request); the settings override is **not** used, so nobody has to remember to remove it.
-Without an Offline Head, `--apply` — and adding a new farmer in the app — stops with
-`LEADS_NOT_CONFIGURED`, having written nothing.
+New farmers' org leads are owned by `settings.lead_owner_agent_id`, else the **one active
+Offline Head (USR-1037)** in `agents_v2`, else (2026-10-22) the partner who added them
+(`lead_owner.agent_ref: null`). On 2026-10-22 beta had no single active Offline Head, so
+new test farmers are owned by their partner. The settings override is **not** used, so
+nobody has to remember to remove it.
 
 ## Partners
 

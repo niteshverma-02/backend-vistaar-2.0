@@ -207,7 +207,9 @@ conditions.
   the others fall back to); `true` there changes nothing.
 - An archived cohort → `409 EARNING_ARCHIVED`.
 - Only a change to `conditions` or the dates moves partners; name, description,
-  payout and the commission switch do not.
+  payout and the commission switch do not. An edit that moves partners (and a
+  create or archive) answers once the move is done, so its `partners_count` is
+  the new one — or after 5 s at most, when the next read catches up.
 - Legacy: `filters` is accepted when `conditions` is absent. Its keys **merge** over
   the stored legacy view (send only the filters that change; `[]` / `null` stops
   using one), and the merged result converts to conditions. A condition the legacy

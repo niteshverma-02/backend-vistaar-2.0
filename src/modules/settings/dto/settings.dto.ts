@@ -51,7 +51,7 @@ export class UpdateSettingsDto {
     example: 'A0-1234',
     nullable: true,
     description:
-      'Override owner of farmer leads (`lead_owner`); `null` or `""` clears it — then the Offline Head (USR-1037) owns them',
+      'Override owner of farmer leads (`lead_owner`); `null` or `""` clears it — then the Offline Head (USR-1037) owns them, or with none the partner who added the farmer',
   })
   @Transform(blankToNull)
   @IsOptional()

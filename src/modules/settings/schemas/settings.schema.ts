@@ -30,7 +30,8 @@ export class Settings {
 
   /**
    * Override for the `lead_owner` of farmer leads. Unset (`null`) = the one
-   * active Offline Head (USR-1037) owns them — the HO portal head.
+   * active Offline Head (USR-1037) owns them — the HO portal head; with none
+   * (or this account inactive), the partner who added the farmer.
    */
   @Prop({ type: String, default: null })
   lead_owner_agent_id!: string | null;

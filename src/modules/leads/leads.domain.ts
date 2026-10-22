@@ -343,10 +343,13 @@ export function farmDetailsOf(farmer: FarmerInput) {
   };
 }
 
-/** The org account that owns the farmer's lead: `agents_v2` id and `_id`. */
+/**
+ * Who owns the farmer's org lead: an `agents_v2` head (id and `_id`), or the
+ * partner who added the farmer — not in `agents_v2`, so `ref` is `null`.
+ */
 export interface LeadOwner {
   agent_id: string;
-  ref: string;
+  ref: string | null;
 }
 
 const zeroCalls = () => ({

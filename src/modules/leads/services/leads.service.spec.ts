@@ -156,6 +156,8 @@ function setup(
     lead?: { lead_id: string; source?: string; created_by?: string } | null;
     contact?: { profile?: string; source?: string } | null;
     head?: boolean;
+    /** `settings.lead_owner_agent_id`, and whether that account is active. */
+    named?: { agent_id: string; is_active: boolean };
     seed?: Row[];
     leadInserts?: InsertResult[];
     /** Partners whose account is blocked. */
@@ -179,7 +181,7 @@ function setup(
   };
   const settings = {
     get: jest.fn().mockResolvedValue({
-      lead_owner_agent_id: null,
+      lead_owner_agent_id: opts.named?.agent_id ?? null,
       farmer_consent: { version: 1, text: { en: 'consent' } },
       lead_release_days: 15,
       customer_release_days: 45,
@@ -195,7 +197,20 @@ function setup(
             is_active: true,
           },
     ),
-    staffByIds: jest.fn().mockResolvedValue(new Map()),
+    staffByIds: jest
+      .fn()
+      .mockResolvedValue(
+        new Map(
+          opts.named
+            ? [
+                [
+                  opts.named.agent_id,
+                  { ...opts.named, ref: '674714aa1feb5afbbe0cbc30' },
+                ],
+              ]
+            : [],
+        ),
+      ),
   };
   let n = 4087722;
   const piis = {
@@ -260,7 +275,18 @@ function setup(
     leadOtp,
     rewards as unknown as RewardsService,
   );
-  return { service, org, rows, piis, pincodes, earning, otp, rewards, agents };
+  return {
+    service,
+    org,
+    rows,
+    piis,
+    pincodes,
+    earning,
+    otp,
+    rewards,
+    agents,
+    access,
+  };
 }
 
 async function codeOf(promise: Promise<unknown>): Promise<string> {
@@ -442,6 +468,36 @@ describe('LeadsService.upsert', () => {
     expect(org.updateContact).toHaveBeenCalled();
   });
 
+  it.each([
+    [{ head: false }],
+    [{ named: { agent_id: 'A0-4001', is_active: false } }],
+  ])(
+    'makes the partner the owner when HO has no active head (%j)',
+    async (opts) => {
+      const { service, org } = setup(opts);
+      const saved = await service.upsert(ME, dto);
+      expect(saved.result).toBe('created');
+      expect(firstArg(org.insertLead)).toMatchObject({
+        created_by: 'VST-000001',
+        lead_owner: { agent_id: 'VST-000001', agent_ref: null },
+      });
+    },
+  );
+
+  it('gives the lead to the owner named in the settings', async () => {
+    const { service, org, access } = setup({
+      named: { agent_id: 'A0-4001', is_active: true },
+    });
+    await service.upsert(ME, dto);
+    expect(access.offlineHead).not.toHaveBeenCalled();
+    expect(firstArg(org.insertLead)).toMatchObject({
+      lead_owner: {
+        agent_id: 'A0-4001',
+        agent_ref: '674714aa1feb5afbbe0cbc30',
+      },
+    });
+  });
+
   it('takes the next id when the shared counter hands out a used one', async () => {
     const { service, org } = setup({ leadInserts: ['taken_id', 'ok'] });
     await service.upsert(ME, dto);
@@ -463,7 +519,6 @@ describe('LeadsService.upsert', () => {
       'FARMER_TAKEN',
     ],
     [{ known: 'PII-9', contact: { profile: 'retailer' } }, {}, 'NOT_A_FARMER'],
-    [{ head: false }, {}, 'LEADS_NOT_CONFIGURED'],
   ])('refuses %j %j before any write (%s)', async (opts, body, code) => {
     const { service, org, rows, piis } = setup(opts);
     expect(await codeOf(service.upsert(ME, { ...dto, ...body }))).toBe(code);

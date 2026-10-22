@@ -12,9 +12,9 @@ const DEFAULT_JWKS_URL = 'https://sso.ko-tech.in/.well-known/jwks.json';
 
 /**
  * Verifies the company SSO token the HO portal sends (RS256, keys from the
- * SSO's JWKS). This service never mints one. Only the signature, expiry and
- * the `email` claim matter here; what that email may do is decided by the
- * access module against `agents_v2`.
+ * SSO's JWKS). This service never mints one. Only the signature, expiry,
+ * the token `type` and the `email` claim matter here; what that email may do
+ * is decided by the access module against `agents_v2`.
  */
 @Injectable()
 export class SsoTokenVerifier {
@@ -69,6 +69,9 @@ export class SsoTokenVerifier {
       if (typeof decoded !== 'object') return null;
 
       const claims = decoded as Record<string, unknown>;
+      // The SSO signs its refresh token with the same key; it is longer-lived
+      // and must only ever reach the SSO's own /refresh-token, never a bearer.
+      if (claims.type !== undefined && claims.type !== 'access') return null;
       const email = typeof claims.email === 'string' ? claims.email : '';
       const iat = typeof claims.iat === 'number' ? claims.iat : 0;
       const exp = typeof claims.exp === 'number' ? claims.exp : 0;
