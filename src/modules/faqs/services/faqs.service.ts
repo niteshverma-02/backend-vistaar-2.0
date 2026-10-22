@@ -60,10 +60,7 @@ export class FaqsService {
   }
 
   private async load(): Promise<LiveFaqs> {
-    const [sections, faqs] = await Promise.all([
-      this.sections.list(true),
-      this.faqs.listActive(),
-    ]);
+    const { sections, faqs } = await this.faqs.listActive();
     const shown = liveSections(sections, faqs);
     return {
       sections: shown.sections.map((s) => ({

@@ -21,7 +21,7 @@ import {
   UpdateFaqSectionDto,
 } from '../dto/faq-section.dto';
 import { SECTION_KEY } from '../faqs.domain';
-import type { FaqSection } from '../schemas/faq-section.schema';
+import type { FaqSection } from '../schemas/faq.schema';
 import { FaqSectionsService } from '../services/faq-sections.service';
 
 function checkKey(key: string): string {

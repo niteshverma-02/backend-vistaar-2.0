@@ -54,10 +54,9 @@ db.vistaar_v2_story_samples.createIndex({ key: 1 }, { unique: true })
 db.vistaar_v2_story_samples.createIndex({ is_active: 1, order: 1 })
 db.vistaar_v2_story_designs.createIndex({ key: 1 }, { unique: true })
 db.vistaar_v2_story_designs.createIndex({ is_active: 1, order: 1 })
-db.vistaar_v2_faqs.createIndex({ q_key: 1 }, { unique: true })
+db.vistaar_v2_faqs.createIndex({ q_key: 1 }, { unique: true, partialFilterExpression: { kind: 'faq' } })
 db.vistaar_v2_faqs.createIndex({ is_active: 1, order: 1 })
 db.vistaar_v2_faqs.createIndex({ category: 1, order: 1 })
-db.vistaar_v2_faq_sections.createIndex({ is_active: 1, order: 1 })
 db.vistaar_v2_events.createIndex({ is_active: 1, starts_at: 1 })
 db.vistaar_v2_event_registrations.createIndex({ event_id: 1, created_at: 1 })
 db.vistaar_v2_meetings.createIndex({ agent_id: 1, starts_at: -1, _id: -1 })
@@ -228,8 +227,14 @@ few thousand orders per partner; past that, ask Stockship for
 
 - [ ] The nine story / event indexes built (above) — the unique `{agent_id, signature}` is what stops a double tap saving two copies.
 - [ ] `FIREBASE_*` set; story images go private under `vistaar/stories/<agent_id>/`. Without it uploads answer `503 UPLOADS_NOT_CONFIGURED` and the app shares without saving.
-- [ ] The four FAQ / FAQ-section indexes built (above) — the unique `{q_key}` is what refuses a duplicate question.
-- [ ] `node dist/scripts/seed-faqs.js --apply` once (the app's 5 sections and 11 built-in FAQs; re-running skips existing ones).
+- [ ] The three FAQ indexes built (above) — the unique partial `{q_key}` is what refuses a duplicate question. A database that already had FAQs before the merge may hold the old `q_key_1` (unique for **every** row): `db.vistaar_v2_faqs.dropIndex('q_key_1')` first, then build the partial one — the same name with other options is refused, and the old one breaks on the second section (no `q_key` = `null`).
+- [ ] `node dist/scripts/seed-faqs.js --apply` once (the app's 5 sections and 11 built-in FAQs; re-running skips existing ones). On a database that still has `vistaar_v2_faq_sections`, merge first (below).
+- [ ] **FAQ sections merged into `vistaar_v2_faqs` (2026-10-22)** — only where `vistaar_v2_faq_sections` has rows (beta: 5 sections, 11 FAQs). The new code reads sections only from `vistaar_v2_faqs`, so until the merge the app's FAQs screen is empty and HO sees no sections; the old code ignores the copied section rows on `GET /faqs` (no `category`). So:
+  1. The `{q_key}` index swap above, if the old one is there (`--apply` refuses while it is).
+  2. Just before the deploy: `node dist/scripts/migrate-faqs-merge.js` (dry run — read the counts and any `BLOCKED` line), then `--apply`.
+  3. Right after the deploy: the dry run, then `--apply` again. It picks up what the old code wrote in between (a FAQ added → tagged, a section added or edited → copied) and otherwise says "nothing to do".
+  4. Compare counts: `db.vistaar_v2_faqs.countDocuments({ kind: 'section' })` = `db.vistaar_v2_faq_sections.countDocuments()`; `countDocuments({ kind: { $exists: false } })` = 0; the `faq` count = the FAQ rows before. `GET /faqs` shows the same sections and FAQs as before.
+  5. After a release with nothing left on the old one: `db.vistaar_v2_faq_sections.drop()` (the script never drops it).
 - [ ] `node dist/scripts/seed-story-content.js --apply` once (6 template cards + 5 example custom cards, 5 designs, 4 festivals, 8 farmer stories, 3 events). Done on beta 2026-10-12 (designs and template cards 2026-10-13). On production, skip the 3 sample events — HO adds real ones — and delete the `diwali_lights` test design (generated art).
 - [ ] HO replaces or switches off the 8 sample farmer stories — they are the prototype's made-up quotes, not real customers.
 - [ ] App build on `/stories/*` shipped: `FestivalId` enum → string key, snake_case mapping, save after share (see `STORIES-APP.md`).

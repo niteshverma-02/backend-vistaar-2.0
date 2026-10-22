@@ -30,8 +30,8 @@ writes its retailers.
 | `vistaar_v2_story_templates` | "Choose a design" card (HO) | `_id` = card key (a layout name for the six built-in cards, else HO's key), `base` (layout), `builtin`, `label{}`, `hint{}`, `texts{<lang>:{kicker,cta}}` (`en` required), `fields{<lang>:{emoji,headline,body,detail1..3}}`, `emojis[]`, `default_design` (design key or null), `suggested`, `starts_at` / `ends_at`, `order`, `is_active`, `created_by/updated_by`, timestamps |
 | `vistaar_v2_story_designs` | story look (HO) | `_id` UUID, `key` (unique, never changes — `vistaar_v2_stories.theme`), `label{}`, `colors{bg_from,bg_to,text,subtext,accent,accent_text,soft,deco,avatar}` (`#RRGGBB[AA]`), `image_path` / `image_url` / `image_width` / `image_height` (public art under `vistaar/story-designs/`, or null), `overlay`, `templates[]`, `starts_at` / `ends_at`, `order`, `is_active`, `created_by/updated_by`, timestamps |
 | `vistaar_v2_story_samples` | ready-made farmer quote (HO) | `_id` UUID, `key` (unique), `name`, `village`, `district`, `state`, `product`, `crop`, `quote`, `stars`, `order`, `is_active`, `created_by/updated_by`, timestamps |
-| `vistaar_v2_faq_sections` | FAQ section / app category chip (HO) | `_id` = section key (`payments`), `label`, `emoji`, `order`, `is_active` (off hides its FAQs too), `created_by/updated_by`, timestamps. Deleted by HO only when empty |
-| `vistaar_v2_faqs` | help FAQ (HO) | `_id` UUID, `category` = a section key, `q`, `a`, `q_key` (normalised `q`, unique), `order`, `is_active`, `created_by/updated_by`, timestamps. Deleted for good by HO |
+| `vistaar_v2_faqs` | the FAQs screen (HO): a section **or** a FAQ, told apart by `kind` | `kind: 'section'` — FAQ section / app category chip: `_id` = section key (`payments`), `label`, `emoji`, `order`, `is_active` (off hides its FAQs too), `created_by/updated_by`, timestamps; deleted by HO only when no FAQ names it. `kind: 'faq'` — help FAQ: `_id` UUID, `category` = a section key, `q`, `a`, `q_key` (normalised `q`, unique among FAQs), `order`, `is_active`, `created_by/updated_by`, timestamps; deleted for good by HO. A key cannot hold `-`, so a key and a UUID never share an `_id`. Every query names `kind`; the API never returns it. `GET /faqs` is one read of both (`$facet`) |
+| `vistaar_v2_faq_sections` | **retired 2026-10-22** (merged into `vistaar_v2_faqs` as `kind: 'section'` by `migrate-faqs-merge`) | no code reads it; drop it once the merge is checked (PROD-CHECKLIST) |
 | `vistaar_v2_crop_calendar` | **retired 2026-10-14** (module removed; crops are ko-sales `/crops`) | no code reads it; the beta rows are still there, drop the collection when ready |
 | `vistaar_v2_events` | farmer event (HO) | `_id` UUID, `title`, `type` kisan_mela/training/webinar/field_day, `starts_at`, `location`, `note`, `seats`, `registered_count` (conditional `$inc`), `cohorts[]` (empty = everyone), `is_active`, `created_by/updated_by`, timestamps |
 | `vistaar_v2_event_registrations` | partner's seat | `_id` `<event_id>:<agent_id>`, `event_id`, `agent_id`, `created_at`. Deleted on un-register or with the event |
@@ -67,8 +67,7 @@ writes its retailers.
 - otp_attempts: `{expires_at}` TTL
 - story_designs: `{key}` unique · `{is_active, order}`
 - story_templates: `_id` only (a few dozen rows, read whole)
-- faq_sections: `{is_active, order}`
-- faqs: `{q_key}` unique · `{is_active, order}` · `{category, order}`
+- faqs: `{q_key}` unique partial `kind: faq` · `{is_active, order}` (`GET /faqs`, both kinds) · `{category, order}`
 - events: `{is_active, starts_at}`
 - event_registrations: `{event_id, created_at}`; a partner's seat is an `_id` lookup
 - meetings: `{agent_id, starts_at:-1}` (the partner's list, Today's tasks, My Story picker) · `{starts_at:-1}` (HO list and summary)
