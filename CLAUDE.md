@@ -195,13 +195,17 @@ index is declared in code.
 
 **Exception — `product_reviews` + `product_testimonials`** (owned by Stockship
 v3): partner testimonials are written there by the user's decision
-(2026-10-14) — the collections are Stockship's, the APIs are ours. Only on HO's
-approval (pending ones live in `vistaar_v2_testimonials`), always with
-`source: 'vistaar'`, Stockship's row shape exactly (`verified_by` /
-`deleted_by` = HO email, `__v: 0`), upsert by the `_id` reserved at submit, and
-every write filters on `_id` + `source`. The farmer's consent is its own
-collection, `vistaar_v2_testimonial_consents`, never deleted. No index is
-declared in code.
+(2026-10-14) — the collections are Stockship's, the APIs are ours. No
+collection of our own (user's decision, 2026-10-22): a submission **is** its
+`product_reviews` row from submit on — `_id` derived from the app's UUID,
+Stockship's fields (`verified_by` / `deleted_by` = HO email, `__v: 0`) plus a
+`vistaar` sub-document (partner, place, crop, kind, stars, media, status,
+reason, counters; user-approved). Undecided = `verified: false`, `rating:
+null` (Stockship's averages count unverified rows); the `product_testimonials`
+row of a video / photo only on approval, upsert by the `_id` reserved at
+submit, marked `vistaar{id, agent_id}`. Always `source: 'vistaar'`, every write
+filters on `_id` + `source`. The farmer's consent is its own collection,
+`vistaar_v2_testimonial_consents`, never deleted. No index is declared in code.
 
 ---
 
@@ -241,11 +245,11 @@ declared in code.
 | Terms | `terms_and_conditions` (shared, `profiles: ['vistaar']`) | Existing shape exactly: `toc_id` `TOC-n`, `title`, `link` to the document, `is_active` (one active Vistaar row); public app read cached ≤ 60 s. See *Shared records* |
 | Info pages | `vistaar_v2_info_pages` | HO-edited About Vistaar, About Katyayani, Contact Us: one row per page (`_id` = page), own CRUD per page (`/admin/about-program` …), `content` checked by the page's DTO, optimistic `version`; public app read cached ≤ 60 s, Contact Us `open_now` per request |
 | Feedback | `vistaar_v2_feedback` + `vistaar_v2_product_suggestions` | Feedback screen: NPS (bucket server-side), reasons, comment, stars; a detractor opens a call-back due in 2 working days (Mon–Sat IST) for the partner's owner. "Suggest a product" rows `_id` `SUG-n` (`vistaar_v2_counters`), grouped by `product_key`. Partner snapshot copied at submit; 10 answers / 20 suggestions per IST day |
-| Testimonials | `vistaar_v2_testimonials` | One row per testimonial a partner sends (`_id` = app's UUID): farmer (own lead), product, crop, kind video/photo/text, rating, private media under `vistaar/testimonials/<agent_id>/`, status submitted/approved/rejected/removed + reason, reserved `review_id` / `testimonial_id`, views/shares. Library = approved |
+| Testimonials | `product_reviews` (shared, `source: 'vistaar'` + `vistaar{…}`) | One review row per testimonial a partner sends (`_id` derived from the app's UUID): farmer (own lead), product, crop, kind video/photo/text, stars, private media under `vistaar/testimonials/<agent_id>/`, status submitted/approved/rejected/removed + reason, reserved `testimonial_id`, views/shares under `vistaar`. Library = approved. See *Shared records* |
 | Testimonial consents | `vistaar_v2_testimonial_consents` | Farmer's consent per testimonial (`_id` = its id): version + exact words + lang, given/withdrawn. Never deleted; wording versioned in settings `testimonial_consent` |
 | Payment options | `vistaar_v2_payment_options` + `vistaar_v2_payment_option_audit` | HO switches Razorpay / Cashfree / PhonePe on/off, label, hint, cohorts, order; providers closed in code; optimistic `version`; insert-only audit. Shown only with approved keys; app read cached ≤ 60 s, empty while `PAYMENTS_ONLINE_ENABLED` is off |
 | Payment keys | `vistaar_v2_payment_credentials` | Merchant keys, company admins only (`payments.credentials`): AES-256-GCM sealed with `PAYMENTS_CREDENTIALS_KEY` (env only), never returned (masked), gateway check + a **second** admin approves, old/rejected sets wiped, Slack alert. HO picks test or live on any server (user's decision, 2026-10-16); Razorpay takes the Key ID alone (no secret fields) |
-| testimonials | `product_reviews`, `product_testimonials` (shared, `source: 'vistaar'`) | Written on HO approval only; Stockship's shape exactly. See *Shared records* |
+| testimonials | `product_reviews`, `product_testimonials` (shared, `source: 'vistaar'`) | Review row at submit (hidden, no stars, `vistaar{…}`), media row on HO approval. See *Shared records* |
 | cart | `carts` (shared, `source: 'vistaar'`) | B2B's row shape exactly, no `user_id`; `pii_id` = farmer (partner's own for shop stock), `_id` derived from the partner. See `docs/DATABASE.md` |
 | draft-order | `draft_orders` (shared, `entry_path: 'vistaar'`) | Existing shape + `reminder_sent`; partner in `agent_id`; id from `app_counters`. See `docs/DATABASE.md` |
 | leads | `leads_v2`, `contacts_v2`, `addresses` (shared, `source: 'vistaar'`) | Farmers partners add; new people only; `created_by` = `VST-…`. See `docs/DATABASE.md` |

@@ -12,11 +12,13 @@ Both use the capabilities `testimonials.read` / `testimonials.write` (head roles
 
 ## 1. Partner testimonials (`/api/v2/admin/testimonial-submissions`)
 
-Nothing reaches Stockship until HO approves. **Approve** writes the rating and words to
-`product_reviews` and, for a video / photo, the media to `product_testimonials` (both
-`source: "vistaar"`, `verified: true`, `verified_by` = your email), gives the file a lasting
-link, and puts it in the app's Library. **Remove** hides both rows (`deleted: true`) and
-kills the link; **approve** again brings it back.
+A partner's testimonial is a hidden `product_reviews` row (`source: "vistaar"`,
+`verified: false`, no stars) until HO approves — no product page shows it. **Approve** makes
+it shown (`verified: true`, the stars on `rating`, `verified_by` = your email) and, for a
+video / photo, writes the media to `product_testimonials`, gives the file a lasting link, and
+puts it in the app's Library. **Reject** and **Remove** put it in Stockship's deleted tray
+(`deleted: true`); remove also hides the media row and kills the link; **approve** again
+brings it back. Decide partner testimonials here, not on Stockship's own desk.
 
 | Method | Path | Capability | Body | Returns |
 |---|---|---|---|---|
@@ -41,8 +43,9 @@ kills the link; **approve** again brings it back.
 | withdraw-consent | any, once (a retry after a failure finishes it) |
 
 **Consent withdrawal** (the farmer asked to take it down): the consent is marked
-`withdrawn` with your reason and **kept**; the Stockship rows are deleted, the file is
-deleted, the submission becomes `removed`, and it can never be approved again. If
+`withdrawn` with your reason and **kept**; the `product_testimonials` row and the file are
+deleted, the farmer's words are wiped off the review row (`text` becomes `""`), the
+submission becomes `removed`, and it can never be approved again. If
 another desk user approves at the same moment, the approval sees the withdrawal and
 deletes what it showed (`409 CONSENT_WITHDRAWN`). If a step fails (network), send
 the withdrawal again: it finishes the erase instead of answering 409.

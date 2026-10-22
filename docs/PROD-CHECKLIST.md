@@ -73,14 +73,6 @@ db.vistaar_v2_leads.createIndex({ agent_id: 1, next_follow_up: 1 })
 db.vistaar_v2_leads.createIndex({ created_at: -1 })
 db.vistaar_v2_leads.createIndex({ stage: 1, created_at: -1 })
 db.vistaar_v2_leads.createIndex({ phone: 1 })
-db.vistaar_v2_testimonials.createIndex({ agent_id: 1, created_at: -1 })
-db.vistaar_v2_testimonials.createIndex({ status: 1, created_at: -1, _id: -1 })
-db.vistaar_v2_testimonials.createIndex({ status: 1, shares: -1, created_at: -1 })
-db.vistaar_v2_testimonials.createIndex({ status: 1, bulk: 1, created_at: -1, _id: -1 })
-db.vistaar_v2_testimonials.createIndex({ status: 1, crop: 1, created_at: -1, _id: -1 })
-db.vistaar_v2_testimonials.createIndex({ status: 1, state: 1, district: 1, created_at: -1, _id: -1 })
-db.vistaar_v2_testimonials.createIndex({ testimonial_id: 1 }, { partialFilterExpression: { testimonial_id: { $type: 'objectId' } } })
-db.vistaar_v2_testimonials.createIndex({ pii_id: 1 })
 db.vistaar_v2_testimonial_consents.createIndex({ pii_id: 1, given_at: -1 })
 db.vistaar_v2_testimonial_consents.createIndex({ agent_id: 1, given_at: -1 })
 db.vistaar_v2_feedback.createIndex({ agent_id: 1, created_at: -1 })
@@ -131,7 +123,7 @@ race; onboarding create re-reads on a race; sessions are deleted on refresh (no 
 
 - SMS template / DLT for Vistaar on the utilities OTP service.
 - Firebase service account for uploads (same project as ko-sales, or a new one).
-- **Stockship (testimonials):** add `vistaar` to `REVIEW_SOURCES` (`product_reviews`), so their list filter and desk accept our rows; recompute `bulk_v2` / `combos_v2` average ratings over **verified** rows only (today unverified count too) and know that our approvals do not trigger their `syncRating` — the average catches up on their next write for that product; build `{ source, verified, deleted, created_at }` and `{ bulk, verified, deleted }` indexes on `product_reviews` and `product_testimonials` (both have only `_id` today).
+- **Stockship (testimonials):** add `vistaar` to `REVIEW_SOURCES` (`product_reviews`), so their list filter and desk accept our rows; recompute `bulk_v2` / `combos_v2` average ratings over **verified** rows only (today unverified count too) and know that our approvals do not trigger their `syncRating` — the average catches up on their next write for that product; build `{ source, verified, deleted, created_at }` and `{ bulk, verified, deleted }` indexes on `product_reviews` and `product_testimonials` (both have only `_id` today); and, for Vistaar's partner testimonials on `product_reviews` (partial `{ 'vistaar.id': { $type: 'string' } }`, so their rows pay nothing): `{ 'vistaar.agent_id': 1, created_at: -1 }`, `{ 'vistaar.status': 1, created_at: -1, _id: -1 }`, `{ 'vistaar.status': 1, 'vistaar.shares': -1, created_at: -1 }`. Their moderation desk should leave `source: 'vistaar'` rows to us — approving one there skips the consent check and the media's link.
 ### `carts` (shared, owned by B2B Sales — build with their sign-off)
 
 Nothing to build: every Vistaar read and write is by `_id` (derived from the
@@ -297,7 +289,8 @@ few thousand orders per partner; past that, ask Stockship for
 
 ## Testimonials (partner submissions) — before switching on
 
-- [ ] The ten `vistaar_v2_testimonials` / `vistaar_v2_testimonial_consents` indexes built (above).
+- [ ] The two `vistaar_v2_testimonial_consents` indexes built (above). Partner testimonials live on Stockship's `product_reviews` (see *Owed by other teams* for its indexes).
+- [ ] After this code is deployed: `node dist/scripts/migrate-testimonials-to-shared.js` (dry run), then `--apply`; once `product_reviews` holds as many `vistaar.id` rows as `vistaar_v2_testimonials` has, drop `vistaar_v2_testimonials`.
 - [ ] `FIREBASE_*` set; videos and photos go **private** under `vistaar/testimonials/<agent_id>/<kind>/`, uploaded by the app straight to the bucket with a signed PUT (≤ 60 MB video, ≤ 10 MB photo). On approval the file gets a Firebase download token (the link product pages play); removal takes the token away, a consent withdrawal deletes the file.
 - [ ] Only for a **web** build of the app: bucket CORS allows `PUT` with `Content-Type` and `x-goog-content-length-range` from the app's origin. The mobile app needs nothing.
 - [ ] Stockship team told and agreed (see *Owed by other teams*).

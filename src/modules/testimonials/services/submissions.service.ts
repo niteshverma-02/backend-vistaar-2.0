@@ -32,7 +32,6 @@ import {
   ConsentRepository,
   type ConsentRow,
 } from '../repositories/consent.repository';
-import { ReviewRepository } from '../repositories/review.repository';
 import {
   SubmissionRepository,
   type SubmissionRow,
@@ -142,7 +141,6 @@ export class SubmissionsService {
   constructor(
     private readonly submissions: SubmissionRepository,
     private readonly consents: ConsentRepository,
-    private readonly reviews: ReviewRepository,
     private readonly testimonials: TestimonialRepository,
     private readonly storage: StorageService,
     private readonly leads: LeadsService,
@@ -273,7 +271,6 @@ export class SubmissionsService {
       rating: dto.rating,
       media_path: media?.path ?? null,
       duration_sec: media?.duration_sec ?? null,
-      review_id: new Types.ObjectId(),
       testimonial_id: dto.kind === 'text' ? null : new Types.ObjectId(),
       gig_id: null,
     });
@@ -381,9 +378,10 @@ export class SubmissionsService {
   }
 
   /**
-   * Shown on the product page and in the library: the shared rows are written
-   * (or shown again), the media gets its lasting link, then the status moves.
-   * If a removal or withdrawal won the race meanwhile, the rows go hidden again.
+   * Shown on the product page and in the library: the media gets its lasting
+   * link and its `product_testimonials` row, then the status moves — which
+   * shows the review row itself. If a removal or withdrawal won the race
+   * meanwhile, the media row goes hidden again.
    */
   async approve(id: string, by: string): Promise<AdminSubmissionView> {
     const row = await this.require(id);
@@ -413,6 +411,7 @@ export class SubmissionsService {
     const now = new Date();
     const moved = await this.submissions.transition(row._id, [row.status], {
       status: 'approved',
+      rating: row.rating,
       reason: null,
       media_url: mediaUrl,
       decided_by: by,
@@ -427,7 +426,7 @@ export class SubmissionsService {
     return this.adminView(moved);
   }
 
-  /** Not shown anywhere, and the partner is told why. Nothing shared was written. */
+  /** Not shown anywhere, and the partner is told why. No media row was written. */
   async reject(
     id: string,
     reason: string,
@@ -475,8 +474,9 @@ export class SubmissionsService {
 
   /**
    * The farmer asked for it to come down: the consent is marked withdrawn
-   * (and kept — it is the record), the shared rows and the file are erased,
-   * and the testimonial can never be approved again.
+   * (and kept — it is the record), the media row and the file are erased, the
+   * farmer's words are wiped off the review row (it stays, as the partner's
+   * record of a removed one), and it can never be approved again.
    */
   async withdrawConsent(
     id: string,
@@ -512,6 +512,7 @@ export class SubmissionsService {
       {
         status: 'removed',
         reason: 'The farmer withdrew consent.',
+        text: '',
         media_path: null,
         media_url: null,
         decided_by: by,
@@ -543,30 +544,12 @@ export class SubmissionsService {
     }
   }
 
+  /** The video or photo's own row; a quote has none. */
   private async showShared(
     row: SubmissionRow,
     mediaUrl: string | null,
     by: string,
   ): Promise<void> {
-    const user = {
-      contact: row.farmer_contact,
-      name: row.farmer_name,
-      profile_image: null,
-    };
-    await this.reviews.show(
-      row.review_id,
-      {
-        rating: row.rating,
-        review: row.text,
-        images: [],
-        pii_id: row.pii_id,
-        user: { ...user, email: null },
-        type: row.type,
-        bulk: row.bulk,
-        family: row.family,
-      },
-      by,
-    );
     if (row.testimonial_id && row.kind !== 'text' && mediaUrl) {
       await this.testimonials.show(
         row.testimonial_id,
@@ -577,7 +560,12 @@ export class SubmissionsService {
           media: { media_type: MEDIA_TYPE_OF[row.kind], media_url: mediaUrl },
           review: row.text,
           pii_id: row.pii_id,
-          user,
+          user: {
+            contact: row.farmer_contact,
+            name: row.farmer_name,
+            profile_image: null,
+          },
+          vistaar: { id: row._id, agent_id: row.agent_id },
         },
         by,
       );
@@ -586,7 +574,6 @@ export class SubmissionsService {
 
   /** Gone for good (consent withdrawn): every step is safe to run twice. */
   private async eraseShared(row: SubmissionRow): Promise<void> {
-    await this.reviews.erase(row.review_id);
     if (row.testimonial_id) await this.testimonials.erase(row.testimonial_id);
     if (row.media_path) await this.storage.remove(row.media_path);
   }
@@ -598,8 +585,8 @@ export class SubmissionsService {
     else await this.hideShared(row, by);
   }
 
+  /** The review row is hidden by the status move itself. */
   private async hideShared(row: SubmissionRow, by: string): Promise<void> {
-    await this.reviews.hide(row.review_id, by);
     if (row.testimonial_id)
       await this.testimonials.hide(row.testimonial_id, by);
     if (row.media_path) await this.storage.unpublish(row.media_path);

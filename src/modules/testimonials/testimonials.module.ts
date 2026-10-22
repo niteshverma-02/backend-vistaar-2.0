@@ -11,30 +11,25 @@ import { AdminTestimonialSubmissionsController } from './controllers/admin-testi
 import { AdminTestimonialsController } from './controllers/admin-testimonials.controller';
 import { TestimonialsController } from './controllers/testimonials.controller';
 import { ConsentRepository } from './repositories/consent.repository';
-import { ReviewRepository } from './repositories/review.repository';
 import { SubmissionRepository } from './repositories/submission.repository';
 import { TestimonialRepository } from './repositories/testimonial.repository';
 import {
   TestimonialConsent,
   TestimonialConsentSchema,
 } from './schemas/testimonial-consent.schema';
-import {
-  TestimonialSubmission,
-  TestimonialSubmissionSchema,
-} from './schemas/testimonial-submission.schema';
 import { SubmissionsService } from './services/submissions.service';
 import { TestimonialsService } from './services/testimonials.service';
 
 /**
- * Vistaar's testimonials. Partners send them from the app
- * (`vistaar_v2_testimonials` + `vistaar_v2_testimonial_consents`); on HO's
- * approval they are written to Stockship's shared `product_reviews` and
- * `product_testimonials` as `source: 'vistaar'`, where product pages show them.
+ * Vistaar's testimonials. Partners send them from the app straight onto
+ * Stockship's shared `product_reviews` (`source: 'vistaar'`, hidden until HO
+ * approves), with the farmer's consent in `vistaar_v2_testimonial_consents`;
+ * on approval a video or photo also gets its `product_testimonials` row,
+ * where product pages show it.
  */
 @Module({
   imports: [
     MongooseModule.forFeature([
-      { name: TestimonialSubmission.name, schema: TestimonialSubmissionSchema },
       { name: TestimonialConsent.name, schema: TestimonialConsentSchema },
     ]),
     AccessModule,
@@ -50,7 +45,6 @@ import { TestimonialsService } from './services/testimonials.service';
   ],
   providers: [
     TestimonialRepository,
-    ReviewRepository,
     SubmissionRepository,
     ConsentRepository,
     TestimonialsService,

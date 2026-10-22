@@ -10,13 +10,17 @@ import type { StorageService } from '@modules/uploads/services/storage.service';
 
 import type { SubmitTestimonialDto } from '../dto/submission.dto';
 import type { ConsentRepository } from '../repositories/consent.repository';
-import type { ReviewRepository } from '../repositories/review.repository';
 import type {
   SubmissionRepository,
   SubmissionRow,
 } from '../repositories/submission.repository';
 import type { TestimonialRepository } from '../repositories/testimonial.repository';
-import { canAct, ownsMedia } from '../testimonials.domain';
+import {
+  canAct,
+  ownsMedia,
+  reviewIdOf,
+  sharedFlagsOf,
+} from '../testimonials.domain';
 import { SubmissionsService, toLibrary } from './submissions.service';
 
 const AGENT = 'VST-000123';
@@ -90,11 +94,6 @@ function setup() {
     findMany: jest.fn().mockResolvedValue(new Map()),
     withdraw: jest.fn().mockResolvedValue({ status: 'withdrawn' }),
   };
-  const reviews = {
-    show: jest.fn().mockResolvedValue(undefined),
-    hide: jest.fn().mockResolvedValue(undefined),
-    erase: jest.fn().mockResolvedValue(undefined),
-  };
   const testimonials = {
     show: jest.fn().mockResolvedValue(undefined),
     hide: jest.fn().mockResolvedValue(undefined),
@@ -142,7 +141,6 @@ function setup() {
   const service = new SubmissionsService(
     submissions as unknown as SubmissionRepository,
     consents as unknown as ConsentRepository,
-    reviews as unknown as ReviewRepository,
     testimonials as unknown as TestimonialRepository,
     storage as unknown as StorageService,
     leads as unknown as LeadsService,
@@ -153,7 +151,6 @@ function setup() {
     service,
     submissions,
     consents,
-    reviews,
     testimonials,
     storage,
     leads,
@@ -197,6 +194,28 @@ describe('testimonial domain', () => {
     expect(ownsMedia(AGENT, 'video', `${VIDEO}/../../x.mp4`)).toBe(false);
   });
 
+  it('gives one submission one review id, whatever the UUID’s case', () => {
+    expect(reviewIdOf(ID)).toMatch(/^[0-9a-f]{24}$/);
+    expect(reviewIdOf(ID.toUpperCase())).toBe(reviewIdOf(ID));
+    expect(reviewIdOf(ID.replace('a11', 'a12'))).not.toBe(reviewIdOf(ID));
+  });
+
+  it('shows only an approved one on Stockship; a decided-against one is in its deleted tray', () => {
+    expect(sharedFlagsOf('submitted')).toEqual({
+      verified: false,
+      deleted: false,
+    });
+    expect(sharedFlagsOf('approved')).toEqual({
+      verified: true,
+      deleted: false,
+    });
+    expect(sharedFlagsOf('rejected').deleted).toBe(true);
+    expect(sharedFlagsOf('removed')).toEqual({
+      verified: false,
+      deleted: true,
+    });
+  });
+
   it('lets HO approve again after a rejection or removal, but reject only once', () => {
     expect(canAct('approve', 'removed')).toBe(true);
     expect(canAct('approve', 'approved')).toBe(false);
@@ -233,8 +252,7 @@ describe('SubmissionsService · submit', () => {
     });
     expect(saved.testimonial_id).toBeInstanceOf(Types.ObjectId);
     expect(view.status).toBe('submitted');
-    // Nothing shared is written before HO approves.
-    expect(s.reviews.show).not.toHaveBeenCalled();
+    // The media row waits for HO's approval.
     expect(s.testimonials.show).not.toHaveBeenCalled();
   });
 
@@ -325,21 +343,22 @@ describe('SubmissionsService · submit', () => {
 });
 
 describe('SubmissionsService · HO', () => {
-  it('approves: shows both shared rows with the public link, then moves the status', async () => {
+  it('approves: shows the media row with the public link, then moves the status with the stars', async () => {
     const s = setup();
     const view = await s.service.approve(ID, BY);
     expect(s.storage.publish).toHaveBeenCalledWith(VIDEO);
-    expect(s.reviews.show).toHaveBeenCalledWith(
-      expect.any(Types.ObjectId),
-      expect.objectContaining({ rating: 5, pii_id: 'PII-1' }),
-      BY,
-    );
     expect(s.testimonials.show).toHaveBeenCalledWith(
       expect.any(Types.ObjectId),
       expect.objectContaining({
         media: { media_type: 'video', media_url: PUBLIC_URL },
+        vistaar: { id: ID, agent_id: AGENT },
       }),
       BY,
+    );
+    expect(s.submissions.transition).toHaveBeenCalledWith(
+      ID,
+      ['submitted'],
+      expect.objectContaining({ status: 'approved', rating: 5 }),
     );
     expect(view.status).toBe('approved');
     expect(view.media?.url).toBe(PUBLIC_URL);
@@ -349,7 +368,8 @@ describe('SubmissionsService · HO', () => {
     const s = setup();
     s.consents.find.mockResolvedValue({ status: 'withdrawn' });
     expect(await code(s.service.approve(ID, BY))).toBe('CONSENT_WITHDRAWN');
-    expect(s.reviews.show).not.toHaveBeenCalled();
+    expect(s.testimonials.show).not.toHaveBeenCalled();
+    expect(s.submissions.transition).not.toHaveBeenCalled();
   });
 
   it('erases what it just showed when consent was withdrawn meanwhile', async () => {
@@ -358,13 +378,12 @@ describe('SubmissionsService · HO', () => {
       .mockResolvedValueOnce({ status: 'given' })
       .mockResolvedValue({ status: 'withdrawn' });
     expect(await code(s.service.approve(ID, BY))).toBe('CONSENT_WITHDRAWN');
-    expect(s.reviews.show).toHaveBeenCalled();
-    expect(s.reviews.erase).toHaveBeenCalled();
+    expect(s.testimonials.show).toHaveBeenCalled();
     expect(s.testimonials.erase).toHaveBeenCalled();
     expect(s.submissions.transition).not.toHaveBeenCalled();
   });
 
-  it('hides the shared rows again when a removal won the race', async () => {
+  it('hides the media row again when a removal won the race', async () => {
     const s = setup();
     s.submissions.transition.mockResolvedValue(null);
     s.submissions.find
@@ -373,7 +392,6 @@ describe('SubmissionsService · HO', () => {
     expect(await code(s.service.approve(ID, BY))).toBe(
       'TESTIMONIAL_NOT_ALLOWED',
     );
-    expect(s.reviews.hide).toHaveBeenCalled();
     expect(s.testimonials.hide).toHaveBeenCalled();
   });
 
@@ -393,18 +411,25 @@ describe('SubmissionsService · HO', () => {
       row({ status: 'approved', media_url: PUBLIC_URL }),
     );
     const view = await s.service.remove(ID, undefined, BY);
-    expect(s.reviews.hide).toHaveBeenCalled();
     expect(s.testimonials.hide).toHaveBeenCalled();
     expect(s.storage.unpublish).toHaveBeenCalledWith(VIDEO);
     expect(view.status).toBe('removed');
   });
 
-  it('a withdrawal erases the shared rows and the file, once', async () => {
+  it('a withdrawal erases the media row and the file and wipes the words, once', async () => {
     const s = setup();
     s.submissions.find.mockResolvedValue(row({ status: 'approved' }));
     const view = await s.service.withdrawConsent(ID, 'Farmer called', BY);
-    expect(s.reviews.erase).toHaveBeenCalled();
     expect(s.testimonials.erase).toHaveBeenCalled();
+    expect(s.submissions.transition).toHaveBeenCalledWith(
+      ID,
+      expect.arrayContaining(['approved']),
+      expect.objectContaining({
+        status: 'removed',
+        text: '',
+        media_path: null,
+      }),
+    );
     expect(s.storage.remove).toHaveBeenCalledWith(VIDEO);
     expect(view.status).toBe('removed');
     s.consents.withdraw.mockResolvedValue(null);
@@ -420,7 +445,7 @@ describe('SubmissionsService · HO', () => {
   it('a retry finishes a withdrawal that failed part-way', async () => {
     const s = setup();
     s.submissions.find.mockResolvedValue(row({ status: 'approved' }));
-    s.reviews.erase.mockRejectedValueOnce(new Error('network'));
+    s.testimonials.erase.mockRejectedValueOnce(new Error('network'));
     await expect(
       s.service.withdrawConsent(ID, 'Farmer called', BY),
     ).rejects.toThrow('network');

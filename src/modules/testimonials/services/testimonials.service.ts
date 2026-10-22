@@ -140,10 +140,7 @@ export class TestimonialsService {
       this.submissions.approvedQuotes(limit),
       this.testimonials.approvedWithReview(limit),
     ]);
-    const linked = await this.submissions.linkedTestimonials(
-      filed.map((r) => r._id),
-    );
-    const own = filed.filter((r) => !linked.has(r._id.toHexString()));
+    const own = filed.filter((r) => !r.vistaar);
     const names = await this.testimonials.tradeNames([
       ...new Set(own.flatMap((r) => (r.bulk ? [r.bulk] : []))),
     ]);
@@ -196,11 +193,8 @@ export class TestimonialsService {
       query.limit,
       query.sortSpec,
     );
-    const linked = await this.submissions.linkedTestimonials(
-      rows.map((r) => r._id),
-    );
     return new PageResult(
-      rows.map((r) => toView(r, linked.has(r._id.toHexString()))),
+      rows.map((r) => toView(r, !!r.vistaar)),
       total,
       query,
     );
@@ -212,7 +206,7 @@ export class TestimonialsService {
 
   async get(id: string): Promise<AdminTestimonialView> {
     const row = await this.require(id);
-    return toView(row, await this.fromPartner(row._id));
+    return toView(row, !!row.vistaar);
   }
 
   async create(
@@ -304,20 +298,19 @@ export class TestimonialsService {
   }
 
   /**
-   * A partner's testimonial has its status, reason and consent on its own
-   * row; changing the shared copy from here would leave the two disagreeing.
+   * A partner's testimonial has its status, reason and consent on its review
+   * row; changing the media row from here would leave the two disagreeing.
    */
   private async refusePartners(id: string): Promise<void> {
-    if (await this.fromPartner(new Types.ObjectId(id))) {
+    const partners = await this.testimonials.fromPartners([
+      new Types.ObjectId(id),
+    ]);
+    if (partners.size > 0) {
       throw conflict(
         'TESTIMONIAL_FROM_PARTNER',
         "This is a partner's testimonial. Please approve or remove it from Partner testimonials.",
       );
     }
-  }
-
-  private async fromPartner(id: Types.ObjectId): Promise<boolean> {
-    return (await this.submissions.linkedTestimonials([id])).size > 0;
   }
 
   private async require(id: string): Promise<TestimonialRow> {
