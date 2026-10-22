@@ -48,12 +48,8 @@ db.vistaar_v2_banners.createIndex({ is_active: 1, order: 1 })
 db.vistaar_v2_stories.createIndex({ agent_id: 1, signature: 1 }, { unique: true })
 db.vistaar_v2_stories.createIndex({ agent_id: 1, last_used_at: -1 })
 db.vistaar_v2_story_stats.createIndex({ date: 1, agent_id: 1 })
-db.vistaar_v2_story_festivals.createIndex({ key: 1 }, { unique: true })
-db.vistaar_v2_story_festivals.createIndex({ is_active: 1, order: 1 })
-db.vistaar_v2_story_samples.createIndex({ key: 1 }, { unique: true })
-db.vistaar_v2_story_samples.createIndex({ is_active: 1, order: 1 })
-db.vistaar_v2_story_designs.createIndex({ key: 1 }, { unique: true })
-db.vistaar_v2_story_designs.createIndex({ is_active: 1, order: 1 })
+db.vistaar_v2_story_content.createIndex({ kind: 1, key: 1 }, { unique: true })
+db.vistaar_v2_story_content.createIndex({ kind: 1, is_active: 1, order: 1 })
 db.vistaar_v2_faqs.createIndex({ q_key: 1 }, { unique: true, partialFilterExpression: { kind: 'faq' } })
 db.vistaar_v2_faqs.createIndex({ is_active: 1, order: 1 })
 db.vistaar_v2_faqs.createIndex({ category: 1, order: 1 })
@@ -117,6 +113,7 @@ race; onboarding create re-reads on a race; sessions are deleted on refresh (no 
 - Forms published before 2026-10-09 by the seed: `seed-onboarding.js --apply --republish` (12-digit Aadhaar, `org_document`).
 - Partners saved or approved before state/district came from the pincode (2026-10-14): `node dist/scripts/backfill-partner-place.js` (dry run), then `--apply`. Only `vistaar_v2_agents`; safe to run again. Beta done 2026-10-14 (VST-000006).
 - Aadhaar / PAN duplicate check (2026-10-16): after deploy, `node dist/scripts/backfill-id-keys.js` (dry run), then `--apply` — fills `id_keys` on forms saved before the check, which cannot see them until then. Only `vistaar_v2_onboarding_data`; safe to run again. Hand the printed duplicate groups (agent ids) to HO. Build the two `id_keys` indexes above first.
+- My Story content merged into `vistaar_v2_story_content` (2026-10-22): build its two indexes above first, then after the deploy `node dist/scripts/migrate-story-content.js` (dry run — read the per-kind counts and any `SKIP`), then `--apply`, then the dry run once more: every kind must read `insert 0 · skipped 0`, and `vistaar_v2_story_content` per kind must equal the old collection's count (`db.vistaar_v2_story_content.countDocuments({ kind: 'design' })` against `db.vistaar_v2_story_designs.countDocuments()`, and so on). Until it has run, the app shows only its bundled designs and cards and no festivals or farmer stories — to close that gap, also `--apply` once just before the deploy; the run after it then brings over only what HO edited in between (not a deletion: delete that row again in the portal). Safe to run again (newer `updated_at` wins; it never writes the old collections). Only once the counts match: `db.vistaar_v2_story_designs.drop()`, `db.vistaar_v2_story_festivals.drop()`, `db.vistaar_v2_story_samples.drop()`, `db.vistaar_v2_story_templates.drop()`. A database that never had the old four (seeded after this deploy) has nothing to copy. Beta dry run 2026-10-22: 5 designs, 4 festivals, 8 samples, 11 cards to insert, nothing skipped — not applied yet.
 
 ## Owed by other teams
 
@@ -225,7 +222,8 @@ few thousand orders per partner; past that, ask Stockship for
 
 ## My Story — before switching on
 
-- [ ] The nine story / event indexes built (above) — the unique `{agent_id, signature}` is what stops a double tap saving two copies.
+- [ ] The story indexes (`vistaar_v2_stories`, `vistaar_v2_story_stats`, `vistaar_v2_story_content`) and event indexes built (above) — the unique `{agent_id, signature}` is what stops a double tap saving two copies, `{kind, key}` a second design / festival / sample / card on one key.
+- [ ] `migrate-story-content` run and the four old story-content collections dropped (see *Data*).
 - [ ] `FIREBASE_*` set; story images go private under `vistaar/stories/<agent_id>/`. Without it uploads answer `503 UPLOADS_NOT_CONFIGURED` and the app shares without saving.
 - [ ] The three FAQ indexes built (above) — the unique partial `{q_key}` is what refuses a duplicate question. A database that already had FAQs before the merge may hold the old `q_key_1` (unique for **every** row): `db.vistaar_v2_faqs.dropIndex('q_key_1')` first, then build the partial one — the same name with other options is refused, and the old one breaks on the second section (no `q_key` = `null`).
 - [ ] `node dist/scripts/seed-faqs.js --apply` once (the app's 5 sections and 11 built-in FAQs; re-running skips existing ones). On a database that still has `vistaar_v2_faq_sections`, merge first (below).

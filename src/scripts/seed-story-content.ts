@@ -2,11 +2,11 @@
  * The content My Story's templates used from the app's seed data, into the
  * database so HO can edit it from the portal:
  *
- *   - 4 festival greetings  → `vistaar_v2_story_festivals`  (story_content.dart)
- *   - 8 farmer stories       → `vistaar_v2_story_samples`    (sahayak_seed.dart `testimonialLibrary`)
+ *   - 4 festival greetings  → `vistaar_v2_story_content`, kind `festival`  (story_content.dart)
+ *   - 8 farmer stories       → `vistaar_v2_story_content`, kind `sample`    (sahayak_seed.dart `testimonialLibrary`)
  *   - 3 events               → `vistaar_v2_events`           (content_seed.dart `events`; the Meeting template)
- *   - 5 designs              → `vistaar_v2_story_designs`    (story_themes.dart, + one art design for testing)
- *   - 6 template cards       → `vistaar_v2_story_templates`  (story_content.dart `storyTemplates`, `storyStrings`, `customEmojis`)
+ *   - 5 designs              → `vistaar_v2_story_content`, kind `design`    (story_themes.dart, + one art design for testing)
+ *   - 6 template cards       → `vistaar_v2_story_content`, kind `template`  (story_content.dart `storyTemplates`, `storyStrings`, `customEmojis`)
  *
  *   node dist/scripts/seed-story-content.js            # dry run — writes nothing
  *   node dist/scripts/seed-story-content.js --apply    # adds what is missing, by key

@@ -1,18 +1,19 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { SchemaTypes, type HydratedDocument } from 'mongoose';
+import { SchemaTypes } from 'mongoose';
 
 import type { Localized } from '@modules/onboarding/form.domain';
 
 import type { FestivalText } from '../stories.domain';
 
-/** A greeting the Festival template offers, written by HO. */
-@Schema({
-  collection: 'vistaar_v2_story_festivals',
-  timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
-  versionKey: false,
-})
+/**
+ * A greeting the Festival template offers, written by HO.
+ *
+ * The `festival` kind of `vistaar_v2_story_content`; collection, timestamps
+ * and indexes come from `StoryContent`.
+ */
+@Schema()
 export class StoryFestival {
-  /** UUID. */
+  /** UUID — the API's id; stored as `festival:<uuid>`. */
   @Prop({ type: String }) _id!: string;
   /** Stable key a saved story's `selection.festival` keeps, e.g. `diwali`. */
   @Prop({ type: String, required: true }) key!: string;
@@ -34,8 +35,4 @@ export class StoryFestival {
   updated_at!: Date;
 }
 
-export type StoryFestivalDocument = HydratedDocument<StoryFestival>;
 export const StoryFestivalSchema = SchemaFactory.createForClass(StoryFestival);
-
-StoryFestivalSchema.index({ key: 1 }, { unique: true });
-StoryFestivalSchema.index({ is_active: 1, order: 1 });

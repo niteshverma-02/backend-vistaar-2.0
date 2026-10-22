@@ -26,7 +26,7 @@ const LANG_NAMES: Record<string, string> = { en: 'English', hi: 'Hindi' };
 export const langName = (lang: string): string => LANG_NAMES[lang] ?? lang;
 
 /**
- * A story's look is a design `key` from `vistaar_v2_story_designs` (HO adds
+ * A story's look is a design `key` from `vistaar_v2_story_content` (HO adds
  * and recolours them). The four below are the app's bundled ones, which it
  * draws even when the server's list is not loaded.
  */

@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { SchemaTypes, type HydratedDocument } from 'mongoose';
+import { SchemaTypes } from 'mongoose';
 
 import type { Localized } from '@modules/onboarding/form.domain';
 
@@ -8,14 +8,13 @@ import type { DesignColors, StoryTemplate } from '../stories.domain';
 /**
  * A look the partner can pick for a story: colours, and optionally HO's own
  * 9:16 art drawn behind the text. A saved story keeps the design's `key`.
+ *
+ * The `design` kind of `vistaar_v2_story_content`; collection, timestamps and
+ * indexes come from `StoryContent`.
  */
-@Schema({
-  collection: 'vistaar_v2_story_designs',
-  timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' },
-  versionKey: false,
-})
+@Schema()
 export class StoryDesign {
-  /** UUID. */
+  /** UUID — the API's id; stored as `design:<uuid>`. */
   @Prop({ type: String }) _id!: string;
   /** Stable key a saved story's `theme` keeps, e.g. `green`, `diwali_lights`. */
   @Prop({ type: String, required: true }) key!: string;
@@ -44,8 +43,4 @@ export class StoryDesign {
   updated_at!: Date;
 }
 
-export type StoryDesignDocument = HydratedDocument<StoryDesign>;
 export const StoryDesignSchema = SchemaFactory.createForClass(StoryDesign);
-
-StoryDesignSchema.index({ key: 1 }, { unique: true });
-StoryDesignSchema.index({ is_active: 1, order: 1 });
