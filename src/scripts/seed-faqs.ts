@@ -1,9 +1,11 @@
 /**
  * The app's built-in FAQ sections (`faqCategoryLabels`) and FAQs
- * (`learn_seed.dart` + `faq_extras_seed.dart`), into `vistaar_v2_faq_sections`
- * and `vistaar_v2_faqs`, so the /faqs screen shows the same list once it reads
- * `GET /faqs`. Safe on any environment: a section key or question already
- * there is skipped.
+ * (`learn_seed.dart` + `faq_extras_seed.dart`), into `vistaar_v2_faqs`
+ * (`kind: 'section'` and `kind: 'faq'` rows), so the /faqs screen shows the
+ * same list once it reads `GET /faqs`. Safe on any environment: a section key
+ * or question already there is skipped. On a database that still has
+ * `vistaar_v2_faq_sections`, run `migrate-faqs-merge` first, or every section
+ * looks missing.
  *
  *   node dist/scripts/seed-faqs.js            # dry run — writes nothing
  *   node dist/scripts/seed-faqs.js --apply    # adds the missing ones

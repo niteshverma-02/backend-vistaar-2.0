@@ -8,7 +8,7 @@ import type {
   UpdateFaqSectionDto,
 } from '../dto/faq-section.dto';
 import { FaqSectionRepository } from '../repositories/faq-section.repository';
-import type { FaqSection } from '../schemas/faq-section.schema';
+import type { FaqSection } from '../schemas/faq.schema';
 import { FaqsService } from './faqs.service';
 
 const isDuplicateKey = (error: unknown): boolean =>
