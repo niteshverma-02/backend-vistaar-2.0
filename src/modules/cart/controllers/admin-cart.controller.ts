@@ -4,7 +4,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PageResult } from '@common/http/page-result';
 import { Can } from '@modules/access/guards/capability.guard';
 
-import type { AdminCartView } from '../dto/admin-cart.dto';
+import type { AdminCartsSummary, AdminCartView } from '../dto/admin-cart.dto';
 import { AdminCartsQueryDto } from '../dto/admin-cart.dto';
 import { AdminCartService } from '../services/admin-cart.service';
 
@@ -22,5 +22,15 @@ export class AdminCartController {
   })
   list(@Query() query: AdminCartsQueryDto): Promise<PageResult<AdminCartView>> {
     return this.carts.list(query);
+  }
+
+  @Get('summary')
+  @Can('orders.read')
+  @ApiOperation({
+    summary:
+      'Cards for the same carts as the list: carts, partners, value (stored subtotals), units, and carts untouched for 7+ IST days',
+  })
+  summary(@Query() query: AdminCartsQueryDto): Promise<AdminCartsSummary> {
+    return this.carts.summary(query);
   }
 }

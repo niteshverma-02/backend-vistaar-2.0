@@ -34,6 +34,20 @@ export interface AdminCartLine {
   line_total: number;
 }
 
+/** `GET /admin/carts/summary`: the cards for the same carts as the list. */
+export interface AdminCartsSummary {
+  /** Carts holding a product, not ordered yet. */
+  carts: number;
+  /** Partners with such a cart: one cart per partner, so always `carts`. */
+  partners: number;
+  /** Σ subtotal as stored (the prices each partner last saw), whole ₹. */
+  value: number;
+  /** Σ quantity over every line, as the list's `item_count`. */
+  items: number;
+  /** Carts nobody touched for 7 IST days or more (`updated_at`). */
+  stale_7d: number;
+}
+
 /** A partner's open cart, as HO watches it. Read-only: only the partner orders. */
 export interface AdminCartView {
   partner: OrderPartner;
