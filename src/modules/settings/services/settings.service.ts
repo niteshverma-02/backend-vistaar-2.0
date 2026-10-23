@@ -38,6 +38,7 @@ const DEFAULTS: SettingsRecord = {
   testimonial_consent: FIRST_TESTIMONIAL_CONSENT,
   return_window_days: 7,
   min_withdrawal: 500,
+  max_withdrawal_pct: 100,
   tds_rate_with_pan: 2,
   tds_rate_without_pan: 20,
   monthly_target: 100_000,
