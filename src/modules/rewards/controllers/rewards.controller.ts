@@ -1,19 +1,30 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 
 import { CurrentPartnerId } from '@common/auth/current-partner.decorator';
 import type { PageResult } from '@common/http/page-result';
 
-import { RewardsQueryDto } from '../dto/reward.dto';
+import { RewardsQueryDto, SpendCoinsDto } from '../dto/reward.dto';
 import {
   RewardsService,
+  type CoinSpend,
   type RewardView,
   type RewardsSummary,
 } from '../services/rewards.service';
 
 /**
- * The partner's own coin and gig rewards. Read-only: rewards are made by
- * events (a lead added, a follow-up done) and decided by HO.
+ * The partner's own coin and gig rewards. Rewards are made by events (a lead
+ * added, a follow-up done) and decided by HO; the partner only spends approved
+ * coins on an order.
  */
 @ApiTags('app · rewards')
 @ApiBearerAuth()
@@ -39,5 +50,30 @@ export class RewardsController {
     @Query() query: RewardsQueryDto,
   ): Promise<PageResult<RewardView>> {
     return this.rewards.mine(agentId, query);
+  }
+
+  @Put('coins/:requestId')
+  @ApiOperation({
+    summary:
+      'Spend approved coins (₹1 off each) on the order of this checkout attempt (its x-request-id); the same attempt again never spends twice',
+  })
+  spendCoins(
+    @CurrentPartnerId() agentId: string,
+    @Param('requestId', ParseUUIDPipe) requestId: string,
+    @Body() body: SpendCoinsDto,
+  ): Promise<CoinSpend> {
+    return this.rewards.spendCoins(agentId, requestId, body.coins);
+  }
+
+  @Delete('coins/:requestId')
+  @ApiOperation({
+    summary:
+      'The order was not placed: the coins of this checkout attempt go back',
+  })
+  releaseCoins(
+    @CurrentPartnerId() agentId: string,
+    @Param('requestId', ParseUUIDPipe) requestId: string,
+  ): Promise<{ request_id: string; released: boolean }> {
+    return this.rewards.releaseCoins(agentId, requestId);
   }
 }

@@ -106,7 +106,8 @@ approves or rejects it. The app never creates one.
 - Per event, one coin rule and one gig rule at most.
 - If the partner removes a lead while its `lead_created` reward is still pending, that
   reward is rejected (`reason: "lead removed"`).
-- **Coins** are points: earned and counted, **no redeem / spend yet**, never money.
+- **Coins** are points, never money: earned and counted, and **spent only as ₹1 off per
+  coin on an order** (*Coins at checkout* below) — never paid out.
 - **Gig ₹** joins the wallet (`GET /wallet` `gig_earned`, with approved meeting gigs)
   once **approved**, and only while gig pay is switched on (`pay_enabled` below; off
   until Finance confirms TDS). Approved before that, it counts from the switch-on.
@@ -117,7 +118,12 @@ approves or rejects it. The app never creates one.
 
 ```jsonc
 {
-  "coins": { "approved": 120, "pending": 20 },            // coin balance = approved
+  "coins": {
+    "approved": 120,                                       // every coin HO approved
+    "pending": 20,                                         // waiting for HO
+    "spent": 40,                                           // held by orders
+    "available": 80                                        // coin balance = approved − spent
+  },
   "gig": {
     "approved_amount": 45,                                 // ₹
     "pending_amount": 15,                                  // ₹, waiting for HO
@@ -152,3 +158,25 @@ The partner's own, newest first. `kind` `coin` · `gig`; `status` `pending` ·
 
 Read-only: there is no create, edit or delete for the app — rewards come from events,
 and HO decides them.
+
+### Coins at checkout
+
+The order goes to Katyayani Utils (`coin` = coins used, `total_amt` = paid + coins);
+the coins come off here, keyed on the checkout attempt's `x-request-id` (the same UUID
+as `POST /orders/id`). One partner's spends are serialised: two orders at once never
+spend the same coins.
+
+`PUT /api/v2/rewards/coins/:requestId` `{ "coins": 40 }` — **before** the order is sent.
+
+```jsonc
+{ "request_id": "…uuid…", "coins": 40, "available": 80 }   // available = after this one
+```
+
+- The same `requestId` again answers what it holds (a retry never spends twice); one
+  released is held again.
+- `409 NOT_ENOUGH_COINS` (`details[0]` `available=N`) past the approved coins not spent.
+
+`DELETE /api/v2/rewards/coins/:requestId` — the order was **not** placed (refused,
+payment failed or cancelled): the coins go back. `{ "request_id": "…", "released": true }`;
+`released: false` = it held none. Never release while the order may still be placed
+(no answer in time, payment not confirmed yet).

@@ -9,6 +9,10 @@ import type {
 import type { SettingsService } from '@modules/settings/services/settings.service';
 
 import {
+  CoinAccountRepository,
+  type CoinAccountRecord,
+} from '../repositories/coin-account.repository';
+import {
   RewardRepository,
   type NewReward,
   type RewardRecord,
@@ -94,11 +98,89 @@ function fakeRepo() {
           ids.filter((id) => decideOne(id, s, reason, by, at, agentId)).length,
         ),
     ),
-    totals: jest.fn().mockResolvedValue([
-      { kind: 'coin', status: 'approved', count: 3, amount: 30 },
-      { kind: 'coin', status: 'pending', count: 1, amount: 10 },
-      { kind: 'gig', status: 'pending', count: 2, amount: 100 },
-    ]),
+    totals: jest.fn((f: { kind?: string; status?: string }) =>
+      Promise.resolve(
+        [
+          { kind: 'coin', status: 'approved', count: 3, amount: 30 },
+          { kind: 'coin', status: 'pending', count: 1, amount: 10 },
+          { kind: 'gig', status: 'pending', count: 2, amount: 100 },
+        ].filter(
+          (t) =>
+            (!f.kind || t.kind === f.kind) &&
+            (!f.status || t.status === f.status),
+        ),
+      ),
+    ),
+  };
+}
+
+/** `vistaar_v2_coin_accounts` as Mongo applies the three guarded updates. */
+function fakeCoinAccounts() {
+  const accounts = new Map<string, CoinAccountRecord>();
+  const now = new Date();
+  return {
+    accounts,
+    find: jest.fn((agent: string) =>
+      Promise.resolve(
+        accounts.has(agent) ? structuredClone(accounts.get(agent)!) : null,
+      ),
+    ),
+    hold: jest.fn(
+      (
+        agent: string,
+        id: string,
+        coins: number,
+        approved: number,
+        at: Date,
+      ) => {
+        const a = accounts.get(agent);
+        if (!a) {
+          accounts.set(agent, {
+            _id: agent,
+            spent: coins,
+            redemptions: [{ id, coins, active: true, at, released_at: null }],
+            created_at: now,
+            updated_at: now,
+          });
+          return Promise.resolve(true);
+        }
+        if (
+          a.spent > approved - coins ||
+          a.redemptions.some((r) => r.id === id)
+        )
+          return Promise.resolve(false);
+        a.spent += coins;
+        a.redemptions.push({ id, coins, active: true, at, released_at: null });
+        return Promise.resolve(true);
+      },
+    ),
+    rehold: jest.fn(
+      (
+        agent: string,
+        id: string,
+        coins: number,
+        approved: number,
+        at: Date,
+      ) => {
+        const a = accounts.get(agent);
+        const r = a?.redemptions.find((x) => x.id === id && !x.active);
+        if (!a || !r || a.spent > approved - coins)
+          return Promise.resolve(false);
+        a.spent += coins;
+        Object.assign(r, { coins, active: true, at, released_at: null });
+        return Promise.resolve(true);
+      },
+    ),
+    release: jest.fn((agent: string, id: string, coins: number, at: Date) => {
+      const a = accounts.get(agent);
+      const r = a?.redemptions.find(
+        (x) => x.id === id && x.coins === coins && x.active,
+      );
+      if (!a || !r) return Promise.resolve(false);
+      a.spent -= coins;
+      Object.assign(r, { active: false, released_at: at });
+      return Promise.resolve(true);
+    }),
   };
 }
 
@@ -113,13 +195,15 @@ function setup(rewards: EarnedReward[] = [earned('coin', 10)]) {
   const settings = {
     get: jest.fn().mockResolvedValue({ gig_pay_enabled: false }),
   };
+  const coins = fakeCoinAccounts();
   const service = new RewardsService(
     repo as unknown as RewardRepository,
     rules as unknown as EarningRulesService,
     agents as unknown as AgentsService,
     settings as unknown as SettingsService,
+    coins as unknown as CoinAccountRepository,
   );
-  return { service, repo, rules };
+  return { service, repo, rules, coins };
 }
 
 async function codeOf(promise: Promise<unknown>): Promise<string> {
@@ -272,9 +356,82 @@ describe('RewardsService — HO review', () => {
   it('the app summary: coins and gig ₹ by status, and whether gig pay is on', async () => {
     const { service } = setup();
     expect(await service.summaryMine(AGENT)).toEqual({
-      coins: { approved: 30, pending: 10 },
+      coins: { approved: 30, pending: 10, spent: 0, available: 30 },
       gig: { approved_amount: 0, pending_amount: 100, pay_enabled: false },
     });
+  });
+});
+
+describe('RewardsService — coins at checkout', () => {
+  const A = '11111111-1111-4111-8111-111111111111';
+  const B = '22222222-2222-4222-8222-222222222222';
+
+  it('spends approved coins once per checkout attempt; a retry answers the same hold', async () => {
+    const { service, coins } = setup();
+    expect(await service.spendCoins('vst-000006', A, 20)).toEqual({
+      request_id: A,
+      coins: 20,
+      available: 10,
+    });
+    expect(await service.spendCoins(AGENT, A, 20)).toEqual({
+      request_id: A,
+      coins: 20,
+      available: 10,
+    });
+    expect(coins.accounts.get(AGENT)?.spent).toBe(20);
+    expect((await service.summaryMine(AGENT)).coins).toEqual({
+      approved: 30,
+      pending: 10,
+      spent: 20,
+      available: 10,
+    });
+  });
+
+  it('refuses more than the approved coins not yet spent', async () => {
+    const { service } = setup();
+    expect(await codeOf(service.spendCoins(AGENT, A, 31))).toBe(
+      'NOT_ENOUGH_COINS',
+    );
+    await service.spendCoins(AGENT, A, 25);
+    expect(await codeOf(service.spendCoins(AGENT, B, 6))).toBe(
+      'NOT_ENOUGH_COINS',
+    );
+  });
+
+  it('two orders at once never spend the same coins', async () => {
+    const { service, coins } = setup();
+    const out = await Promise.allSettled([
+      service.spendCoins(AGENT, A, 20),
+      service.spendCoins(AGENT, B, 20),
+    ]);
+    expect(out.filter((o) => o.status === 'fulfilled')).toHaveLength(1);
+    expect(coins.accounts.get(AGENT)?.spent).toBe(20);
+  });
+
+  it('a release gives the coins back once; a retry of that attempt holds them again', async () => {
+    const { service, coins } = setup();
+    await service.spendCoins(AGENT, A, 20);
+    expect(await service.releaseCoins(AGENT, A)).toEqual({
+      request_id: A,
+      released: true,
+    });
+    expect(await service.releaseCoins(AGENT, A)).toEqual({
+      request_id: A,
+      released: false,
+    });
+    expect(coins.accounts.get(AGENT)?.spent).toBe(0);
+    await service.spendCoins(AGENT, A, 20);
+    expect(coins.accounts.get(AGENT)?.spent).toBe(20);
+    expect(coins.accounts.get(AGENT)?.redemptions).toHaveLength(1);
+  });
+
+  it('releasing an attempt that holds nothing changes nothing', async () => {
+    const { service, coins } = setup();
+    expect(await service.releaseCoins(AGENT, B)).toEqual({
+      request_id: B,
+      released: false,
+    });
+    expect(coins.release).not.toHaveBeenCalled();
   });
 });
 

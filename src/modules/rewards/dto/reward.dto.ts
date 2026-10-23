@@ -5,11 +5,14 @@ import {
   ArrayMinSize,
   IsArray,
   IsIn,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   Matches,
+  Max,
   MaxLength,
+  Min,
 } from 'class-validator';
 
 import { PageQueryDto } from '@common/dto/page-query.dto';
@@ -40,6 +43,15 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
 const REWARD_ID = new RegExp(
   `^(?:${EARNING_TRIGGERS.join('|')})(?::[A-Za-z0-9_/-]{1,64}){1,3}:(?:${REWARD_KINDS.join('|')})$`,
 );
+
+/** `PUT /rewards/coins/:requestId` — coins off one order. */
+export class SpendCoinsDto {
+  @ApiProperty({ minimum: 1, example: 40 })
+  @IsInt({ message: 'coins must be a whole number.' })
+  @Min(1, { message: 'coins must be at least 1.' })
+  @Max(1_000_000, { message: 'coins is too large.' })
+  coins!: number;
+}
 
 /** The app's list: the partner's own rewards, newest first. */
 export class RewardsQueryDto extends PageQueryDto {
