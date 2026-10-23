@@ -105,6 +105,7 @@ describe('WalletService', () => {
     commission = {
       forget: jest.fn(),
       forgetWithdrawals: jest.fn(),
+      partner: jest.fn(() => Promise.resolve(partner)),
       bookOf: jest.fn(() =>
         Promise.resolve({
           partner,
@@ -205,6 +206,49 @@ describe('WalletService', () => {
         response: { error: 'PARTNER_NOT_APPROVED' },
       });
       expect(repo.insert).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('payout cap and pre-check', () => {
+    it("caps one request at HO's % of the withdrawable balance", async () => {
+      // withdrawable 2,000, cap 50% → most 1,000 in one request.
+      commission.bookOf.mockResolvedValue({
+        partner,
+        book,
+        settings: { ...SETTINGS, max_withdrawal_pct: 50 } as typeof SETTINGS,
+        withdrawals: [],
+      } as never);
+      await expect(
+        service.request('VST-000001', { amount: 1_500 }),
+      ).rejects.toMatchObject({
+        status: 409,
+        response: { error: 'ABOVE_WITHDRAWAL_CAP' },
+      });
+      await expect(service.check('VST-000001', 1_500)).rejects.toMatchObject({
+        response: { error: 'ABOVE_WITHDRAWAL_CAP' },
+      });
+      await expect(service.check('VST-000001', 1_000)).resolves.toMatchObject({
+        ok: true,
+        max_amount: 1_000,
+        tds_rate: 2,
+        tds_amount: 20,
+        net_amount: 980,
+      });
+      expect(repo.insert).not.toHaveBeenCalled();
+    });
+
+    it('eligibility reports the band, and the reason when blocked', async () => {
+      await expect(service.eligibility('VST-000001')).resolves.toMatchObject({
+        eligible: true,
+        min_amount: 500,
+        max_amount: 2_000,
+        account_last4: '4321',
+      });
+      partner.stage = 'blocked';
+      await expect(service.eligibility('VST-000001')).resolves.toMatchObject({
+        eligible: false,
+        blocked_reason: 'not_approved',
+      });
     });
   });
 

@@ -88,3 +88,33 @@ describe('orders search (GET /orders?q=)', () => {
     expect(errors.length === 0).toBe(ok);
   });
 });
+
+describe('HO order list (GET /admin/orders)', () => {
+  it('leaves out what the cards do not count: failed, placeholder, split / merged parents', async () => {
+    const chain = {
+      sort: () => chain,
+      skip: () => chain,
+      limit: () => chain,
+      lean: () => chain,
+      exec: () => Promise.resolve([]),
+    };
+    const find = jest.fn().mockReturnValue(chain);
+    const countDocuments = jest
+      .fn()
+      .mockReturnValue({ exec: () => Promise.resolve(0) });
+    const repo = new OrderRepository({
+      find,
+      countDocuments,
+    } as unknown as Model<Order>);
+
+    await repo.adminList({ paymentMode: 'prepaid' } as never, 0, 50);
+    const all = (find.mock.calls[0] as [Record<string, unknown>])[0];
+    const { $nin } = all.order_status as { $nin: string[] };
+    for (const s of ['failed', 'pseudo', 'split', 'merged'])
+      expect($nin).toContain(s);
+
+    await repo.adminList({ statuses: ['failed', 'cancelled'] } as never, 0, 50);
+    const picked = (find.mock.calls[1] as [Record<string, unknown>])[0];
+    expect(picked.order_status).toEqual({ $in: ['cancelled'] });
+  });
+});

@@ -22,6 +22,8 @@ import {
 } from '../dto/commission.dto';
 import {
   WalletService,
+  type PayoutCheck,
+  type PayoutEligibility,
   type WalletView,
   type WithdrawalView,
 } from '../services/wallet.service';
@@ -44,6 +46,29 @@ export class WalletController {
   })
   get(@CurrentPartner() partner: PartnerRef): Promise<WalletView> {
     return this.wallet.wallet(partner.agent_id);
+  }
+
+  @Get('payout/eligibility')
+  @ApiOperation({
+    summary:
+      'First Withdraw click: can I withdraw now, and between which min/max amounts',
+  })
+  eligibility(
+    @CurrentPartner() partner: PartnerRef,
+  ): Promise<PayoutEligibility> {
+    return this.wallet.eligibility(partner.agent_id);
+  }
+
+  @Post('payout/check')
+  @ApiOperation({
+    summary:
+      'Second Withdraw click: check an amount against every rule and return its TDS and net (writes nothing)',
+  })
+  check(
+    @CurrentPartner() partner: PartnerRef,
+    @Body() dto: CreateWithdrawalDto,
+  ): Promise<PayoutCheck> {
+    return this.wallet.check(partner.agent_id, dto.amount);
   }
 
   @Post('withdrawals')

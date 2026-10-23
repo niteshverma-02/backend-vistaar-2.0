@@ -156,6 +156,7 @@ export const API_ERROR_CODES = [
   // Wallet. 400 for the amount; 409 when the stored state refused it.
   'BELOW_MIN_WITHDRAWAL',
   'NOT_ENOUGH_BALANCE',
+  'ABOVE_WITHDRAWAL_CAP',
   'WITHDRAWAL_OPEN',
   'BANK_NOT_VERIFIED',
   'WITHDRAWAL_CHANGED',
@@ -173,12 +174,16 @@ export const API_ERROR_CODES = [
   'LEAD_OTP_INVALID',
   // Rewards: HO approves or rejects a pending reward only (409).
   'REWARD_NOT_PENDING',
+  // Coins at checkout: more than the approved coins not yet spent (409).
+  'NOT_ENOUGH_COINS',
   // Profile: HO decided a name change that is no longer waiting (409).
   'NAME_CHANGE_NOT_PENDING',
   // Bank account change: one waiting at a time, no new withdrawal meanwhile;
   // HO / the partner acted on one that is no longer waiting (409).
   'BANK_CHANGE_PENDING',
   'BANK_CHANGE_NOT_PENDING',
+  // POST /batch: one replayed read past 25 s — that item's 504, never the batch's.
+  'BATCH_TIMEOUT',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

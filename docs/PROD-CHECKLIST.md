@@ -295,7 +295,8 @@ few thousand orders per partner; past that, ask Stockship for
 - [ ] `OTP_TEST_NUMBERS` empty in production (already enforced at boot) — test farmers skip the SMS only on beta
 - [ ] HO grants itself nothing new: `rewards.read` / `rewards.review` go to heads and admins like `gigs.*`
 - [ ] Gig rewards reach the wallet only with settings `gig_pay_enabled` (same switch as meeting gigs; Finance confirms TDS first). Coins are never money
-- [ ] Nothing in shared collections: rewards write only `vistaar_v2_rewards` (and `vistaar_v2_leads.otp_verified_at`, `vistaar_v2_otp_attempts` `lead-*` rows)
+- [ ] Coins at checkout: `vistaar_v2_coin_accounts` (one document per partner, `_id` only — no index to build); release the app build that spends coins together with this backend
+- [ ] Nothing in shared collections: rewards write only `vistaar_v2_rewards`, `vistaar_v2_coin_accounts` (and `vistaar_v2_leads.otp_verified_at`, `vistaar_v2_otp_attempts` `lead-*` rows)
 
 ## Testimonials (partner submissions) — before switching on
 

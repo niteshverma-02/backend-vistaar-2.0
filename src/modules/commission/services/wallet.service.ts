@@ -99,6 +99,8 @@ export interface WalletView {
   /** Asked for, not yet paid. */
   on_hold: number;
   min_withdrawal: number;
+  /** Most that may be taken in one request now — HO's % of the withdrawable balance. */
+  max_withdrawal: number;
   /** % TDS a withdrawal now would carry. */
   tds_rate: number;
   pan_verified: boolean;
@@ -112,6 +114,28 @@ export interface WalletView {
   can_withdraw: boolean;
   /** Why not, when `can_withdraw` is false. */
   blocked_reason: WalletBlock | null;
+}
+
+/** First Withdraw click: can I withdraw now, and between which amounts. */
+export interface PayoutEligibility {
+  eligible: boolean;
+  blocked_reason: WalletBlock | null;
+  withdrawable: number;
+  min_amount: number;
+  max_amount: number;
+  tds_rate: number;
+  account_last4: string | null;
+}
+
+/** Second Withdraw click: the amount passes every rule — here is its TDS and net. */
+export interface PayoutCheck {
+  ok: true;
+  amount: number;
+  tds_rate: number;
+  tds_amount: number;
+  net_amount: number;
+  min_amount: number;
+  max_amount: number;
 }
 
 export interface PayoutFile {
@@ -203,6 +227,7 @@ export class WalletService {
       paid: book.paid,
       on_hold: book.open,
       min_withdrawal: settings.min_withdrawal,
+      max_withdrawal: capOf(book.withdrawable, settings.max_withdrawal_pct),
       tds_rate: facts?.pan_verified
         ? settings.tds_rate_with_pan
         : settings.tds_rate_without_pan,
@@ -221,40 +246,96 @@ export class WalletService {
     };
   }
 
+  /**
+   * Every rule a withdrawal of `amount` must pass, without writing it — shared
+   * by the pre-check and the real request so both answer alike. Throws on the
+   * first rule broken; returns the TDS, net, the cap and the (verified) bank.
+   */
+  private async quote(
+    id: string,
+    amount: number,
+  ): Promise<{
+    rate: number;
+    tds: number;
+    net: number;
+    max: number;
+    minWithdrawal: number;
+    facts: PayoutFacts;
+  }> {
+    const { partner, book, settings } = await this.commission.bookOf(
+      id,
+      new Date(),
+      true,
+    );
+    if (partner.stage !== 'approved' || !partner.is_active) {
+      throw notApproved();
+    }
+    if (amount < settings.min_withdrawal) {
+      throw badRequest(
+        'BELOW_MIN_WITHDRAWAL',
+        `You can withdraw ₹${settings.min_withdrawal} or more at a time.`,
+      );
+    }
+    if (book.open > 0) throw stillOpen();
+    if (amount > book.withdrawable) {
+      throw conflict(
+        'NOT_ENOUGH_BALANCE',
+        `You can withdraw up to ₹${book.withdrawable} right now.`,
+      );
+    }
+    const max = capOf(book.withdrawable, settings.max_withdrawal_pct);
+    if (amount > max) throw aboveCap(max);
+    const facts = await this.payoutFactsOf(partner);
+    if (!facts?.bank_verified) throw bankNotVerified();
+    // Which account it would be paid into is open until HO decides the change.
+    if (facts.bank_change_pending) throw bankChangePending();
+    const rate = facts.pan_verified
+      ? settings.tds_rate_with_pan
+      : settings.tds_rate_without_pan;
+    const { tds, net } = tdsOf(amount, rate);
+    return {
+      rate,
+      tds,
+      net,
+      max,
+      minWithdrawal: settings.min_withdrawal,
+      facts,
+    };
+  }
+
+  /** First Withdraw click: can this partner withdraw now, and within what band. */
+  async eligibility(agentId: string): Promise<PayoutEligibility> {
+    const w = await this.wallet(agentId);
+    return {
+      eligible: w.can_withdraw,
+      blocked_reason: w.blocked_reason,
+      withdrawable: w.withdrawable,
+      min_amount: w.min_withdrawal,
+      max_amount: w.max_withdrawal,
+      tds_rate: w.tds_rate,
+      account_last4: w.bank?.account_last4 ?? null,
+    };
+  }
+
+  /** Second Withdraw click: does `amount` pass every rule? Writes nothing. */
+  async check(agentId: string, amount: number): Promise<PayoutCheck> {
+    const q = await this.quote(agentId.toUpperCase(), amount);
+    return {
+      ok: true,
+      amount,
+      tds_rate: q.rate,
+      tds_amount: q.tds,
+      net_amount: q.net,
+      min_amount: q.minWithdrawal,
+      max_amount: q.max,
+    };
+  }
+
   /** Ask for `amount` of the confirmed balance; HO approves and pays it. */
   request(agentId: string, dto: CreateWithdrawalDto): Promise<WithdrawalView> {
     const id = agentId.toUpperCase();
     return this.queue.run(id, async () => {
-      const { partner, book, settings } = await this.commission.bookOf(
-        id,
-        new Date(),
-        true,
-      );
-      if (partner.stage !== 'approved' || !partner.is_active) {
-        throw notApproved();
-      }
-      if (dto.amount < settings.min_withdrawal) {
-        throw badRequest(
-          'BELOW_MIN_WITHDRAWAL',
-          `You can withdraw ₹${settings.min_withdrawal} or more at a time.`,
-        );
-      }
-      if (book.open > 0) throw stillOpen();
-      if (dto.amount > book.withdrawable) {
-        throw conflict(
-          'NOT_ENOUGH_BALANCE',
-          `You can withdraw up to ₹${book.withdrawable} right now.`,
-        );
-      }
-      const facts = await this.payoutFactsOf(partner);
-      if (!facts?.bank_verified) throw bankNotVerified();
-      // Which account it would be paid into is open until HO decides the change.
-      if (facts.bank_change_pending) throw bankChangePending();
-
-      const rate = facts.pan_verified
-        ? settings.tds_rate_with_pan
-        : settings.tds_rate_without_pan;
-      const { tds, net } = tdsOf(dto.amount, rate);
+      const q = await this.quote(id, dto.amount);
       const now = new Date();
       const row: Omit<WithdrawalRecord, 'created_at' | 'updated_at'> = {
         _id: await this.counters.nextWithdrawalId(),
@@ -262,10 +343,10 @@ export class WalletService {
         amount: dto.amount,
         status: 'requested',
         open: true,
-        tds_rate: rate,
-        tds_amount: tds,
-        net_amount: net,
-        account_last4: last4(facts.bank_account?.account_number),
+        tds_rate: q.rate,
+        tds_amount: q.tds,
+        net_amount: q.net,
+        account_last4: last4(q.facts.bank_account?.account_number),
         requested_at: now,
         approved_at: null,
         approved_by: null,
@@ -836,6 +917,19 @@ function paidAtOf(value: string | undefined): Date {
     );
   }
   return at;
+}
+
+/** Most that may be taken in one request: HO's % of the withdrawable balance, whole ₹. */
+function capOf(withdrawable: number, pct: number | undefined): number {
+  const p = Number.isFinite(pct) ? (pct as number) : 100;
+  return Math.floor((withdrawable * p) / 100);
+}
+
+function aboveCap(max: number) {
+  return conflict(
+    'ABOVE_WITHDRAWAL_CAP',
+    `You can withdraw up to ₹${max} in one request right now.`,
+  );
 }
 
 function stillOpen() {
