@@ -16,6 +16,7 @@ import { AccessModule } from '@modules/access/access.module';
 import { AgentsModule } from '@modules/agents/agents.module';
 import { AttendanceModule } from '@modules/attendance/attendance.module';
 import { AuthModule } from '@modules/auth/auth.module';
+import { BatchModule } from '@modules/batch/batch.module';
 import { BannersModule } from '@modules/banners/banners.module';
 import { TestimonialsModule } from '@modules/testimonials/testimonials.module';
 import { CartModule } from '@modules/cart/cart.module';
@@ -33,6 +34,7 @@ import { KkdActivityModule } from '@modules/kkd-activity/kkd-activity.module';
 import { LeadsModule } from '@modules/leads/leads.module';
 import { OnboardingModule } from '@modules/onboarding/onboarding.module';
 import { OrdersModule } from '@modules/orders/orders.module';
+import { OverviewModule } from '@modules/overview/overview.module';
 import { PartnerDeskModule } from '@modules/partner-desk/partner-desk.module';
 import { PaymentsModule } from '@modules/payments/payments.module';
 import { PerformanceModule } from '@modules/performance/performance.module';
@@ -118,6 +120,10 @@ import { UploadsModule } from '@modules/uploads/uploads.module';
     TodayModule,
     KkdActivityModule,
     PaymentsModule,
+    // HO Home's Vistaar cards, composed from the modules above.
+    OverviewModule,
+    // HO Home's reads in one call, each replayed through the routes above.
+    BatchModule,
   ],
   providers: [
     // Auth is global and opted out of with @Public(). Ahead of the throttler,

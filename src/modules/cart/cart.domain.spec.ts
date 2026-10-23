@@ -9,6 +9,7 @@ import {
   removeItem,
   restoreLines,
   setQuantity,
+  staleBefore,
   totalsOf,
 } from './cart.domain';
 
@@ -201,5 +202,19 @@ describe('restoreLines', () => {
 
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatchObject({ sku: 'K-350', price: 2000, quantity: 5 });
+  });
+});
+
+describe('staleBefore', () => {
+  // 11:30 am IST on 23 Oct.
+  const now = new Date('2026-10-23T06:00:00Z');
+
+  it('is midnight IST six days before today: 7 idle IST days or more', () => {
+    const before = staleBefore(now);
+    expect(before).toEqual(new Date('2026-10-16T18:30:00Z'));
+    // Last touched at 11:59 pm IST on 16 Oct: 7 days idle — stale.
+    expect(new Date('2026-10-16T18:29:59Z') < before).toBe(true);
+    // At midnight starting 17 Oct: 6 days idle — not yet.
+    expect(new Date('2026-10-16T18:30:00Z') < before).toBe(false);
   });
 });

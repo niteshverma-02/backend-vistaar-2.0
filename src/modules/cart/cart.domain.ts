@@ -1,3 +1,4 @@
+import { DAY_MS, istDayStart } from '@common/utils/ist-day.util';
 import { money, type CatalogVariant } from '@modules/catalog/catalog.domain';
 
 /**
@@ -205,4 +206,16 @@ export function priceLines(
       price_changed: variant.price !== line.price,
     };
   });
+}
+
+/** HO's carts card: a cart nobody touched for this many IST days is stale. */
+export const STALE_CART_DAYS = 7;
+
+/**
+ * Carts last touched before this instant are stale: idle `STALE_CART_DAYS`
+ * IST calendar days or more, as Today counts a saved cart's idle days — so
+ * one touched yesterday evening is 1 day idle, not 0.
+ */
+export function staleBefore(now: Date): Date {
+  return new Date(istDayStart(now).getTime() - (STALE_CART_DAYS - 1) * DAY_MS);
 }

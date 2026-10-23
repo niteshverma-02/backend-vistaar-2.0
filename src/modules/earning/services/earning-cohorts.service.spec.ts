@@ -488,6 +488,28 @@ describe('EarningCohortsService — HO', () => {
     expect(later).toHaveBeenCalledWith('cohorts_changed');
   });
 
+  it('answers a moving edit with the partners counted after the move', async () => {
+    const { service, repo, agents, later } = setup({
+      held: { 'VST-000001': { open_leads: 12, customers: 0 } },
+    });
+    later.mockRestore();
+    repo.save.mockResolvedValue(BIG);
+    agents.earningCohortCounts.mockImplementation(() =>
+      Promise.resolve(
+        new Map(
+          agents.setEarningCohorts.mock.calls.length ? [['ec_big', 1]] : [],
+        ),
+      ),
+    );
+    const view = await service.update(
+      'ec_big',
+      { version: 1, filters: { min_leads: 5 } },
+      HO,
+    );
+    expect(agents.setEarningCohorts).toHaveBeenCalledTimes(1);
+    expect(view.partners_count).toBe(1);
+  });
+
   it('replaces the whole condition list on PATCH, and recomputes only on a real change', async () => {
     const { service, repo, later } = setup();
     repo.save.mockResolvedValue(BIG);

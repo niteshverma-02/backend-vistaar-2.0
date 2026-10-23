@@ -11,9 +11,11 @@ import {
 } from '@modules/leads/services/leads.service';
 import { partnerOf } from '@modules/orders/services/admin-order.service';
 
+import { staleBefore } from '../cart.domain';
 import type {
   AdminCartLine,
   AdminCartsQueryDto,
+  AdminCartsSummary,
   AdminCartView,
 } from '../dto/admin-cart.dto';
 import { activeCartId, CartRepository } from '../repositories/cart.repository';
@@ -65,6 +67,29 @@ export class AdminCartService {
       return agent?.agent_id ? [viewOf(cart, agent, farmers)] : [];
     });
     return new PageResult(views, total, query);
+  }
+
+  /**
+   * The screen's cards for the same carts as the list. `partners` is
+   * `carts`: a partner has one cart, its `_id` derived from theirs.
+   */
+  async summary(query: AdminCartsQueryDto): Promise<AdminCartsSummary> {
+    const agentIds = query.agent_id
+      ? [query.agent_id]
+      : await this.agents.verifiedAgentIds();
+    if (agentIds.length === 0)
+      return { carts: 0, partners: 0, value: 0, items: 0, stale_7d: 0 };
+    const s = await this.carts.adminSummary(
+      agentIds.map((id) => activeCartId(id)),
+      staleBefore(new Date()),
+    );
+    return {
+      carts: s.carts,
+      partners: s.carts,
+      value: Math.round(s.value),
+      items: s.items,
+      stale_7d: s.stale,
+    };
   }
 }
 

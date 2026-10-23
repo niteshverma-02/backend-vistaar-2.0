@@ -47,6 +47,25 @@ describe('SsoTokenVerifier', () => {
     });
   });
 
+  it.each([
+    ['an access token', { type: 'access' }, true],
+    ['a token with no type', {}, true],
+    ['a refresh token', { type: 'refresh' }, false],
+  ])('%s: accepted is %s', async (_, claims, accepted) => {
+    const signed = jwt.sign(
+      { email: 'ho@katyayaniorganics.com', ...claims },
+      privateKey,
+      { algorithm: 'RS256', keyid: 'k1', expiresIn: 600 },
+    );
+    const verifier = verifierWith(
+      jest.fn().mockResolvedValue({
+        getPublicKey: () => publicKey.export({ type: 'spki', format: 'pem' }),
+      }),
+    );
+    const principal = await verifier.verify(signed);
+    expect(principal !== null).toBe(accepted);
+  });
+
   it.each(['SigningKeyNotFoundError', 'JwksRateLimitError'])(
     'answers %s with a 401, not an outage',
     async (name) => {

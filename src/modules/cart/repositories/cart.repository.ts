@@ -94,11 +94,7 @@ export class CartRepository {
     skip: number,
     limit: number,
   ): Promise<[CartRecord[], number]> {
-    const filter = {
-      _id: { $in: ids },
-      source: CART_SOURCE,
-      'items.0': { $exists: true },
-    };
+    const filter = this.adminFilter(ids);
     return Promise.all([
       this.model
         .find(filter)
@@ -109,6 +105,56 @@ export class CartRepository {
         .exec(),
       this.model.countDocuments(filter).exec(),
     ]);
+  }
+
+  /**
+   * HO's cards for the same carts as `adminList`, in one pass: how many,
+   * Σ subtotal as the list shows it, Σ units, and how many were last
+   * touched before `staleBefore`.
+   */
+  async adminSummary(
+    ids: readonly Types.ObjectId[],
+    staleBefore: Date,
+  ): Promise<{ carts: number; value: number; items: number; stale: number }> {
+    const [out] = await this.model
+      .aggregate<{
+        carts: number;
+        value: number;
+        items: number;
+        stale: number;
+      }>([
+        { $match: this.adminFilter(ids) },
+        {
+          $group: {
+            _id: null,
+            carts: { $sum: 1 },
+            // The list's `subtotal`: the stored one, else its lines' totals.
+            value: {
+              $sum: { $ifNull: ['$subtotal', { $sum: '$items.total' }] },
+            },
+            items: { $sum: { $sum: '$items.quantity' } },
+            stale: {
+              $sum: { $cond: [{ $lt: ['$updated_at', staleBefore] }, 1, 0] },
+            },
+          },
+        },
+      ])
+      .exec();
+    return {
+      carts: out?.carts ?? 0,
+      value: out?.value ?? 0,
+      items: out?.items ?? 0,
+      stale: out?.stale ?? 0,
+    };
+  }
+
+  /** The carts behind these `_id`s that still hold a line — the list and its cards. */
+  private adminFilter(ids: readonly Types.ObjectId[]) {
+    return {
+      _id: { $in: ids },
+      source: CART_SOURCE,
+      'items.0': { $exists: true },
+    };
   }
 
   // `source` is in every filter beside the `_id`: it keeps Vistaar off B2B's

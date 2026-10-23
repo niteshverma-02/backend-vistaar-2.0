@@ -165,6 +165,12 @@ const TRIES = 2;
 const HISTORY = 100;
 /** How often a process with no reads looks whether a cohort's day has come. */
 const WINDOW_CHECK_MS = 60 * 60 * 1000;
+/**
+ * How long HO's edit waits for the partners it moved, so its answer counts
+ * them where they now are. A bigger book answers first and the next read
+ * catches up.
+ */
+const MOVE_WAIT_MS = 5_000;
 
 /** The IST calendar day now — what cohort dates are compared against. */
 const istToday = (): string => istDate(new Date());
@@ -487,6 +493,21 @@ export class EarningCohortsService implements OnModuleInit, OnModuleDestroy {
     return viewOf(cohort, counts.get(id) ?? 0, istToday());
   }
 
+  /** `adminGet` once the bulk move just queued is done, or `MOVE_WAIT_MS` on. */
+  private async adminGetAfterMove(id: string): Promise<EarningCohortView> {
+    if (this.bulk) {
+      let timer: NodeJS.Timeout | undefined;
+      await Promise.race([
+        this.bulk,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, MOVE_WAIT_MS);
+        }),
+      ]);
+      clearTimeout(timer);
+    }
+    return this.adminGet(id);
+  }
+
   /** What the HO portal builds the condition form from. */
   catalog(): EarningCohortCatalog {
     return {
@@ -557,7 +578,7 @@ export class EarningCohortsService implements OnModuleInit, OnModuleDestroy {
       });
       if (created) {
         this.recomputeAllLater('cohorts_changed');
-        return this.adminGet(id);
+        return this.adminGetAfterMove(id);
       }
     }
     throw conflict(
@@ -673,7 +694,7 @@ export class EarningCohortsService implements OnModuleInit, OnModuleDestroy {
     }
     if (moved) this.recomputeAllLater('cohorts_changed');
     if (switched) this.commissionChanged();
-    return this.adminGet(id);
+    return moved ? this.adminGetAfterMove(id) : this.adminGet(id);
   }
 
   /** Its partners move to the next cohort that takes them; its history stays. */
@@ -690,7 +711,7 @@ export class EarningCohortsService implements OnModuleInit, OnModuleDestroy {
       throw conflict('EARNING_ARCHIVED', 'This cohort is already archived.');
     }
     this.recomputeAllLater('cohorts_changed');
-    return this.adminGet(id);
+    return this.adminGetAfterMove(id);
   }
 
   /** Every active cohort but the default, once, first looked at first. */

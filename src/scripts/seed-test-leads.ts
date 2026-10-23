@@ -16,9 +16,8 @@
  * farmer, so the run signs the token `POST /leads/otp/verify` would give —
  * with this server's own secret, and never in production.
  *
- * New farmers need an owner: one active Offline Head (USR-1037), or
- * `settings.lead_owner_agent_id`. Without one the run stops at the first new
- * farmer with LEADS_NOT_CONFIGURED.
+ * New farmers are owned by `settings.lead_owner_agent_id`, else the one active
+ * Offline Head (USR-1037), else the partner who added them.
  */
 import { HttpException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -410,11 +409,7 @@ async function main(): Promise<void> {
   } catch (error) {
     if (error instanceof HttpException) {
       const body = error.getResponse() as { error?: string; message?: string };
-      const hint =
-        body.error === 'LEADS_NOT_CONFIGURED'
-          ? ' Beta needs one active Offline Head (USR-1037) to own new farmers — see docs/TEST-DATA.md.'
-          : '';
-      throw new Error(`${body.error}: ${body.message}${hint}`);
+      throw new Error(`${body.error}: ${body.message}`);
     }
     throw error;
   } finally {

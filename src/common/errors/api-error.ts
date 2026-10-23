@@ -179,6 +179,8 @@ export const API_ERROR_CODES = [
   // HO / the partner acted on one that is no longer waiting (409).
   'BANK_CHANGE_PENDING',
   'BANK_CHANGE_NOT_PENDING',
+  // POST /batch: one replayed read past 25 s — that item's 504, never the batch's.
+  'BATCH_TIMEOUT',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

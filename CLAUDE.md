@@ -253,8 +253,9 @@ filters on `_id` + `source`. The farmer's consent is its own collection,
 | leads | `leads_v2`, `contacts_v2`, `addresses` (shared, `source: 'vistaar'`) | Farmers partners add; new people only; `created_by` = `VST-…`. See `docs/DATABASE.md` |
 
 Auth: partners use our own HS256 token (`core/auth/partner-token.service.ts`);
-HO routes (`@Can(...)`, `/admin/*`) accept only the company SSO token and check a
-capability from `modules/access/access.domain.ts`.
+HO routes (`@Can(...)`, `/admin/*`) accept only the company SSO **access** token
+(its `type: "refresh"` sibling is refused) and check a capability from
+`modules/access/access.domain.ts`.
 
 ---
 

@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectConnection } from '@nestjs/mongoose';
-import type { Connection } from 'mongoose';
+import type { Connection, IndexOptions, mongo } from 'mongoose';
 
 import type { Env } from '@config/env.schema';
 
@@ -78,19 +78,32 @@ export class IndexSyncService implements OnApplicationBootstrap {
         try {
           // Nothing missing → no build queued at all. On a healthy host this
           // is every restart after the first.
-          const { toCreate } = await this.withTimeout(
-            model.diffIndexes(),
+          const { toCreate } = (await this.withTimeout(
+            model.diffIndexes({ indexOptionsToCreate: true }),
             collection,
-          );
+          )) as { toCreate: [mongo.IndexSpecification, IndexOptions][] };
           if (!toCreate.length) return;
 
           // `maxTimeMS` asks the server to give up; the race enforces it when
-          // the server is too wedged to notice its own deadline.
+          // the server is too wedged to notice its own deadline. One
+          // `createIndex` per index, not `model.createIndexes()`: Mongoose 9
+          // hands the driver only each index's schema options, so neither the
+          // deadline nor the tag ever reached Mongo — `killBuild` found
+          // nothing and every restart queued more (1,674 of ours waiting on
+          // the beta host, 2026-10-22).
           await this.withTimeout(
-            model.createIndexes({
-              maxTimeMS: INDEX_BUILD_TIMEOUT_MS,
-              comment: tag,
-            }),
+            Promise.all(
+              toCreate.map(([keys, options]) => {
+                const indexOptions: Record<string, unknown> = {
+                  ...options,
+                  maxTimeMS: INDEX_BUILD_TIMEOUT_MS,
+                  comment: tag,
+                };
+                // Mongoose's own flag, not an option Mongo knows.
+                delete indexOptions._autoIndex;
+                return model.collection.createIndex(keys, indexOptions);
+              }),
+            ),
             collection,
           );
         } catch (error) {

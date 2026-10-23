@@ -43,6 +43,7 @@ const LIST = {
       'min_farmers',
       'photos_required',
       'payout',
+      'payout_source',
       'products',
       'requirements',
       'cohorts',

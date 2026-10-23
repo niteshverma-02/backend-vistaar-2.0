@@ -83,6 +83,26 @@ export class AgentListQueryDto extends PageQueryDto {
   include_unverified?: boolean;
 }
 
+/** `GET /admin/agents/summary`: read as the list's `from` / `to`. */
+export class AgentSummaryQueryDto {
+  @ApiPropertyOptional({
+    example: '2026-10-01',
+    description:
+      'Window start: signed up / approved on or after (a bare day is an IST day)',
+  })
+  @IsOptional()
+  @IsDateString()
+  from?: string;
+
+  @ApiPropertyOptional({
+    example: '2026-10-31',
+    description: 'Window end, included (whole day); none = up to now',
+  })
+  @IsOptional()
+  @IsDateString()
+  to?: string;
+}
+
 export class NearbyQueryDto {
   @ApiPropertyOptional({
     description: 'Override the configured radius (km)',

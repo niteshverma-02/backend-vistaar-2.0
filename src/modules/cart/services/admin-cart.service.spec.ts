@@ -146,3 +146,64 @@ describe('AdminCartService', () => {
     expect(agentsList).not.toHaveBeenCalled();
   });
 });
+
+describe('AdminCartService.summary', () => {
+  let adminSummary: jest.Mock;
+  let verifiedAgentIds: jest.Mock;
+  let service: AdminCartService;
+
+  beforeEach(() => {
+    adminSummary = jest
+      .fn()
+      .mockResolvedValue({ carts: 2, value: 2393.4, items: 5, stale: 1 });
+    verifiedAgentIds = jest.fn().mockResolvedValue(['VST-1', 'VST-2']);
+    service = new AdminCartService(
+      { adminSummary } as unknown as CartRepository,
+      { verifiedAgentIds } as unknown as AgentsService,
+      {} as LeadsService,
+    );
+  });
+
+  it("sums every partner's cart; a partner has one, so partners = carts", async () => {
+    expect(await service.summary(query())).toEqual({
+      carts: 2,
+      partners: 2,
+      value: 2393,
+      items: 5,
+      stale_7d: 1,
+    });
+    const [ids, before] = adminSummary.mock.calls[0] as [
+      { toHexString(): string }[],
+      Date,
+    ];
+    expect(ids.map((i) => i.toHexString()).sort()).toEqual(
+      [activeCartId('VST-1'), activeCartId('VST-2')]
+        .map((i) => i.toHexString())
+        .sort(),
+    );
+    // Stale = before midnight IST six days ago (7+ idle IST days).
+    expect(before.getTime()).toBeLessThan(Date.now() - 6 * 24 * 3600 * 1000);
+    expect(before.getTime()).toBeGreaterThan(Date.now() - 7 * 24 * 3600 * 1000);
+  });
+
+  it('narrows to one partner, and answers zeros without a partner to read', async () => {
+    await service.summary(query({ agent_id: 'vst-1' }));
+    expect(verifiedAgentIds).not.toHaveBeenCalled();
+    expect(
+      (adminSummary.mock.calls[0] as [{ toHexString(): string }[]])[0].map(
+        (i) => i.toHexString(),
+      ),
+    ).toEqual([activeCartId('VST-1').toHexString()]);
+
+    verifiedAgentIds.mockResolvedValueOnce([]);
+    adminSummary.mockClear();
+    expect(await service.summary(query())).toEqual({
+      carts: 0,
+      partners: 0,
+      value: 0,
+      items: 0,
+      stale_7d: 0,
+    });
+    expect(adminSummary).not.toHaveBeenCalled();
+  });
+});
