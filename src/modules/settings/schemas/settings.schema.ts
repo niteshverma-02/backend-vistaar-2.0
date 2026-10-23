@@ -72,6 +72,8 @@ export class Settings {
   @Prop({ type: Number, default: 7 }) return_window_days!: number;
   /** Smallest withdrawal, ₹. */
   @Prop({ type: Number, default: 500 }) min_withdrawal!: number;
+  /** Most a partner may take in one request, as a % of their withdrawable balance (100 = no cap). */
+  @Prop({ type: Number, default: 100 }) max_withdrawal_pct!: number;
   /** TDS u/s 194H on a withdrawal, % — with a verified PAN / without. */
   @Prop({ type: Number, default: 2 }) tds_rate_with_pan!: number;
   @Prop({ type: Number, default: 20 }) tds_rate_without_pan!: number;

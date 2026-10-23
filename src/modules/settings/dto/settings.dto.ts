@@ -133,6 +133,19 @@ export class UpdateSettingsDto {
   min_withdrawal?: number;
 
   @ApiPropertyOptional({
+    example: 100,
+    minimum: 1,
+    maximum: 100,
+    description:
+      'Most a partner may withdraw in one request, as a % of their withdrawable balance (100 = no cap)',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  max_withdrawal_pct?: number;
+
+  @ApiPropertyOptional({
     example: 2,
     minimum: 0,
     maximum: 30,

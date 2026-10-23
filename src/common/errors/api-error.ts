@@ -156,6 +156,7 @@ export const API_ERROR_CODES = [
   // Wallet. 400 for the amount; 409 when the stored state refused it.
   'BELOW_MIN_WITHDRAWAL',
   'NOT_ENOUGH_BALANCE',
+  'ABOVE_WITHDRAWAL_CAP',
   'WITHDRAWAL_OPEN',
   'BANK_NOT_VERIFIED',
   'WITHDRAWAL_CHANGED',

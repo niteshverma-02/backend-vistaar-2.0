@@ -21,6 +21,7 @@ export interface SettingsRecord {
   testimonial_consent: FarmerConsent;
   return_window_days: number;
   min_withdrawal: number;
+  max_withdrawal_pct: number;
   tds_rate_with_pan: number;
   tds_rate_without_pan: number;
   monthly_target: number;
