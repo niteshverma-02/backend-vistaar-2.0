@@ -1162,6 +1162,63 @@ describe('LeadsService — HO list and map', () => {
     });
     expect((places.mock.calls[0] as [unknown, number])[1]).toBe(5_001);
   });
+
+  const cards = {
+    total: 4,
+    today: 1,
+    last_7_days: 2,
+    partners: 2,
+    due_today: 1,
+    overdue: 1,
+    by_stage: [{ key: 'prospect', count: 4 }],
+    by_partner: [{ key: ME.agent_id, count: 4 }],
+    by_state: [{ key: 'MADHYA PRADESH', count: 4 }],
+  };
+
+  it('keeps the cards all time without a window, and names the top partners', async () => {
+    const { service, rows, agents } = setup();
+    const adminSummary = jest.fn().mockResolvedValue(cards);
+    Object.assign(rows, { adminSummary });
+    agents.partnersByAgentIds.mockResolvedValueOnce(
+      new Map([[ME.agent_id, { agent_id: ME.agent_id, name: 'Ramesh' }]]),
+    );
+
+    const out = await service.summary({});
+
+    expect((adminSummary.mock.calls[0] as unknown[])[1]).toBeNull();
+    expect(out).toMatchObject({
+      total: 4,
+      by_state: [{ key: 'MADHYA PRADESH', count: 4 }],
+      by_partner: [{ key: ME.agent_id, count: 4, name: 'Ramesh' }],
+    });
+  });
+
+  it('narrows the cards to the leads added in whole IST days, as the list reads them', async () => {
+    const { service, rows } = setup();
+    const adminSummary = jest.fn().mockResolvedValue(cards);
+    Object.assign(rows, { adminSummary });
+
+    await service.summary({ from: '2026-10-01', to: '2026-10-31' });
+
+    expect((adminSummary.mock.calls[0] as unknown[])[1]).toEqual({
+      from: new Date('2026-09-30T18:30:00Z'),
+      to: new Date('2026-10-31T18:30:00Z'),
+    });
+  });
+
+  it('refuses a window with no start or over a year, before reading', async () => {
+    const { service, rows } = setup();
+    const adminSummary = jest.fn().mockResolvedValue(cards);
+    Object.assign(rows, { adminSummary });
+
+    expect(await codeOf(service.summary({ to: '2026-10-31' }))).toBe(
+      'VALIDATION_FAILED',
+    );
+    expect(
+      await codeOf(service.summary({ from: '2025-01-01', to: '2026-10-31' })),
+    ).toBe('VALIDATION_FAILED');
+    expect(adminSummary).not.toHaveBeenCalled();
+  });
 });
 
 describe('LeadsService — farmer OTP on lead add', () => {

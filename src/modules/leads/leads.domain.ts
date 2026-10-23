@@ -70,6 +70,27 @@ export function addedRange(
   };
 }
 
+/** The longest `from` / `to` window a summary counts over. */
+export const MAX_WINDOW_DAYS = 366;
+
+/**
+ * Why a summary refuses a `from` / `to` window as `addedRange` reads it, or
+ * `null`. A window needs its start, ends after it (no end = now), and spans
+ * at most `MAX_WINDOW_DAYS` days — the same year as every other HO summary.
+ */
+export function windowError(
+  range: { from?: Date; to?: Date },
+  now = new Date(),
+): string | null {
+  if (!range.from) return 'Please choose a start date for this range.';
+  const end = range.to ?? now;
+  if (end <= range.from)
+    return 'The start date must be on or before the end date.';
+  if (end.getTime() - range.from.getTime() > MAX_WINDOW_DAYS * DAY_MS)
+    return `Please choose a range of ${MAX_WINDOW_DAYS} days or less.`;
+  return null;
+}
+
 /** The app's stage names (`leadStageMeta`), for the activity log. */
 export const STAGE_LABELS: Record<LeadStage, string> = {
   prospect: 'Prospect',

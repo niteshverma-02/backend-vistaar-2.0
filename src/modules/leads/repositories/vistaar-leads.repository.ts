@@ -665,12 +665,21 @@ export class VistaarLeadsRepository {
       .exec();
   }
 
-  /** The HO cards in one round trip. */
-  async adminSummary(since: {
-    today: Date;
-    week: Date;
-    tomorrow: Date;
-  }): Promise<{
+  /**
+   * The HO cards in one round trip. `added` narrows the period counts
+   * (`total`, `partners`, `by_stage`, `by_partner`, `by_state`) to the leads
+   * added in it; `today`, `last_7_days`, `due_today` and `overdue` keep their
+   * own days. Inside the one `$facet` either way, so a window costs no
+   * second read.
+   */
+  async adminSummary(
+    since: {
+      today: Date;
+      week: Date;
+      tomorrow: Date;
+    },
+    added: { from: Date; to?: Date } | null = null,
+  ): Promise<{
     total: number;
     today: number;
     last_7_days: number;
@@ -681,7 +690,21 @@ export class VistaarLeadsRepository {
     overdue: number;
     by_stage: { key: LeadStage; count: number }[];
     by_partner: { key: string; count: number }[];
+    /** Top 10 states by leads; `''` = no state. */
+    by_state: { key: string; count: number }[];
   }> {
+    const inWindow: PipelineStage.FacetPipelineStage[] = added
+      ? [
+          {
+            $match: {
+              created_at: {
+                $gte: added.from,
+                ...(added.to ? { $lt: added.to } : {}),
+              },
+            },
+          },
+        ]
+      : [];
     const [out] = await this.model
       .aggregate<{
         total: { n: number }[];
@@ -692,10 +715,11 @@ export class VistaarLeadsRepository {
         overdue: { n: number }[];
         by_stage: { _id: LeadStage; count: number }[];
         by_partner: { _id: string; count: number }[];
+        by_state: { _id: string | null; count: number }[];
       }>([
         {
           $facet: {
-            total: [{ $count: 'n' }],
+            total: [...inWindow, { $count: 'n' }],
             today: [
               { $match: { created_at: { $gte: since.today } } },
               { $count: 'n' },
@@ -704,7 +728,11 @@ export class VistaarLeadsRepository {
               { $match: { created_at: { $gte: since.week } } },
               { $count: 'n' },
             ],
-            partners: [{ $group: { _id: '$agent_id' } }, { $count: 'n' }],
+            partners: [
+              ...inWindow,
+              { $group: { _id: '$agent_id' } },
+              { $count: 'n' },
+            ],
             due_today: [
               {
                 $match: {
@@ -723,10 +751,20 @@ export class VistaarLeadsRepository {
               },
               { $count: 'n' },
             ],
-            by_stage: [{ $group: { _id: '$stage', count: { $sum: 1 } } }],
+            by_stage: [
+              ...inWindow,
+              { $group: { _id: '$stage', count: { $sum: 1 } } },
+            ],
             by_partner: [
+              ...inWindow,
               { $group: { _id: '$agent_id', count: { $sum: 1 } } },
               { $sort: { count: -1 } },
+              { $limit: 10 },
+            ],
+            by_state: [
+              ...inWindow,
+              { $group: { _id: '$state', count: { $sum: 1 } } },
+              { $sort: { count: -1, _id: 1 } },
               { $limit: 10 },
             ],
           },
@@ -748,6 +786,10 @@ export class VistaarLeadsRepository {
       by_partner: (out?.by_partner ?? []).map((p) => ({
         key: p._id,
         count: p.count,
+      })),
+      by_state: (out?.by_state ?? []).map((s) => ({
+        key: s._id ?? '',
+        count: s.count,
       })),
     };
   }

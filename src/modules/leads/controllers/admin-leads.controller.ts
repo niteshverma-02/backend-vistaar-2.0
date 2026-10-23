@@ -17,6 +17,7 @@ import { Can } from '@modules/access/guards/capability.guard';
 
 import {
   AdminLeadQueryDto,
+  AdminLeadSummaryQueryDto,
   LeadPlacesQueryDto,
   PiiParamDto,
   TransferLeadDto,
@@ -48,10 +49,10 @@ export class AdminLeadsController {
   @Can('leads.read')
   @ApiOperation({
     summary:
-      'Totals, today, last 7 days, partners adding, follow-ups due today and overdue, by stage, top partners',
+      'Totals, today, last 7 days, partners adding, follow-ups due today and overdue, by stage, top partners, top states; from / to (≤ 366 days, as the list reads them) narrow total, partners, by_stage, by_partner and by_state to the leads added then',
   })
-  summary() {
-    return this.leads.summary();
+  summary(@Query() query: AdminLeadSummaryQueryDto) {
+    return this.leads.summary(query);
   }
 
   @Get('places')
