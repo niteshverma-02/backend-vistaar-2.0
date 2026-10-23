@@ -8,7 +8,7 @@ import {
   AgentsService,
   type AgentRecord,
 } from '@modules/agents/services/agents.service';
-import { addedRange } from '@modules/leads/leads.domain';
+import { addedRange, windowError } from '@modules/leads/leads.domain';
 import { EarningCohortsService } from '@modules/earning/services/earning-cohorts.service';
 import type { AssignmentReason } from '@modules/earning/earning.domain';
 import { RewardsService } from '@modules/rewards/services/rewards.service';
@@ -18,7 +18,11 @@ import {
 } from '@modules/onboarding/services/onboarding.service';
 import { SettingsService } from '@modules/settings/services/settings.service';
 
-import { DESK_SORTS, type AgentListQueryDto } from '../dto/desk.dto';
+import {
+  DESK_SORTS,
+  type AgentListQueryDto,
+  type AgentSummaryQueryDto,
+} from '../dto/desk.dto';
 import {
   NetworkRepository,
   type NetworkHit,
@@ -94,8 +98,24 @@ export class DeskService {
     private readonly rewards: RewardsService,
   ) {}
 
-  summary() {
-    return this.agents.stageCounts();
+  /**
+   * The pipeline tabs (now) and, for a `from` / `to` window read as the
+   * list's, the partners signed up in it and approved in it — `null` without one.
+   */
+  async summary(query: AgentSummaryQueryDto = {}) {
+    const window =
+      query.from || query.to ? addedRange(query.from, query.to) : null;
+    const refused = window && windowError(window);
+    if (refused) throw badRequest('VALIDATION_FAILED', refused);
+    const [counts, range] = await Promise.all([
+      this.agents.stageCounts(),
+      window?.from ? this.agents.rangeCounts(window.from, window.to) : null,
+    ]);
+    return {
+      ...counts,
+      signups_in_range: range?.signed_up ?? null,
+      approved_in_range: range?.approved ?? null,
+    };
   }
 
   async list(query: AgentListQueryDto): Promise<PageResult<DeskRow>> {

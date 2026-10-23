@@ -545,6 +545,14 @@ export class AgentsService {
     return { stages, unverified, total, by_cohort, by_state };
   }
 
+  /** Partners signed up and partners approved in `[from, to)` — the HO summary's window. */
+  rangeCounts(
+    from: Date,
+    to?: Date,
+  ): Promise<{ signed_up: number; approved: number }> {
+    return this.agents.rangeCounts(from, to);
+  }
+
   near(
     point: GeoPoint,
     radiusKm: number,

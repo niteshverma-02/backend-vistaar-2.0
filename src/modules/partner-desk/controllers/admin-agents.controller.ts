@@ -23,7 +23,11 @@ import {
   ReviewDocumentDto,
 } from '@modules/onboarding/dto/onboarding.dto';
 
-import { AgentListQueryDto, NearbyQueryDto } from '../dto/desk.dto';
+import {
+  AgentListQueryDto,
+  AgentSummaryQueryDto,
+  NearbyQueryDto,
+} from '../dto/desk.dto';
 import { DeskService } from '../services/desk.service';
 
 /** `:agentId` is the partner's `VST-…` id. */
@@ -36,10 +40,10 @@ export class AdminAgentsController {
   @Can('agents.read')
   @ApiOperation({
     summary:
-      'Count per stage — the pipeline tabs (plus unverified OTP requests)',
+      'Count per stage — the pipeline tabs (plus unverified OTP requests); with from / to (≤ 366 days) also partners signed up and approved in that window',
   })
-  summary() {
-    return this.desk.summary();
+  summary(@Query() query: AgentSummaryQueryDto) {
+    return this.desk.summary(query);
   }
 
   @Get()

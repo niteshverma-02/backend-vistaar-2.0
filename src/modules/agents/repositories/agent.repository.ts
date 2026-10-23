@@ -408,6 +408,34 @@ export class AgentRepository {
     return { items, total };
   }
 
+  /**
+   * Verified partners signed up (`created_at`, as the list's `from` / `to`)
+   * and approved (`decided_at`) in `[from, to)`; no `to` = up to now.
+   */
+  async rangeCounts(
+    from: Date,
+    to?: Date,
+  ): Promise<{ signed_up: number; approved: number }> {
+    const range = { $gte: from, ...(to ? { $lt: to } : {}) };
+    const [signed_up, approved] = await Promise.all([
+      this.model
+        .countDocuments({ otp_verified: true, created_at: range })
+        .exec(),
+      // Only an approval sets `is_approved` (a reject or a reopen clears it),
+      // and nothing after it moves `decided_at` — an unblock writes only the
+      // stage history. So each approval counts once, in its own window, also
+      // for a partner blocked since.
+      this.model
+        .countDocuments({
+          otp_verified: true,
+          is_approved: true,
+          decided_at: range,
+        })
+        .exec(),
+    ]);
+    return { signed_up, approved };
+  }
+
   /** One pass for every tab's count. */
   /**
    * The HO summary in one round trip: counts per stage (split by OTP

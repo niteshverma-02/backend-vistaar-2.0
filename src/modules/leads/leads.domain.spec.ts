@@ -13,6 +13,7 @@ import {
   replaceableBy,
   splitName,
   stageMoveError,
+  windowError,
   type FarmerInput,
 } from './leads.domain';
 
@@ -264,5 +265,29 @@ describe('addedRange', () => {
     expect(within(r, '2026-10-22T23:59:59.999+05:30')).toBe(true);
     expect(within(r, '2026-10-23T03:00:00+05:30')).toBe(false);
     expect(addedRange()).toEqual({ from: undefined, to: undefined });
+  });
+});
+
+describe('windowError', () => {
+  const at = new Date('2026-10-23T06:00:00Z');
+
+  it('takes one IST day, a whole year, or a start with no end', () => {
+    expect(windowError(addedRange('2026-10-23', '2026-10-23'), at)).toBeNull();
+    expect(windowError(addedRange('2025-10-23', '2026-10-23'), at)).toBeNull();
+    expect(windowError(addedRange('2026-10-01'), at)).toBeNull();
+  });
+
+  it('refuses no start, an end before the start, and more than 366 days', () => {
+    expect(windowError(addedRange(undefined, '2026-10-23'), at)).toMatch(
+      /start date/,
+    );
+    expect(windowError(addedRange('2026-10-23', '2026-10-22'), at)).toMatch(
+      /on or before/,
+    );
+    expect(windowError(addedRange('2025-10-22', '2026-10-23'), at)).toMatch(
+      /366 days/,
+    );
+    // An open end runs to now, so a start ahead of now is no window.
+    expect(windowError(addedRange('2026-10-24'), at)).toMatch(/on or before/);
   });
 });
