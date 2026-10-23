@@ -16,6 +16,7 @@ import { AccessModule } from '@modules/access/access.module';
 import { AgentsModule } from '@modules/agents/agents.module';
 import { AttendanceModule } from '@modules/attendance/attendance.module';
 import { AuthModule } from '@modules/auth/auth.module';
+import { BatchModule } from '@modules/batch/batch.module';
 import { BannersModule } from '@modules/banners/banners.module';
 import { TestimonialsModule } from '@modules/testimonials/testimonials.module';
 import { CartModule } from '@modules/cart/cart.module';
@@ -121,6 +122,8 @@ import { UploadsModule } from '@modules/uploads/uploads.module';
     PaymentsModule,
     // HO Home's Vistaar cards, composed from the modules above.
     OverviewModule,
+    // HO Home's reads in one call, each replayed through the routes above.
+    BatchModule,
   ],
   providers: [
     // Auth is global and opted out of with @Public(). Ahead of the throttler,
