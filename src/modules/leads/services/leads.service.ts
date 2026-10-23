@@ -38,6 +38,7 @@ import {
   type AddActivityDto,
   type AddFarmerDto,
   type AdminLeadQueryDto,
+  type AdminLeadSummaryQueryDto,
   type FarmerLeadQueryDto,
   type LeadOpportunityDto,
   type LeadPlacesQueryDto,
@@ -69,6 +70,7 @@ import {
   searchOf,
   stageMoveError,
   titleCase,
+  windowError,
   type FarmerInput,
   type HoldEnd,
   type Holder,
@@ -1119,14 +1121,25 @@ export class LeadsService implements OnModuleInit {
     return this.agents.partnersByAgentIds(agentIds);
   }
 
-  /** HO cards; "today" is the IST day. */
-  async summary() {
+  /**
+   * HO cards; "today" is the IST day. A `from` / `to` window (read as the
+   * list's) narrows the period counts to the leads added in it, as the list
+   * with the same dates; without one they are all time.
+   */
+  async summary(query: AdminLeadSummaryQueryDto = {}) {
+    const window =
+      query.from || query.to ? addedRange(query.from, query.to) : null;
+    const refused = window && windowError(window);
+    if (refused) throw badRequest('VALIDATION_FAILED', refused);
     const today = istDayStart(new Date());
-    const counts = await this.rows.adminSummary({
-      today,
-      week: new Date(today.getTime() - 6 * DAY_MS),
-      tomorrow: new Date(today.getTime() + DAY_MS),
-    });
+    const counts = await this.rows.adminSummary(
+      {
+        today,
+        week: new Date(today.getTime() - 6 * DAY_MS),
+        tomorrow: new Date(today.getTime() + DAY_MS),
+      },
+      window?.from ? { from: window.from, to: window.to } : null,
+    );
     const names = await this.agents.partnersByAgentIds(
       counts.by_partner.map((p) => p.key),
     );

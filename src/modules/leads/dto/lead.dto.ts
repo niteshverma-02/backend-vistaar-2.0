@@ -515,6 +515,26 @@ export class AdminLeadQueryDto extends PageQueryDto {
   due?: boolean;
 }
 
+/** `GET /admin/leads/summary`: the list's `from` / `to`, nothing else. */
+export class AdminLeadSummaryQueryDto {
+  @ApiPropertyOptional({
+    example: '2026-10-01',
+    description:
+      'Added on or after (a bare day is an IST day); with `to`, at most 366 days',
+  })
+  @IsOptional()
+  @IsDateString()
+  from?: string;
+
+  @ApiPropertyOptional({
+    example: '2026-10-31',
+    description: 'Added on or before (whole day); none = up to now',
+  })
+  @IsOptional()
+  @IsDateString()
+  to?: string;
+}
+
 /** Sorts `GET /admin/leads` accepts (`-` = descending). */
 export const ADMIN_LEAD_SORTS = [
   'created_at',
