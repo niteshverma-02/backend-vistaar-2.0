@@ -173,6 +173,8 @@ export const API_ERROR_CODES = [
   'LEAD_OTP_INVALID',
   // Rewards: HO approves or rejects a pending reward only (409).
   'REWARD_NOT_PENDING',
+  // Coins at checkout: more than the approved coins not yet spent (409).
+  'NOT_ENOUGH_COINS',
   // Profile: HO decided a name change that is no longer waiting (409).
   'NAME_CHANGE_NOT_PENDING',
   // Bank account change: one waiting at a time, no new withdrawal meanwhile;

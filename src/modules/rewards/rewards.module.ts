@@ -8,7 +8,9 @@ import { SettingsModule } from '@modules/settings/settings.module';
 
 import { AdminRewardsController } from './controllers/admin-rewards.controller';
 import { RewardsController } from './controllers/rewards.controller';
+import { CoinAccountRepository } from './repositories/coin-account.repository';
 import { RewardRepository } from './repositories/reward.repository';
+import { CoinAccount, CoinAccountSchema } from './schemas/coin-account.schema';
 import { Reward, RewardSchema } from './schemas/reward.schema';
 import { RewardsService } from './services/rewards.service';
 
@@ -20,14 +22,17 @@ import { RewardsService } from './services/rewards.service';
  */
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: Reward.name, schema: RewardSchema }]),
+    MongooseModule.forFeature([
+      { name: Reward.name, schema: RewardSchema },
+      { name: CoinAccount.name, schema: CoinAccountSchema },
+    ]),
     AccessModule,
     AgentsModule,
     EarningModule,
     SettingsModule,
   ],
   controllers: [RewardsController, AdminRewardsController],
-  providers: [RewardRepository, RewardsService],
+  providers: [RewardRepository, CoinAccountRepository, RewardsService],
   exports: [RewardsService],
 })
 export class RewardsModule {}

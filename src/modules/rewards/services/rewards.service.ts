@@ -21,6 +21,7 @@ import type {
   AdminRewardsSummaryQueryDto,
   RewardsQueryDto,
 } from '../dto/reward.dto';
+import { CoinAccountRepository } from '../repositories/coin-account.repository';
 import {
   RewardRepository,
   type NewReward,
@@ -69,15 +70,33 @@ export interface AdminRewardView extends RewardView {
   reviewed_by: string | null;
 }
 
-/** The app's Rewards card. Coins are points only — never money. */
+/**
+ * The app's Rewards card. Coins are points, never money: spent only as ₹1 off
+ * per coin on an order (`PUT /rewards/coins/:requestId`).
+ */
 export interface RewardsSummary {
-  coins: { approved: number; pending: number };
+  coins: {
+    approved: number;
+    pending: number;
+    /** Held by orders (checkout attempts not released). */
+    spent: number;
+    /** What an order can still take: approved − spent. */
+    available: number;
+  };
   gig: {
     approved_amount: number;
     pending_amount: number;
     /** Approved gig ₹ reaches the wallet only while this is on (settings `gig_pay_enabled`). */
     pay_enabled: boolean;
   };
+}
+
+/** Coins one checkout attempt holds. */
+export interface CoinSpend {
+  request_id: string;
+  coins: number;
+  /** Approved coins not spent, after this one. */
+  available: number;
 }
 
 type Totals = Record<RewardStatus, { count: number; amount: number }>;
@@ -117,7 +136,8 @@ interface RewardSubject {
  * Coin and gig rewards: recorded (pending) when an event matches an earning
  * rule of the partner's cohort at that moment, then approved or rejected by
  * HO. Approved gig ₹ joins the wallet with meeting gigs while gig pay is on;
- * coins are points — earned and counted, never spent or paid.
+ * coins are points — earned and counted, and spent only as ₹1 off per coin on
+ * an order, never paid out.
  */
 @Injectable()
 export class RewardsService {
@@ -128,6 +148,7 @@ export class RewardsService {
     private readonly rules: EarningRulesService,
     private readonly agents: AgentsService,
     private readonly settings: SettingsService,
+    private readonly coinAccounts: CoinAccountRepository,
   ) {}
 
   // ── Events — never fail the partner's request ───────────────────────
@@ -398,15 +419,20 @@ export class RewardsService {
   }
 
   async summaryMine(agentId: string): Promise<RewardsSummary> {
-    const [totals, settings] = await Promise.all([
-      this.rewards.totals({ agent_id: agentId.toUpperCase() }),
+    const agent = agentId.toUpperCase();
+    const [totals, settings, account] = await Promise.all([
+      this.rewards.totals({ agent_id: agent }),
       this.settings.get(),
+      this.coinAccounts.find(agent),
     ]);
     const t = byKind(totals);
+    const spent = account?.spent ?? 0;
     return {
       coins: {
         approved: t.coin.approved.amount,
         pending: t.coin.pending.amount,
+        spent,
+        available: Math.max(0, t.coin.approved.amount - spent),
       },
       gig: {
         approved_amount: t.gig.approved.amount,
@@ -414,6 +440,71 @@ export class RewardsService {
         pay_enabled: settings.gig_pay_enabled,
       },
     };
+  }
+
+  // ── Coins at checkout ───────────────────────────────────────────────
+
+  /**
+   * Holds `coins` (₹1 off each) for the checkout attempt `requestId` — its
+   * `x-request-id`, the same UUID as `POST /orders/id`. The same attempt
+   * again answers what it holds (a retry never spends twice); one released
+   * is held again. 409 `NOT_ENOUGH_COINS` past the approved coins not spent.
+   */
+  async spendCoins(
+    agentId: string,
+    requestId: string,
+    coins: number,
+  ): Promise<CoinSpend> {
+    const agent = agentId.toUpperCase();
+    // A second try only when another spend changed the account in between.
+    for (let tries = 0; tries < 3; tries++) {
+      const [account, approved] = await Promise.all([
+        this.coinAccounts.find(agent),
+        this.approvedCoins(agent),
+      ]);
+      const left = approved - (account?.spent ?? 0);
+      const row = account?.redemptions.find((r) => r.id === requestId);
+      if (row?.active)
+        return { request_id: requestId, coins: row.coins, available: left };
+      if (coins > left) throw notEnoughCoins(left);
+      const at = new Date();
+      const held = row
+        ? await this.coinAccounts.rehold(agent, requestId, coins, approved, at)
+        : await this.coinAccounts.hold(agent, requestId, coins, approved, at);
+      if (held)
+        return { request_id: requestId, coins, available: left - coins };
+    }
+    throw conflict(
+      'NOT_ENOUGH_COINS',
+      'Your coins changed just now. Please try again.',
+    );
+  }
+
+  /**
+   * The order of checkout attempt `requestId` was not placed: its coins go
+   * back. `released: false` = it held none (never spent, or released before).
+   */
+  async releaseCoins(
+    agentId: string,
+    requestId: string,
+  ): Promise<{ request_id: string; released: boolean }> {
+    const agent = agentId.toUpperCase();
+    const row = (await this.coinAccounts.find(agent))?.redemptions.find(
+      (r) => r.id === requestId && r.active,
+    );
+    const released = row
+      ? await this.coinAccounts.release(agent, requestId, row.coins, new Date())
+      : false;
+    return { request_id: requestId, released };
+  }
+
+  private async approvedCoins(agent: string): Promise<number> {
+    const [row] = await this.rewards.totals({
+      agent_id: agent,
+      kind: 'coin',
+      status: 'approved',
+    });
+    return row?.amount ?? 0;
   }
 
   // ── The wallet ───────────────────────────────────────────────────────
@@ -549,6 +640,14 @@ export class RewardsService {
       reviewed_by: r.reviewed_by,
     }));
   }
+}
+
+function notEnoughCoins(left: number) {
+  return conflict(
+    'NOT_ENOUGH_COINS',
+    `You have ${Math.max(0, left)} coins to use. Turn coins off or use fewer.`,
+    [`available=${Math.max(0, left)}`],
+  );
 }
 
 function viewOf(r: RewardRecord): RewardView {
