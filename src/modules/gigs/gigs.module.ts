@@ -36,6 +36,6 @@ import { GigsService } from './services/gigs.service';
   ],
   controllers: [GigsController, AdminGigsController],
   providers: [GigRepository, GigsService, AdminGigsService, GigReadsService],
-  exports: [GigReadsService],
+  exports: [GigReadsService, AdminGigsService],
 })
 export class GigsModule {}

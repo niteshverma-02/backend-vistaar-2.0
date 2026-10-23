@@ -72,6 +72,6 @@ import { WalletService } from './services/wallet.service';
     CommissionService,
     WalletService,
   ],
-  exports: [CommissionService],
+  exports: [CommissionService, WalletService],
 })
 export class CommissionModule {}

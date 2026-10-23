@@ -41,5 +41,6 @@ import { FeedbackService } from './services/feedback.service';
     FeedbackService,
     AdminFeedbackService,
   ],
+  exports: [AdminFeedbackService],
 })
 export class FeedbackModule {}
