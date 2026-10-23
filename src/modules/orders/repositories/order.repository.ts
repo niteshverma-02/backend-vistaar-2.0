@@ -4,7 +4,11 @@ import type { Model } from 'mongoose';
 
 import { escapeRegex } from '@common/utils/regex.util';
 
-import { VISTAAR_MARKETPLACE, type OrderSearch } from '../orders.domain';
+import {
+  NOT_COUNTED,
+  VISTAAR_MARKETPLACE,
+  type OrderSearch,
+} from '../orders.domain';
 import { Order, type OrderRecord } from '../schemas/order.schema';
 
 /**
@@ -307,8 +311,12 @@ export class OrderRepository {
   ): Promise<RawBreakdown> {
     const match: Record<string, unknown> = this.adminFilter(filter);
     match.order_status = filter.statuses
-      ? { $in: filter.statuses.filter((s) => !off.includes(s)) }
-      : { $nin: off };
+      ? {
+          $in: filter.statuses.filter(
+            (s) => !off.includes(s) && !NOT_COUNTED.has(s),
+          ),
+        }
+      : { $nin: [...off, ...NOT_COUNTED] };
     const value = { $sum: { $ifNull: ['$total_amount', 0] } };
     const place = (field: string) => ({
       $toUpper: { $trim: { input: { $ifNull: [field, ''] } } },
@@ -411,7 +419,11 @@ export class OrderRepository {
     return {
       marketplace: VISTAAR_MARKETPLACE,
       ...(f.agentId ? { agent: f.agentId } : {}),
-      ...(f.statuses ? { order_status: { $in: f.statuses } } : {}),
+      // Same rule as the cards: a failed payment, a placeholder or a split /
+      // merged parent is not an order, so the list must not show it either.
+      order_status: f.statuses
+        ? { $in: f.statuses.filter((s) => !NOT_COUNTED.has(s)) }
+        : { $nin: [...NOT_COUNTED] },
       ...(f.from || f.to ? { date } : {}),
       ...(f.piiId ? { pii_id: f.piiId } : {}),
       ...(f.paymentMode ? { payment_mode: f.paymentMode } : {}),
