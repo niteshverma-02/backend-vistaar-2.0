@@ -62,7 +62,12 @@ export class RewardsController {
     @Param('requestId', ParseUUIDPipe) requestId: string,
     @Body() body: SpendCoinsDto,
   ): Promise<CoinSpend> {
-    return this.rewards.spendCoins(agentId, requestId, body.coins);
+    return this.rewards.spendCoins(
+      agentId,
+      requestId,
+      body.coins,
+      body.subtotal,
+    );
   }
 
   @Delete('coins/:requestId')

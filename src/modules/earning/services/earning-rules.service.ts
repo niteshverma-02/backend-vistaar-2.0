@@ -13,6 +13,7 @@ import type {
   UpdateEarningRuleDto,
 } from '../dto/earning-rule.dto';
 import {
+  DEFAULT_COIN_REDEEM_PCT,
   EARNING_TRIGGERS,
   MAX_RULES_PER_COHORT,
   OPERATORS,
@@ -126,6 +127,20 @@ export class EarningRulesService {
       kind: r.reward.kind,
       amount: r.reward.amount,
     }));
+  }
+
+  /**
+   * What one order may take in coins now: at most `pct` % of its subtotal and
+   * at most `max` coins (`null` = no cap), from the partner's cohort.
+   */
+  async coinRedeemLimit(
+    agentId: string,
+  ): Promise<{ pct: number; max: number | null }> {
+    const { cohort } = await this.cohorts.current(agentId);
+    return {
+      pct: cohort.coin_redeem_pct ?? DEFAULT_COIN_REDEEM_PCT,
+      max: cohort.coin_redeem_max ?? null,
+    };
   }
 
   /** The partner's cohort and what it pays for, for the app. */

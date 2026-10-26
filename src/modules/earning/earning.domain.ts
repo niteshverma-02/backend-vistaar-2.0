@@ -19,6 +19,9 @@ import { addMonths } from '@common/utils/ist-day.util';
 
 /** The built-in cohort that catches everyone else: no filters, always last. */
 export const DEFAULT_COHORT_ID = 'ec_default';
+
+/** % of an order's subtotal coins may pay when the cohort sets none (`coin_redeem_pct: null`). */
+export const DEFAULT_COIN_REDEEM_PCT = 10;
 export const DEFAULT_COHORT_NAME = 'Everyone else';
 
 export const COHORT_ID_PATTERN = /^ec_[a-z0-9_]{1,40}$/;

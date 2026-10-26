@@ -190,6 +190,29 @@ export class CreateEarningCohortDto {
   meeting_gig_payout?: number | null;
 
   @ApiPropertyOptional({
+    example: 10,
+    nullable: true,
+    description:
+      'At most this % of an order subtotal its partners may pay with coins; null = 10',
+  })
+  @IsOptional()
+  @IsInt({ message: 'coin_redeem_pct must be a whole number.' })
+  @Min(0)
+  @Max(100)
+  coin_redeem_pct?: number | null;
+
+  @ApiPropertyOptional({
+    example: 200,
+    nullable: true,
+    description: 'At most this many coins on one order; null = no cap',
+  })
+  @IsOptional()
+  @IsInt({ message: 'coin_redeem_max must be a whole number.' })
+  @Min(1)
+  @Max(1_000_000)
+  coin_redeem_max?: number | null;
+
+  @ApiPropertyOptional({
     example: '2026-11-01',
     nullable: true,
     type: String,
@@ -263,6 +286,29 @@ export class UpdateEarningCohortDto {
   @Min(0)
   @Max(PAYOUT_MAX)
   meeting_gig_payout?: number | null;
+
+  @ApiPropertyOptional({
+    example: 10,
+    nullable: true,
+    description:
+      'At most this % of an order subtotal its partners may pay with coins; null = 10',
+  })
+  @IsOptional()
+  @IsInt({ message: 'coin_redeem_pct must be a whole number.' })
+  @Min(0)
+  @Max(100)
+  coin_redeem_pct?: number | null;
+
+  @ApiPropertyOptional({
+    example: 200,
+    nullable: true,
+    description: 'At most this many coins on one order; null = no cap',
+  })
+  @IsOptional()
+  @IsInt({ message: 'coin_redeem_max must be a whole number.' })
+  @Min(1)
+  @Max(1_000_000)
+  coin_redeem_max?: number | null;
 
   @ApiPropertyOptional({
     example: '2026-11-01',
