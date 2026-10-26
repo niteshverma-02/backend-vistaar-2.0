@@ -215,7 +215,7 @@ describe('WalletService', () => {
       commission.bookOf.mockResolvedValue({
         partner,
         book,
-        settings: { ...SETTINGS, max_withdrawal_pct: 50 } as typeof SETTINGS,
+        settings: { ...SETTINGS, max_withdrawal_pct: 50 },
         withdrawals: [],
       } as never);
       await expect(
