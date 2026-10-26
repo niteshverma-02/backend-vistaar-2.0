@@ -25,6 +25,8 @@ export type EarningCohortPatch = Partial<
     | 'conditions'
     | 'filters'
     | 'meeting_gig_payout'
+    | 'coin_redeem_pct'
+    | 'coin_redeem_max'
     | 'starts_on'
     | 'ends_on'
     | 'commission_off'
@@ -65,6 +67,8 @@ export class EarningCohortRepository {
               ends_on: null,
               commission_off: [],
               meeting_gig_payout: null,
+              coin_redeem_pct: null,
+              coin_redeem_max: null,
               rules: [],
               version: 1,
               created_by: 'system',

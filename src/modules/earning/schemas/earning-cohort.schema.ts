@@ -56,6 +56,13 @@ export class EarningCohort {
   /** ₹ a meeting gig pays its partner when HO left the gig's payout empty; `null` = settings `gig_payout`. */
   @Prop({ type: Number, default: null }) meeting_gig_payout!: number | null;
   /**
+   * At most this % (0–100) of an order's subtotal its partners may pay with
+   * coins; `null` (and rows from before it) = `DEFAULT_COIN_REDEEM_PCT`.
+   */
+  @Prop({ type: Number, default: null }) coin_redeem_pct?: number | null;
+  /** At most this many coins on one order; `null` (and rows from before it) = no cap. */
+  @Prop({ type: Number, default: null }) coin_redeem_max?: number | null;
+  /**
    * Its coin / gig rules, archived ones too. Written only by the rule
    * repository, one rule at a time (guarded by that rule's own `version`),
    * so a rule edit and a cohort edit never conflict. Missing on a row from

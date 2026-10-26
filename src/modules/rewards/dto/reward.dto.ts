@@ -51,6 +51,17 @@ export class SpendCoinsDto {
   @Min(1, { message: 'coins must be at least 1.' })
   @Max(1_000_000, { message: 'coins is too large.' })
   coins!: number;
+
+  @ApiProperty({
+    minimum: 1,
+    example: 1250,
+    description:
+      'The order subtotal (₹, before coins, coupon and delivery): coins may pay at most the cohort `coin_redeem_pct` % of it',
+  })
+  @IsInt({ message: 'subtotal must be a whole number.' })
+  @Min(1, { message: 'subtotal must be at least 1.' })
+  @Max(100_000_000, { message: 'subtotal is too large.' })
+  subtotal!: number;
 }
 
 /** The app's list: the partner's own rewards, newest first. */

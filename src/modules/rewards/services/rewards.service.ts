@@ -82,6 +82,10 @@ export interface RewardsSummary {
     spent: number;
     /** What an order can still take: approved − spent. */
     available: number;
+    /** At most this % of an order's subtotal may be paid with coins (the partner's earning cohort). */
+    max_pct: number;
+    /** At most this many coins on one order; `null` = no cap (the partner's earning cohort). */
+    max_per_order: number | null;
   };
   gig: {
     approved_amount: number;
@@ -420,10 +424,11 @@ export class RewardsService {
 
   async summaryMine(agentId: string): Promise<RewardsSummary> {
     const agent = agentId.toUpperCase();
-    const [totals, settings, account] = await Promise.all([
+    const [totals, settings, account, limit] = await Promise.all([
       this.rewards.totals({ agent_id: agent }),
       this.settings.get(),
       this.coinAccounts.find(agent),
+      this.rules.coinRedeemLimit(agent),
     ]);
     const t = byKind(totals);
     const spent = account?.spent ?? 0;
@@ -433,6 +438,8 @@ export class RewardsService {
         pending: t.coin.pending.amount,
         spent,
         available: Math.max(0, t.coin.approved.amount - spent),
+        max_pct: limit.pct,
+        max_per_order: limit.max,
       },
       gig: {
         approved_amount: t.gig.approved.amount,
@@ -448,14 +455,23 @@ export class RewardsService {
    * Holds `coins` (₹1 off each) for the checkout attempt `requestId` — its
    * `x-request-id`, the same UUID as `POST /orders/id`. The same attempt
    * again answers what it holds (a retry never spends twice); one released
-   * is held again. 409 `NOT_ENOUGH_COINS` past the approved coins not spent.
+   * is held again. 409 `NOT_ENOUGH_COINS` past the approved coins not spent;
+   * 409 `COINS_OVER_LIMIT` past the cohort's % (`coin_redeem_pct`) of `subtotal`
+   * or its cap per order (`coin_redeem_max`).
    */
   async spendCoins(
     agentId: string,
     requestId: string,
     coins: number,
+    subtotal: number,
   ): Promise<CoinSpend> {
     const agent = agentId.toUpperCase();
+    const { pct, max } = await this.rules.coinRedeemLimit(agent);
+    const limit = Math.min(
+      Math.floor((subtotal * pct) / 100),
+      max ?? Number.MAX_SAFE_INTEGER,
+    );
+    if (coins > limit) throw coinsOverLimit(limit);
     // A second try only when another spend changed the account in between.
     for (let tries = 0; tries < 3; tries++) {
       const [account, approved] = await Promise.all([
@@ -640,6 +656,14 @@ export class RewardsService {
       reviewed_by: r.reviewed_by,
     }));
   }
+}
+
+function coinsOverLimit(limit: number) {
+  return conflict(
+    'COINS_OVER_LIMIT',
+    `You can use up to ${limit} coins on this order. Use fewer coins.`,
+    [`max_coins=${limit}`],
+  );
 }
 
 function notEnoughCoins(left: number) {

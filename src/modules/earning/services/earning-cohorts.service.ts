@@ -569,6 +569,8 @@ export class EarningCohortsService implements OnModuleInit, OnModuleDestroy {
         ends_on,
         commission_off: [],
         meeting_gig_payout: dto.meeting_gig_payout ?? null,
+        coin_redeem_pct: dto.coin_redeem_pct ?? null,
+        coin_redeem_max: dto.coin_redeem_max ?? null,
         rules: [],
         version: 1,
         created_by: by,
@@ -613,6 +615,10 @@ export class EarningCohortsService implements OnModuleInit, OnModuleDestroy {
       set.description = dto.description || null;
     if (dto.meeting_gig_payout !== undefined)
       set.meeting_gig_payout = dto.meeting_gig_payout;
+    if (dto.coin_redeem_pct !== undefined)
+      set.coin_redeem_pct = dto.coin_redeem_pct;
+    if (dto.coin_redeem_max !== undefined)
+      set.coin_redeem_max = dto.coin_redeem_max;
     let moved = false;
     if (dto.conditions !== undefined || dto.filters !== undefined) {
       if (id === DEFAULT_COHORT_ID) {
@@ -949,6 +955,8 @@ function viewOf(
     ...rest,
     starts_on: c.starts_on ?? null,
     ends_on: c.ends_on ?? null,
+    coin_redeem_pct: c.coin_redeem_pct ?? null,
+    coin_redeem_max: c.coin_redeem_max ?? null,
     window: cohortWindow(c, today),
     commission_enabled: !commissionOffIn(c.commission_off, today.slice(0, 7)),
     commission_off: c.commission_off ?? [],

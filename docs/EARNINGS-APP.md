@@ -122,7 +122,9 @@ approves or rejects it. The app never creates one.
     "approved": 120,                                       // every coin HO approved
     "pending": 20,                                         // waiting for HO
     "spent": 40,                                           // held by orders
-    "available": 80                                        // coin balance = approved − spent
+    "available": 80,                                       // coin balance = approved − spent
+    "max_pct": 10,                                         // coins pay at most this % of an order subtotal (earning cohort `coin_redeem_pct`, default 10)
+    "max_per_order": 200                                   // and at most this many coins on one order (cohort `coin_redeem_max`); null = no cap
   },
   "gig": {
     "approved_amount": 45,                                 // ₹
@@ -166,7 +168,8 @@ the coins come off here, keyed on the checkout attempt's `x-request-id` (the sam
 as `POST /orders/id`). One partner's spends are serialised: two orders at once never
 spend the same coins.
 
-`PUT /api/v2/rewards/coins/:requestId` `{ "coins": 40 }` — **before** the order is sent.
+`PUT /api/v2/rewards/coins/:requestId` `{ "coins": 40, "subtotal": 1250 }` — **before** the order is sent;
+`subtotal` = the order's items in ₹ before coins, coupon and delivery.
 
 ```jsonc
 { "request_id": "…uuid…", "coins": 40, "available": 80 }   // available = after this one
@@ -175,6 +178,7 @@ spend the same coins.
 - The same `requestId` again answers what it holds (a retry never spends twice); one
   released is held again.
 - `409 NOT_ENOUGH_COINS` (`details[0]` `available=N`) past the approved coins not spent.
+- `409 COINS_OVER_LIMIT` (`details[0]` `max_coins=N`) past `max_pct` % of `subtotal` (rounded down) or `max_per_order`.
 
 `DELETE /api/v2/rewards/coins/:requestId` — the order was **not** placed (refused,
 payment failed or cancelled): the coins go back. `{ "request_id": "…", "released": true }`;

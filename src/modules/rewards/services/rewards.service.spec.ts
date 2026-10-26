@@ -186,7 +186,10 @@ function fakeCoinAccounts() {
 
 function setup(rewards: EarnedReward[] = [earned('coin', 10)]) {
   const repo = fakeRepo();
-  const rules = { evaluate: jest.fn().mockResolvedValue(rewards) };
+  const rules = {
+    evaluate: jest.fn().mockResolvedValue(rewards),
+    coinRedeemLimit: jest.fn().mockResolvedValue({ pct: 10, max: null }),
+  };
   const agents = {
     partnersByAgentIds: jest
       .fn()
@@ -356,7 +359,14 @@ describe('RewardsService — HO review', () => {
   it('the app summary: coins and gig ₹ by status, and whether gig pay is on', async () => {
     const { service } = setup();
     expect(await service.summaryMine(AGENT)).toEqual({
-      coins: { approved: 30, pending: 10, spent: 0, available: 30 },
+      coins: {
+        approved: 30,
+        pending: 10,
+        spent: 0,
+        available: 30,
+        max_pct: 10,
+        max_per_order: null,
+      },
       gig: { approved_amount: 0, pending_amount: 100, pay_enabled: false },
     });
   });
@@ -368,12 +378,12 @@ describe('RewardsService — coins at checkout', () => {
 
   it('spends approved coins once per checkout attempt; a retry answers the same hold', async () => {
     const { service, coins } = setup();
-    expect(await service.spendCoins('vst-000006', A, 20)).toEqual({
+    expect(await service.spendCoins('vst-000006', A, 20, 1000)).toEqual({
       request_id: A,
       coins: 20,
       available: 10,
     });
-    expect(await service.spendCoins(AGENT, A, 20)).toEqual({
+    expect(await service.spendCoins(AGENT, A, 20, 1000)).toEqual({
       request_id: A,
       coins: 20,
       available: 10,
@@ -384,16 +394,37 @@ describe('RewardsService — coins at checkout', () => {
       pending: 10,
       spent: 20,
       available: 10,
+      max_pct: 10,
+      max_per_order: null,
     });
+  });
+
+  it('refuses more than the cohort % of the subtotal', async () => {
+    const { service, rules, coins } = setup();
+    rules.coinRedeemLimit.mockResolvedValue({ pct: 5, max: null });
+    expect(await codeOf(service.spendCoins(AGENT, A, 11, 200))).toBe(
+      'COINS_OVER_LIMIT',
+    );
+    expect(coins.accounts.get(AGENT)?.spent ?? 0).toBe(0);
+    expect((await service.spendCoins(AGENT, A, 10, 200)).coins).toBe(10);
+  });
+
+  it('refuses more than the cohort cap per order, whatever the %', async () => {
+    const { service, rules } = setup();
+    rules.coinRedeemLimit.mockResolvedValue({ pct: 100, max: 15 });
+    expect(await codeOf(service.spendCoins(AGENT, A, 16, 1000))).toBe(
+      'COINS_OVER_LIMIT',
+    );
+    expect((await service.spendCoins(AGENT, A, 15, 1000)).coins).toBe(15);
   });
 
   it('refuses more than the approved coins not yet spent', async () => {
     const { service } = setup();
-    expect(await codeOf(service.spendCoins(AGENT, A, 31))).toBe(
+    expect(await codeOf(service.spendCoins(AGENT, A, 31, 1000))).toBe(
       'NOT_ENOUGH_COINS',
     );
-    await service.spendCoins(AGENT, A, 25);
-    expect(await codeOf(service.spendCoins(AGENT, B, 6))).toBe(
+    await service.spendCoins(AGENT, A, 25, 1000);
+    expect(await codeOf(service.spendCoins(AGENT, B, 6, 1000))).toBe(
       'NOT_ENOUGH_COINS',
     );
   });
@@ -401,8 +432,8 @@ describe('RewardsService — coins at checkout', () => {
   it('two orders at once never spend the same coins', async () => {
     const { service, coins } = setup();
     const out = await Promise.allSettled([
-      service.spendCoins(AGENT, A, 20),
-      service.spendCoins(AGENT, B, 20),
+      service.spendCoins(AGENT, A, 20, 1000),
+      service.spendCoins(AGENT, B, 20, 1000),
     ]);
     expect(out.filter((o) => o.status === 'fulfilled')).toHaveLength(1);
     expect(coins.accounts.get(AGENT)?.spent).toBe(20);
@@ -410,7 +441,7 @@ describe('RewardsService — coins at checkout', () => {
 
   it('a release gives the coins back once; a retry of that attempt holds them again', async () => {
     const { service, coins } = setup();
-    await service.spendCoins(AGENT, A, 20);
+    await service.spendCoins(AGENT, A, 20, 1000);
     expect(await service.releaseCoins(AGENT, A)).toEqual({
       request_id: A,
       released: true,
@@ -420,7 +451,7 @@ describe('RewardsService — coins at checkout', () => {
       released: false,
     });
     expect(coins.accounts.get(AGENT)?.spent).toBe(0);
-    await service.spendCoins(AGENT, A, 20);
+    await service.spendCoins(AGENT, A, 20, 1000);
     expect(coins.accounts.get(AGENT)?.spent).toBe(20);
     expect(coins.accounts.get(AGENT)?.redemptions).toHaveLength(1);
   });
