@@ -193,7 +193,7 @@ export class CreateEarningCohortDto {
     example: 10,
     nullable: true,
     description:
-      'At most this % of an order subtotal its partners may pay with coins; null = 10',
+      'At most this % of their coins its partners may use on one order (100 coins, 60 → 60); null = 100',
   })
   @IsOptional()
   @IsInt({ message: 'coin_redeem_pct must be a whole number.' })
@@ -291,7 +291,7 @@ export class UpdateEarningCohortDto {
     example: 10,
     nullable: true,
     description:
-      'At most this % of an order subtotal its partners may pay with coins; null = 10',
+      'At most this % of their coins its partners may use on one order (100 coins, 60 → 60); null = 100',
   })
   @IsOptional()
   @IsInt({ message: 'coin_redeem_pct must be a whole number.' })

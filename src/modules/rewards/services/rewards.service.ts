@@ -82,7 +82,7 @@ export interface RewardsSummary {
     spent: number;
     /** What an order can still take: approved − spent. */
     available: number;
-    /** At most this % of an order's subtotal may be paid with coins (the partner's earning cohort). */
+    /** At most this % of `available` one order may use (the partner's earning cohort; 100 = all). */
     max_pct: number;
     /** At most this many coins on one order; `null` = no cap (the partner's earning cohort). */
     max_per_order: number | null;
@@ -456,8 +456,8 @@ export class RewardsService {
    * `x-request-id`, the same UUID as `POST /orders/id`. The same attempt
    * again answers what it holds (a retry never spends twice); one released
    * is held again. 409 `NOT_ENOUGH_COINS` past the approved coins not spent;
-   * 409 `COINS_OVER_LIMIT` past the cohort's % (`coin_redeem_pct`) of `subtotal`
-   * or its cap per order (`coin_redeem_max`).
+   * 409 `COINS_OVER_LIMIT` past the cohort's % (`coin_redeem_pct`) of those
+   * coins, its cap per order (`coin_redeem_max`) or the order's `subtotal`.
    */
   async spendCoins(
     agentId: string,
@@ -467,11 +467,6 @@ export class RewardsService {
   ): Promise<CoinSpend> {
     const agent = agentId.toUpperCase();
     const { pct, max } = await this.rules.coinRedeemLimit(agent);
-    const limit = Math.min(
-      Math.floor((subtotal * pct) / 100),
-      max ?? Number.MAX_SAFE_INTEGER,
-    );
-    if (coins > limit) throw coinsOverLimit(limit);
     // A second try only when another spend changed the account in between.
     for (let tries = 0; tries < 3; tries++) {
       const [account, approved] = await Promise.all([
@@ -483,6 +478,12 @@ export class RewardsService {
       if (row?.active)
         return { request_id: requestId, coins: row.coins, available: left };
       if (coins > left) throw notEnoughCoins(left);
+      const limit = Math.min(
+        Math.floor((left * pct) / 100),
+        max ?? Number.MAX_SAFE_INTEGER,
+        subtotal,
+      );
+      if (coins > limit) throw coinsOverLimit(limit);
       const at = new Date();
       const held = row
         ? await this.coinAccounts.rehold(agent, requestId, coins, approved, at)
