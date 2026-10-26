@@ -108,7 +108,7 @@ saved (worked out right after the answer; a few seconds for 10,000 partners).
   "priority": 1,                    // 1 = looked at first; ec_default's (0) is ignored — always last
   "status": "active",               // active · archived
   "meeting_gig_payout": 300,        // ₹; null = settings gig_payout
-  "coin_redeem_pct": 10,            // coins pay at most this % of an order subtotal; null = 10
+  "coin_redeem_pct": 60,            // one order uses at most this % of the partner's coins; null = 100
   "coin_redeem_max": 200,           // and at most this many coins on one order; null = no cap
   "starts_on": "2026-11-01",        // IST day, included; null = open (always null on ec_default)
   "ends_on": "2026-11-30",          // IST day, included; null = open
@@ -170,7 +170,7 @@ case; `state` values kept upper case); `gte` / `lte` a number from 0.
     { "field": "open_leads", "op": "gte", "value": 10 }
   ],
   "meeting_gig_payout": 300,           // optional ₹ 0–1,00,000; null = settings gig_payout
-  "coin_redeem_pct": 10,               // optional whole % 0–100; null / left out = 10
+  "coin_redeem_pct": 60,               // optional whole % 0–100 of the partner's coins; null / left out = 100
   "coin_redeem_max": 200,              // optional whole coins ≥ 1; null / left out = no cap
   "starts_on": "2026-11-01",           // optional IST day YYYY-MM-DD, included; null / left out = open
   "ends_on": "2026-11-30"              // optional, on or after starts_on; null / left out = open
@@ -194,7 +194,7 @@ case; `state` values kept upper case); `gte` / `lte` a number from 0.
 ### `PATCH /admin/earning-cohorts/:id`
 
 `{ "version": 3, … }` plus any of `name`, `description` (`null` clears),
-`conditions`, `meeting_gig_payout` (`null` = settings), `coin_redeem_pct` (`null` = 10), `coin_redeem_max` (`null` = no cap; both also on `ec_default`), `starts_on`, `ends_on`
+`conditions`, `meeting_gig_payout` (`null` = settings), `coin_redeem_pct` (`null` = 100), `coin_redeem_max` (`null` = no cap; both also on `ec_default`), `starts_on`, `ends_on`
 (`null` clears; the one not sent stays, and the pair is checked together),
 `commission_enabled` (the cohort's own commission plan ON / OFF from this IST month —
 COMMISSION-HO.md, *Commission ON/OFF*; `{ version, commission_enabled }` alone is valid;
@@ -295,11 +295,16 @@ partner-type plans — body, fields, `PATCH` and errors in `COMMISSION-HO.md` §
 
 ## Coins at checkout per cohort
 
-`coin_redeem_pct` (whole % 0–100; `null` = 10) is the most of an order's subtotal a partner of the
-cohort may pay with approved coins (₹1 per coin). The app reads it as `/rewards/summary`
-`coins.max_pct`; `PUT /rewards/coins/:requestId` refuses more (`COINS_OVER_LIMIT`). `0` = coins
-cannot be used. `coin_redeem_max` (whole coins ≥ 1; `null` = no cap) caps one order too — the
-smaller of the two wins (app: `coins.max_per_order`). A change applies to the next checkout; held coins stay held.
+How many of their approved coins (₹1 each) a partner of the cohort may use on one order:
+
+- `coin_redeem_pct` (whole % 0–100; `null` = 100): at most this share of the coins they have —
+  100 coins and `60` → 60 coins. `0` = coins cannot be used.
+- `coin_redeem_max` (whole coins ≥ 1; `null` = no cap): at most this many on one order.
+- Never more than the order's items (`subtotal`). The smallest of the three wins.
+
+The app reads them as `/rewards/summary` `coins.max_pct` / `max_per_order`;
+`PUT /rewards/coins/:requestId` refuses more (`COINS_OVER_LIMIT`). A change applies to the next
+checkout; held coins stay held.
 
 ## Meeting-gig payout per cohort
 

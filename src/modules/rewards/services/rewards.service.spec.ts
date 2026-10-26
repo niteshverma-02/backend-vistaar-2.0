@@ -188,7 +188,7 @@ function setup(rewards: EarnedReward[] = [earned('coin', 10)]) {
   const repo = fakeRepo();
   const rules = {
     evaluate: jest.fn().mockResolvedValue(rewards),
-    coinRedeemLimit: jest.fn().mockResolvedValue({ pct: 10, max: null }),
+    coinRedeemLimit: jest.fn().mockResolvedValue({ pct: 100, max: null }),
   };
   const agents = {
     partnersByAgentIds: jest
@@ -364,7 +364,7 @@ describe('RewardsService — HO review', () => {
         pending: 10,
         spent: 0,
         available: 30,
-        max_pct: 10,
+        max_pct: 100,
         max_per_order: null,
       },
       gig: { approved_amount: 0, pending_amount: 100, pay_enabled: false },
@@ -394,19 +394,27 @@ describe('RewardsService — coins at checkout', () => {
       pending: 10,
       spent: 20,
       available: 10,
-      max_pct: 10,
+      max_pct: 100,
       max_per_order: null,
     });
   });
 
-  it('refuses more than the cohort % of the subtotal', async () => {
+  it('refuses more than the cohort % of the coins (30 coins, 60% → 18)', async () => {
     const { service, rules, coins } = setup();
-    rules.coinRedeemLimit.mockResolvedValue({ pct: 5, max: null });
-    expect(await codeOf(service.spendCoins(AGENT, A, 11, 200))).toBe(
+    rules.coinRedeemLimit.mockResolvedValue({ pct: 60, max: null });
+    expect(await codeOf(service.spendCoins(AGENT, A, 19, 1000))).toBe(
       'COINS_OVER_LIMIT',
     );
     expect(coins.accounts.get(AGENT)?.spent ?? 0).toBe(0);
-    expect((await service.spendCoins(AGENT, A, 10, 200)).coins).toBe(10);
+    expect((await service.spendCoins(AGENT, A, 18, 1000)).coins).toBe(18);
+  });
+
+  it('never more coins than the order subtotal', async () => {
+    const { service } = setup();
+    expect(await codeOf(service.spendCoins(AGENT, A, 25, 20))).toBe(
+      'COINS_OVER_LIMIT',
+    );
+    expect((await service.spendCoins(AGENT, A, 20, 20)).coins).toBe(20);
   });
 
   it('refuses more than the cohort cap per order, whatever the %', async () => {

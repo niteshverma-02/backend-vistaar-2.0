@@ -130,8 +130,8 @@ export class EarningRulesService {
   }
 
   /**
-   * What one order may take in coins now: at most `pct` % of its subtotal and
-   * at most `max` coins (`null` = no cap), from the partner's cohort.
+   * What one order may take in coins now: at most `pct` % of the partner's
+   * coins and at most `max` coins (`null` = no cap), from their cohort.
    */
   async coinRedeemLimit(
     agentId: string,

@@ -56,7 +56,7 @@ export class SpendCoinsDto {
     minimum: 1,
     example: 1250,
     description:
-      'The order subtotal (₹, before coins, coupon and delivery): coins may pay at most the cohort `coin_redeem_pct` % of it',
+      'The order subtotal (₹, before coins, coupon and delivery): coins never pay more than it',
   })
   @IsInt({ message: 'subtotal must be a whole number.' })
   @Min(1, { message: 'subtotal must be at least 1.' })
