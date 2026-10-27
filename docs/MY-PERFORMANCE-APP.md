@@ -10,6 +10,7 @@ when asked. Sales are **delivered** sales before GST — the same numbers commis
 |---|---|---|
 | GET | `/performance?period=month\|3m\|fy` | My Performance |
 | GET | `/performance/standing` | Home, Profile (replaces the spec's "fields on the login object") |
+| GET | `/performance/activity?period=day\|week\|month\|quarter\|year&date=YYYY-MM-DD` | My Activity |
 
 `period`: `month` (this month) · `3m` (the last 3 months with this one) · `fy` (April →
 this month). Default `month`.
@@ -75,6 +76,39 @@ Cached up to 5 minutes; call on app open.
 
 **Training:** no courses exist in the backend yet, so `training_completed` is `0 / 0` and
 counts as good (no open course left undone).
+
+## `GET /performance/activity?period=week&date=2026-10-27`
+
+What the partner did in one IST **day**, **week** (Monday → Sunday), **month**, **quarter**
+(Jan / Apr / Jul / Oct) or **year** (Indian FY, April → March) — the one `date` falls in
+(default today; `period` default `day`). Step back / forward by sending a date in the
+period before / after. Not cached.
+
+```jsonc
+{
+  "period": "week", "from": "2026-10-26", "to": "2026-11-02",   // first day, and the day after the end
+  "leads":      { "added": 4, "won": 1, "lost": 0 },             // added in the period; won / lost = of those, now
+  "customers":  { "new": 2, "active": 5 },                       // new = first non-cancelled order in the period
+  "orders":     { "placed": 6, "value": 18400, "delivered": 3, "sales": 9200 },
+  "commission": 640,
+  "attendance": { "present_days": 5, "worked_ms": 144000000 },
+  "activities": { "call": 8, "visit": 3, "whatsapp": 5, "note": 1 },
+  "meetings":   { "held": 1, "scheduled": 1, "farmers": 23, "leads": 4 },
+  "gigs":       { "done": 1, "earnings": 1500, "farmers": 30 },  // null when gigs could not be read
+  "coins":      { "approved": 120, "pending": 40 }
+}
+```
+
+| Number | Rule |
+|---|---|
+| `orders.placed` / `value` | orders placed in the period (cancelled counted in `placed`, left out of `value`); `value` = base before GST |
+| `orders.delivered` / `sales`, `commission` | orders delivered in the period, reversed ones left out — the commission book's rule |
+| `customers.active` | distinct farmers with a non-cancelled order placed in the period (shop stock is not one) |
+| `attendance` | IST days with a punch-in; `worked_ms` counts closed days only (ATTENDANCE-APP.md) |
+| `activities` | call / visit / WhatsApp / note entries logged on the partner's farmers in the period |
+| `meetings` | the partner's meetings **starting** in the period: `held` = completed, `farmers` = present, `leads` = captured |
+| `gigs` | approved meeting gigs held in the period, Σ payout ₹, farmers present |
+| `coins` | coin rewards made in the period — HO-approved, and waiting for HO |
 
 ## Not built yet
 

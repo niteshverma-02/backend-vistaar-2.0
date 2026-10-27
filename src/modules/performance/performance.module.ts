@@ -6,6 +6,8 @@ import { AttendanceModule } from '@modules/attendance/attendance.module';
 import { CommissionModule } from '@modules/commission/commission.module';
 import { GigsModule } from '@modules/gigs/gigs.module';
 import { LeadsModule } from '@modules/leads/leads.module';
+import { MeetingsModule } from '@modules/meetings/meetings.module';
+import { RewardsModule } from '@modules/rewards/rewards.module';
 import { SpineModule } from '@modules/spine/spine.module';
 
 import { AdminPerformanceController } from './controllers/admin-performance.controller';
@@ -21,6 +23,8 @@ import { PerformanceService } from './services/performance.service';
     CommissionModule,
     GigsModule,
     LeadsModule,
+    MeetingsModule,
+    RewardsModule,
     SpineModule,
   ],
   controllers: [PerformanceController, AdminPerformanceController],

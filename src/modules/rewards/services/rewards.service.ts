@@ -562,6 +562,18 @@ export class RewardsService {
     return new PageResult(await this.adminViews(items), total, query);
   }
 
+  /** Coins the partner earned in `[from, to)`: HO-approved, and still waiting for HO — My Activity. */
+  async coinsBetween(
+    agentId: string,
+    from: Date,
+    to: Date,
+  ): Promise<{ approved: number; pending: number }> {
+    const { coin } = byKind(
+      await this.rewards.totals({ agent_id: agentId, kind: 'coin', from, to }),
+    );
+    return { approved: coin.approved.amount, pending: coin.pending.amount };
+  }
+
   async summary(
     query: AdminRewardsSummaryQueryDto,
   ): Promise<AdminRewardsSummary> {

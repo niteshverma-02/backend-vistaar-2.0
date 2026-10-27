@@ -85,6 +85,11 @@ export class GigReadsService {
     return rows.map(briefOf);
   }
 
+  /** Approved gigs held in `[from, to)` — My Activity. */
+  statsBetween(agentId: string, from: Date, to: Date) {
+    return this.gigs.approvedStats(agentId, from, to);
+  }
+
   /** Approved gigs' pay, oldest approval first — what the wallet adds when gig pay is on. */
   async creditsFor(agentId: string): Promise<GigCredit[]> {
     const rows = await this.gigs.approvedFor(agentId);

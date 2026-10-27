@@ -621,6 +621,25 @@ export class LeadsService implements OnModuleInit {
     };
   }
 
+  /** My Activity: leads added in `[from, to)` (won / lost of them now) and the log entries made. */
+  async activityBetween(agentId: string, from: Date, to: Date) {
+    const [added, logged] = await Promise.all([
+      this.rows.performance(agentId, from, to, from),
+      this.rows.activityCounts(agentId, from, to),
+    ]);
+    return {
+      added: added.total,
+      won: added.won,
+      lost: added.lost,
+      activities: {
+        call: logged.call ?? 0,
+        visit: logged.visit ?? 0,
+        whatsapp: logged.whatsapp ?? 0,
+        note: logged.note ?? 0,
+      },
+    };
+  }
+
   /**
    * Is this farmer one the partner holds — a lead, or a customer from one?
    * The cart's "Ordering for" asks; the org lead's `lead_owner` is the HO
