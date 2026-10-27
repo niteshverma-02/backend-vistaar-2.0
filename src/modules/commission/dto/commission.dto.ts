@@ -17,7 +17,10 @@ import {
 } from 'class-validator';
 
 import { PageQueryDto } from '@common/dto/page-query.dto';
-import { MONTH_PATTERN } from '@modules/attendance/attendance.domain';
+import {
+  DATE_PATTERN,
+  MONTH_PATTERN,
+} from '@modules/attendance/attendance.domain';
 
 import {
   COMMISSION_STATUSES,
@@ -42,6 +45,26 @@ export class LedgerQueryDto extends PageQueryDto {
   @IsOptional()
   @IsIn(COMMISSION_STATUSES)
   status?: CommissionStatus;
+
+  @ApiPropertyOptional({
+    example: '2026-10-01',
+    description: 'First IST day placed, included',
+  })
+  @IsOptional()
+  @Matches(DATE_PATTERN, {
+    message: 'Please choose a valid start date, for example 2026-10-01.',
+  })
+  from?: string;
+
+  @ApiPropertyOptional({
+    example: '2026-10-31',
+    description: 'Last IST day placed, included',
+  })
+  @IsOptional()
+  @Matches(DATE_PATTERN, {
+    message: 'Please choose a valid end date, for example 2026-10-31.',
+  })
+  to?: string;
 }
 
 export class StatementQueryDto {

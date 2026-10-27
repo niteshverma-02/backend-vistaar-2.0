@@ -27,6 +27,8 @@ import type {
 import type { CommissionPlansService } from './commission-plans.service';
 import { CommissionService } from './commission.service';
 
+import { istDate } from '@common/utils/ist-day.util';
+
 const DAY = 24 * 3600 * 1000;
 
 function fact(id: string, daysAgoDelivered: number | null): OrderFact {
@@ -198,6 +200,18 @@ describe('CommissionService', () => {
     expect(page.items.map((i) => i.order_id)).toEqual(['B']);
     expect(page.items[0]).toMatchObject({ id: 'cm-B', status: 'pending' });
     expect(page.totals.confirmed.count).toBe(1);
+  });
+
+  it('dates the ledger by placed day, with that period’s totals', async () => {
+    const day = (n: number) => istDate(new Date(Date.now() - n * DAY));
+    const query = (from: string, to: string) =>
+      Object.assign(new LedgerQueryDto(), { from, to });
+    const month = await service.ledger('VST-000001', query(day(31), day(29)));
+    expect(month.items.map((i) => i.order_id).sort()).toEqual(['A', 'B']);
+    expect(month.totals.pending.count).toBe(1);
+    const recent = await service.ledger('VST-000001', query(day(10), day(0)));
+    expect(recent.items).toEqual([]);
+    expect(recent.totals.pending).toEqual({ count: 0, amount: 0 });
   });
 
   it('sweeps for HO without filling the caches or re-reading the partner', async () => {
