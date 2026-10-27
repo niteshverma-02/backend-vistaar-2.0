@@ -169,6 +169,12 @@ const CHECK_STATUS: Record<Holder, CheckStatus> = {
   not_farmer: 'not_farmer',
 };
 
+/** Where a farmer OTP goes: a mobile typed in, or a farmer picked on the radar. */
+export interface FarmerOtpTarget {
+  phone?: string;
+  pii_id?: string;
+}
+
 const taken = () =>
   conflict(
     'FARMER_TAKEN',
@@ -260,24 +266,59 @@ export class LeadsService implements OnModuleInit {
   /** The farmer's OTP, before adding them (mandatory, TL 2026-10-16). */
   async sendFarmerOtp(
     partner: PartnerRef,
-    rawPhone: string,
+    to: FarmerOtpTarget,
     resend: boolean,
   ): Promise<{ sent: true; resend_after_seconds: number }> {
     await this.requireWorkingPartner(partner.agent_id);
-    const phone = this.phoneOf(rawPhone);
+    const phone = await this.otpPhoneOf(partner, to);
     await this.refusePartner(partner, phone);
     await this.leadOtp.send(phone, resend);
     return { sent: true, resend_after_seconds: RESEND_AFTER_SECONDS };
   }
 
-  /** A right OTP → the token `POST /leads` takes for this mobile, for 15 minutes. */
+  /**
+   * A right OTP → the token `POST /leads` takes for this mobile, for 15
+   * minutes, and the mobile itself: for a radar farmer it is the first time
+   * the partner sees it — after the farmer said yes.
+   */
   async verifyFarmerOtp(
     partner: PartnerRef,
-    rawPhone: string,
+    to: FarmerOtpTarget,
     otp: string,
-  ): Promise<{ otp_token: string; expires_at: Date }> {
+  ): Promise<{ otp_token: string; expires_at: Date; phone: string }> {
     await this.requireWorkingPartner(partner.agent_id);
-    return this.leadOtp.verify(partner.agent_id, this.phoneOf(rawPhone), otp);
+    const phone = await this.otpPhoneOf(partner, to);
+    const token = await this.leadOtp.verify(partner.agent_id, phone, otp);
+    return { ...token, phone };
+  }
+
+  /**
+   * The mobile a farmer OTP goes to: the one typed in, or — for a farmer
+   * picked on the radar, whose number the app only has masked — theirs on
+   * record. A radar farmer another partner holds is refused before any SMS.
+   */
+  private async otpPhoneOf(
+    partner: PartnerRef,
+    to: FarmerOtpTarget,
+  ): Promise<string> {
+    const typed = to.phone != null;
+    if (typed === (to.pii_id != null)) {
+      throw badRequest(
+        'VALIDATION_FAILED',
+        'Send the farmer’s mobile, or the radar farmer’s pii_id — one of the two.',
+      );
+    }
+    if (typed) return this.phoneOf(to.phone!);
+    const piiId = to.pii_id!;
+    if (piiId === partner.pii_id) throw selfLead();
+    const onRecord = (await this.piis.phonesOf([piiId])).get(piiId);
+    if (!onRecord || !normalizeMobile(onRecord)) {
+      throw notFound('This farmer has no mobile on record.');
+    }
+    if ((await this.holder(piiId, partner.agent_id)) === 'other_partner') {
+      throw taken();
+    }
+    return this.phoneOf(onRecord);
   }
 
   /**

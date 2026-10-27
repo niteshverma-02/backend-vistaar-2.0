@@ -225,12 +225,26 @@ export class AddFarmerDto {
   otp_token?: string;
 }
 
+/** The farmer's OTP is sent to one of these: a mobile typed in, or a radar farmer. */
+const PII_ID_DOC =
+  'Instead of `phone`: a farmer from the radar (`GET /radar/pincodes/:pincode`), whose mobile the app has only masked';
+
 /** Send the farmer an OTP before adding them (approved partners only). */
 export class LeadOtpSendDto {
-  @ApiProperty({ example: MOBILE_EXAMPLE, description: 'The farmer’s mobile' })
+  @ApiPropertyOptional({
+    example: MOBILE_EXAMPLE,
+    description: 'The farmer’s mobile — or `pii_id`',
+  })
+  @IsOptional()
   @IsString()
   @MaxLength(20)
-  phone!: string;
+  phone?: string;
+
+  @ApiPropertyOptional({ example: 'PII-2003114', description: PII_ID_DOC })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  pii_id?: string;
 
   @ApiPropertyOptional({
     default: false,
@@ -242,10 +256,20 @@ export class LeadOtpSendDto {
 }
 
 export class LeadOtpVerifyDto {
-  @ApiProperty({ example: MOBILE_EXAMPLE, description: 'The farmer’s mobile' })
+  @ApiPropertyOptional({
+    example: MOBILE_EXAMPLE,
+    description: 'The farmer’s mobile — or `pii_id`',
+  })
+  @IsOptional()
   @IsString()
   @MaxLength(20)
-  phone!: string;
+  phone?: string;
+
+  @ApiPropertyOptional({ example: 'PII-2003114', description: PII_ID_DOC })
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  pii_id?: string;
 
   @ApiProperty({ example: '6942' })
   @Transform(trim)

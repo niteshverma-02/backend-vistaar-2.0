@@ -91,13 +91,13 @@ export class LeadsController {
   @Throttle(OTP_LIMIT)
   @ApiOperation({
     summary:
-      'Send the farmer an OTP before adding them (approved partners; 3 per mobile per 10 min, `resend` included)',
+      'Send the farmer an OTP before adding them — to `phone`, or to a radar farmer by `pii_id` (approved partners; 3 per mobile per 10 min, `resend` included)',
   })
   sendOtp(
     @CurrentPartner() partner: PartnerRef,
     @Body() dto: LeadOtpSendDto,
   ): Promise<{ sent: true; resend_after_seconds: number }> {
-    return this.leads.sendFarmerOtp(partner, dto.phone, dto.resend ?? false);
+    return this.leads.sendFarmerOtp(partner, dto, dto.resend ?? false);
   }
 
   @Post('otp/verify')
@@ -105,13 +105,13 @@ export class LeadsController {
   @Throttle(OTP_LIMIT)
   @ApiOperation({
     summary:
-      'Check the farmer’s OTP → `otp_token` for `POST /leads`, valid 15 minutes for this mobile and you only',
+      'Check the farmer’s OTP → `otp_token` for `POST /leads`, valid 15 minutes for this mobile and you only, and the mobile (a radar farmer’s, first seen here)',
   })
   verifyOtp(
     @CurrentPartner() partner: PartnerRef,
     @Body() dto: LeadOtpVerifyDto,
-  ): Promise<{ otp_token: string; expires_at: Date }> {
-    return this.leads.verifyFarmerOtp(partner, dto.phone, dto.otp);
+  ): Promise<{ otp_token: string; expires_at: Date; phone: string }> {
+    return this.leads.verifyFarmerOtp(partner, dto, dto.otp);
   }
 
   @Post()

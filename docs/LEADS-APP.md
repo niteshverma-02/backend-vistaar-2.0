@@ -89,8 +89,8 @@ call or visit before <date> or another partner can take this farmer."
 |---|---|---|
 | GET | `/leads/consent` | `{ version, text: { en, hi } }` — show beside the consent tick, send `version` back |
 | GET | `/leads/check?phone=` | before saving: `{ status, pii_id }` (table below) — writes nothing |
-| POST | `/leads/otp/send` | **new** — SMS the farmer an OTP `{ phone, resend? }` → `{ sent, resend_after_seconds }` |
-| POST | `/leads/otp/verify` | **new** — `{ phone, otp }` → `{ otp_token, expires_at }` (15 minutes) |
+| POST | `/leads/otp/send` | **new** — SMS the farmer an OTP `{ phone \| pii_id, resend? }` → `{ sent, resend_after_seconds }` |
+| POST | `/leads/otp/verify` | **new** — `{ phone \| pii_id, otp }` → `{ otp_token, expires_at, phone }` (15 minutes) |
 | POST | `/leads` | add a farmer, or update one you hold (same mobile) → the lead + `result`; **needs `otp_token`** |
 | GET | `/leads?stage&due&q&page&limit` | my leads, **most urgent first** |
 | GET | `/leads/summary` | the Leads cards and Home "follow-ups due" |
@@ -163,12 +163,19 @@ you**. The Add Lead flow becomes:
    ```jsonc
    { "phone": "9876543210", "otp": "6942" }
    ```
-   → `200 { "otp_token": "eyJ2Ijox….Qm9…", "expires_at": "2026-10-16T05:45:00.000Z" }`.
+   → `200 { "otp_token": "eyJ2Ijox….Qm9…", "expires_at": "2026-10-16T05:45:00.000Z", "phone": "9876543210" }`.
    Wrong / expired code → `401 OTP_INVALID`; 5 tries per mobile per 10 minutes → `429
    OTP_LIMIT`.
 4. `POST /leads` with `"otp_token"` (below). The token is good for **15 minutes**, for
    **this mobile** and **this partner** only; within that time a retry of the same save
    (offline sync, a timeout) reuses it. After it, verify again.
+
+**A farmer picked on the radar** (`GET /radar/pincodes/:pincode`, RADAR-APP.md) comes with
+the mobile masked. Send `"pii_id"` instead of `"phone"` to `otp/send` and `otp/verify`
+(exactly one of the two, else `400 VALIDATION_FAILED`): the SMS goes to the farmer's mobile
+on record, and `otp/verify` answers with that `phone` — fill it into the add form and save
+with `POST /leads` as usual. `404 NOT_FOUND` = no mobile on record; `409 FARMER_TAKEN` =
+another partner holds them (no SMS is sent); `400 SELF_LEAD` = your own record.
 
 The farmer's OTP has its own limits — it never uses up the partner's sign-in tries. On
 beta, test farmer mobiles listed in `OTP_TEST_NUMBERS` take `OTP_TEST_CODE` and get no

@@ -164,6 +164,8 @@ function setup(
     blocked?: string[];
     /** The Vistaar partner whose number is being added. */
     partner?: { pii_id: string | null };
+    /** `piis` mobiles by person, for a radar farmer's OTP. */
+    onRecord?: Record<string, string>;
   } = {},
 ) {
   const agents = {
@@ -215,6 +217,15 @@ function setup(
   let n = 4087722;
   const piis = {
     findIdByPhone: jest.fn().mockResolvedValue(opts.known ?? null),
+    phonesOf: jest.fn((ids: string[]) =>
+      Promise.resolve(
+        new Map(
+          ids.flatMap((id) =>
+            opts.onRecord?.[id] ? [[id, opts.onRecord[id]] as const] : [],
+          ),
+        ),
+      ),
+    ),
     resolve: jest.fn().mockResolvedValue({ pii_id: 'PII-9', created: true }),
     nextOrgNumber: jest.fn().mockImplementation(() => Promise.resolve(++n)),
     saveAddress: jest.fn().mockResolvedValue('ADDR-1'),
@@ -530,9 +541,9 @@ describe('LeadsService.upsert', () => {
   it('refuses another partner’s number in the check and the OTP too, not a bare OTP request', async () => {
     const { service, otp } = setup({ partner: { pii_id: 'PII-2' } });
     expect(await codeOf(service.check(ME, dto.phone))).toBe('PARTNER_NUMBER');
-    expect(await codeOf(service.sendFarmerOtp(ME, dto.phone, false))).toBe(
-      'PARTNER_NUMBER',
-    );
+    expect(
+      await codeOf(service.sendFarmerOtp(ME, { phone: dto.phone }, false)),
+    ).toBe('PARTNER_NUMBER');
     expect(otp.send).not.toHaveBeenCalled();
 
     const signupOnly = setup({ partner: { pii_id: null } });
@@ -1257,11 +1268,12 @@ describe('LeadsService — farmer OTP on lead add', () => {
 
   it('verifies through the lead scope and hands back a token the save takes; stores when', async () => {
     const { service, otp, rows } = setup();
-    const { otp_token } = await service.verifyFarmerOtp(
+    const { otp_token, phone } = await service.verifyFarmerOtp(
       ME,
-      '+91 98765 43210',
+      { phone: '+91 98765 43210' },
       '1234',
     );
+    expect(phone).toBe('9876543210');
     expect(otp.verify).toHaveBeenCalledWith(
       '9876543210',
       '+91',
@@ -1272,9 +1284,68 @@ describe('LeadsService — farmer OTP on lead add', () => {
     expect(rows.rows.get('PII-9')?.otp_verified_at).toBeInstanceOf(Date);
   });
 
+  it('sends a radar farmer’s OTP to their mobile on record, and shows it only after the OTP', async () => {
+    const { service, otp } = setup({ onRecord: { 'PII-9': '9876543210' } });
+    await service.sendFarmerOtp(ME, { pii_id: 'PII-9' }, false);
+    expect(otp.send).toHaveBeenCalledWith('9876543210', '+91', false, 'lead');
+    const verified = await service.verifyFarmerOtp(
+      ME,
+      { pii_id: 'PII-9' },
+      '1234',
+    );
+    expect(verified.phone).toBe('9876543210');
+    expect(otp.verify).toHaveBeenCalledWith(
+      '9876543210',
+      '+91',
+      '1234',
+      'lead',
+    );
+  });
+
+  it('refuses a radar farmer with no mobile, another partner’s, or the partner themself', async () => {
+    const none = setup();
+    expect(
+      await codeOf(none.service.sendFarmerOtp(ME, { pii_id: 'PII-9' }, false)),
+    ).toBe('NOT_FOUND');
+
+    const held = setup({
+      onRecord: { 'PII-9': '9876543210' },
+      seed: [myRow({ agent_id: 'VST-000002' })],
+    });
+    expect(
+      await codeOf(held.service.sendFarmerOtp(ME, { pii_id: 'PII-9' }, false)),
+    ).toBe('FARMER_TAKEN');
+    expect(held.otp.send).not.toHaveBeenCalled();
+
+    expect(
+      await codeOf(
+        none.service.sendFarmerOtp(ME, { pii_id: ME.pii_id }, false),
+      ),
+    ).toBe('SELF_LEAD');
+  });
+
+  it('takes the mobile or the pii_id, exactly one', async () => {
+    const { service, otp } = setup();
+    expect(await codeOf(service.sendFarmerOtp(ME, {}, false))).toBe(
+      'VALIDATION_FAILED',
+    );
+    expect(
+      await codeOf(
+        service.verifyFarmerOtp(
+          ME,
+          { phone: '9876543210', pii_id: 'PII-9' },
+          '1234',
+        ),
+      ),
+    ).toBe('VALIDATION_FAILED');
+    expect(otp.send).not.toHaveBeenCalled();
+  });
+
   it('sends the farmer’s OTP for approved partners only', async () => {
     const { service, otp } = setup();
-    expect(await service.sendFarmerOtp(ME, '9876543210', false)).toEqual({
+    expect(
+      await service.sendFarmerOtp(ME, { phone: '9876543210' }, false),
+    ).toEqual({
       sent: true,
       resend_after_seconds: 30,
     });
@@ -1282,7 +1353,9 @@ describe('LeadsService — farmer OTP on lead add', () => {
 
     const pending = setup({ stage: 'kyc_pending' });
     expect(
-      await codeOf(pending.service.sendFarmerOtp(ME, '9876543210', false)),
+      await codeOf(
+        pending.service.sendFarmerOtp(ME, { phone: '9876543210' }, false),
+      ),
     ).toBe('PARTNER_NOT_APPROVED');
     expect(pending.otp.send).not.toHaveBeenCalled();
   });

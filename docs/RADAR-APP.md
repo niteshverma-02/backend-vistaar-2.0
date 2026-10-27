@@ -110,8 +110,10 @@ The list behind a marker, newest first. `layer` = `kkd_leads` or `org_customers`
 A farmer a partner added since the hour's count is dropped from the page, so a page can
 hold fewer than `limit` while `has_more` is still `true` — keep paging by `has_more`.
 
-**Add as lead:** the usual add-farmer flow (`POST /leads/otp/send` → `/otp/verify` →
-`POST /leads`, LEADS-APP.md). The farmer's mobile is never sent to the app before their OTP.
+**Add as lead:** `POST /leads/otp/send` with `{ "pii_id": "PII-…" }` (not `phone`) → the
+farmer reads out the code → `POST /leads/otp/verify` `{ "pii_id", "otp" }` → `otp_token`
+**and the farmer's `phone`** → `POST /leads` as usual (LEADS-APP.md). The mobile reaches the
+app only after the farmer's OTP. `409 FARMER_TAKEN` = another partner added them since.
 
 ## How the partner's own farmers get a place
 
