@@ -19,7 +19,7 @@ Contract docs, one per feature, named by who reads them:
 | [CUSTOMERS-HO.md](./CUSTOMERS-HO.md) | HO portal | Every partner's customers with their business; cards; one customer |
 | [CUSTOMERS-APP.md](./CUSTOMERS-APP.md) | app | Customers list, tiles, detail; a lead becomes a customer on its first confirmed order |
 | [ORDER-EVENTS.md](./ORDER-EVENTS.md) | order service (TL) | The confirmed-order call that turns a lead into a customer |
-| [RADAR-APP.md](./RADAR-APP.md) | app | Nearby radar: my customers and open leads within N km; how farmers get a place |
+| [VISTAAR-RADAR-APP.md](./VISTAAR-RADAR-APP.md) | app | Nearby radar: my customers and open leads within N km; how farmers get a place |
 | [TODAY-APP.md](./TODAY-APP.md) | app | Home's Today's tasks: follow-ups due, saved carts to remind, events, orders to confirm |
 | [KKD-ACTIVITY-APP.md](./KKD-ACTIVITY-APP.md) | app | KKD & App activity: my farmers' store walk-ins, store orders, crop advice, app / website orders, app opens, abandoned carts; tiles; KKD stores within 50 km |
 | [BANNERS-APP.md](./BANNERS-APP.md) | app | Home carousel banners for the partner's cohort |

@@ -20,7 +20,7 @@ detail, Home "follow-ups due" (PRD C2, C4, C9, H5).
 > **Updated 2026-10-14 (3) — where the farmer is.** `POST /leads`, `PATCH /leads/:piiId` and
 > `POST /leads/:piiId/activities` (a `visit`) take an optional `location` — the phone's GPS
 > then; every lead now has `location { lat, lng, exact, source, at }` (or `null`). It feeds
-> the radar (RADAR-APP.md). Nothing removed.
+> the radar (VISTAAR-RADAR-APP.md). Nothing removed.
 >
 > **Updated 2026-10-14 (2) — full CRUD.** `PATCH /leads/:piiId` now also edits the farmer
 > (name, village, district, pincode, crops, acreage — not the mobile): the Lovable edit
@@ -170,7 +170,7 @@ you**. The Add Lead flow becomes:
    **this mobile** and **this partner** only; within that time a retry of the same save
    (offline sync, a timeout) reuses it. After it, verify again.
 
-**A farmer picked on the radar** (`GET /radar/pincodes/:pincode`, RADAR-APP.md) comes with
+**A farmer picked on the radar** (`GET /radar/pincodes/:pincode`, VISTAAR-RADAR-APP.md) comes with
 the mobile masked. Send `"pii_id"` instead of `"phone"` to `otp/send` and `otp/verify`
 (exactly one of the two, else `400 VALIDATION_FAILED`): the SMS goes to the farmer's mobile
 on record, and `otp/verify` answers with that `phone` — fill it into the add form and save
@@ -204,7 +204,7 @@ SMS, exactly as sign-in. The lead keeps when the mobile was verified
   "next_follow_up": "2026-10-15T10:00:00+05:30",   // optional — future only
   "note": "Needs a fungicide",      // optional — saved as the first activity
   "ex_employee_declared": true,     // required for ex-employee partners (12-month declaration)
-  "location": { "lat": 23.21, "lng": 77.41, "accuracy_m": 20 }   // optional — the phone's GPS now (RADAR-APP.md)
+  "location": { "lat": 23.21, "lng": 77.41, "accuracy_m": 20 }   // optional — the phone's GPS now (VISTAAR-RADAR-APP.md)
 }
 ```
 
