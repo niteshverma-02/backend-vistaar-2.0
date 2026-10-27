@@ -83,7 +83,9 @@ counts as good (no open course left undone).
 What the partner did in one IST **day**, **week** (Monday → Sunday), **month**, **quarter**
 (Jan / Apr / Jul / Oct) or **year** (Indian FY, April → March) — the one `date` falls in
 (default today; `period` default `day`). Step back / forward by sending a date in the
-period before / after. Not cached.
+period before / after. **`period=custom&date=<first day>&to=<last day>`** = any range, both
+days included, at most a year (`VALIDATION_FAILED` when `to` is before `date` or more than
+365 days after it). Not cached.
 
 ```jsonc
 {

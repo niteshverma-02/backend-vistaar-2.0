@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 
+import { badRequest } from '@common/errors/api-error';
 import { PageResult } from '@common/http/page-result';
 import {
   addMonths,
+  DAY_MS,
   istDate,
   istDaysBetween,
   istMonthKey,
@@ -242,12 +244,11 @@ export class PerformanceService {
     agentId: string,
     period: ActivityPeriod,
     date?: string,
+    last?: string,
     now = new Date(),
   ): Promise<ActivityView> {
     const id = agentId.toUpperCase();
-    const range = activityRange(period, date ?? istDate(now));
-    const from = new Date(`${range.from}T00:00:00+05:30`);
-    const to = new Date(`${range.to}T00:00:00+05:30`);
+    const { range, from, to } = activityWindow(period, date, last, now);
     const lastDay = istDate(new Date(to.getTime() - 1));
 
     const [{ book }, leads, attendance, meetings, gigs, coins] =
@@ -446,12 +447,11 @@ export class PerformanceService {
     period: ActivityPeriod,
     kind: ActivityKind,
     date?: string,
+    last?: string,
     now = new Date(),
   ): Promise<ActivityItems> {
     const id = agentId.toUpperCase();
-    const range = activityRange(period, date ?? istDate(now));
-    const from = new Date(`${range.from}T00:00:00+05:30`);
-    const to = new Date(`${range.to}T00:00:00+05:30`);
+    const { range, from, to } = activityWindow(period, date, last, now);
     const cap = ACTIVITY_ITEMS_CAP;
     const inRange = (at: Date | null) => !!at && at >= from && at < to;
     const rupees = (n: number) => `₹${n.toLocaleString('en-IN')}`;
@@ -782,4 +782,30 @@ export class PerformanceService {
       }),
     };
   }
+}
+
+/** The period's IST days and instants; a custom range must run forwards, at most a year. */
+function activityWindow(
+  period: ActivityPeriod,
+  date: string | undefined,
+  last: string | undefined,
+  now: Date,
+) {
+  const start = date ?? istDate(now);
+  if (period === 'custom') {
+    const days = (Date.parse(last ?? start) - Date.parse(start)) / DAY_MS;
+    if (days < 0)
+      throw badRequest(
+        'VALIDATION_FAILED',
+        'The end date is before the start date.',
+      );
+    if (days > 365)
+      throw badRequest('VALIDATION_FAILED', 'Please choose up to one year.');
+  }
+  const range = activityRange(period, start, last);
+  return {
+    range,
+    from: new Date(`${range.from}T00:00:00+05:30`),
+    to: new Date(`${range.to}T00:00:00+05:30`),
+  };
 }

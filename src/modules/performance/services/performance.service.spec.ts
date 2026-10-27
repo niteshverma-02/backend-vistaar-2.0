@@ -210,7 +210,13 @@ describe('PerformanceService', () => {
   });
 
   it("counts one day's or one month's activity from the book and the other modules", async () => {
-    const day = await service.activity('vst-000001', 'day', '2026-10-02', NOW);
+    const day = await service.activity(
+      'vst-000001',
+      'day',
+      '2026-10-02',
+      undefined,
+      NOW,
+    );
     expect(day).toMatchObject({
       period: 'day',
       from: '2026-10-02',
@@ -231,6 +237,7 @@ describe('PerformanceService', () => {
       'VST-000001',
       'day',
       '2026-10-03',
+      undefined,
       NOW,
     );
     expect(quiet.orders).toEqual({
@@ -241,14 +248,47 @@ describe('PerformanceService', () => {
     });
     expect(quiet.customers).toEqual({ new: 0, active: 0 });
 
-    const year = await service.activity('VST-000001', 'year', undefined, NOW);
+    const year = await service.activity(
+      'VST-000001',
+      'year',
+      undefined,
+      undefined,
+      NOW,
+    );
     expect([year.from, year.to]).toEqual(['2026-04-01', '2027-04-01']);
     expect(year.orders.placed).toBe(6); // June to October
+
+    // Custom: 2 Sep → 2 Oct, both days included (C on 2 Sep, A + B on 2 Oct).
+    const custom = await service.activity(
+      'VST-000001',
+      'custom',
+      '2026-09-02',
+      '2026-10-02',
+      NOW,
+    );
+    expect([custom.from, custom.to, custom.orders.placed]).toEqual([
+      '2026-09-02',
+      '2026-10-03',
+      3,
+    ]);
+    await expect(
+      service.activity('VST-000001', 'custom', '2026-10-02', '2026-09-02', NOW),
+    ).rejects.toThrow('The end date is before the start date.');
+    await expect(
+      service.activity('VST-000001', 'custom', '2025-01-01', '2026-10-02', NOW),
+    ).rejects.toThrow('Please choose up to one year.');
   });
 
   it('lists the rows behind the cards: orders, first orders, delivered, leads', async () => {
     const list = (kind: 'orders' | 'customers' | 'delivered' | 'leads') =>
-      service.activityItems('VST-000001', 'day', kind, '2026-10-02', NOW);
+      service.activityItems(
+        'VST-000001',
+        'day',
+        kind,
+        '2026-10-02',
+        undefined,
+        NOW,
+      );
 
     const orders = await list('orders');
     expect(orders.items.map((i) => [i.title, i.ref, i.amount])).toEqual([
@@ -270,6 +310,7 @@ describe('PerformanceService', () => {
       'day',
       'orders',
       '2026-10-03',
+      undefined,
       NOW,
     );
     expect(empty.items).toEqual([]);

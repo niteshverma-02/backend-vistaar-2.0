@@ -39,19 +39,31 @@ export class ActivityQueryDto {
   @ApiPropertyOptional({ enum: ACTIVITY_PERIODS, default: 'day' })
   @IsOptional()
   @IsIn(ACTIVITY_PERIODS, {
-    message: 'Please choose day, week, month, quarter or year.',
+    message: 'Please choose day, week, month, quarter, year or custom.',
   })
   period: ActivityPeriod = 'day';
 
   @ApiPropertyOptional({
     example: '2026-10-27',
-    description: 'Any IST day inside the period; default today',
+    description:
+      'Any IST day inside the period (custom: the first day); default today',
   })
   @IsOptional()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, {
     message: 'Please send the date as YYYY-MM-DD.',
   })
   date?: string;
+
+  @ApiPropertyOptional({
+    example: '2026-10-31',
+    description:
+      'custom only: the last day (included), at most a year after `date`',
+  })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'Please send the date as YYYY-MM-DD.',
+  })
+  to?: string;
 }
 
 export class ActivityItemsQueryDto extends ActivityQueryDto {
