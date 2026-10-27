@@ -621,6 +621,15 @@ export class LeadsService implements OnModuleInit {
     };
   }
 
+  /** My Activity's lists: the leads added, or the log entries made, in `[from, to)`. */
+  addedBetween(agentId: string, from: Date, to: Date, cap: number) {
+    return this.rows.addedBetween(agentId, from, to, cap);
+  }
+
+  activitiesBetween(agentId: string, from: Date, to: Date, cap: number) {
+    return this.rows.activitiesBetween(agentId, from, to, cap);
+  }
+
   /** My Activity: leads added in `[from, to)` (won / lost of them now) and the log entries made. */
   async activityBetween(agentId: string, from: Date, to: Date) {
     const [added, logged] = await Promise.all([

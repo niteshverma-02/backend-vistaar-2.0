@@ -34,6 +34,7 @@ import {
   previousMonths,
   shares,
   tierOf,
+  type ActivityKind,
   type ActivityPeriod,
   type HealthFactor,
   type LifecycleStage,
@@ -188,6 +189,29 @@ export interface ActivityView {
   /** Approved meeting gigs held in the period; `null` when gigs could not be read. */
   gigs: { done: number; earnings: number; farmers: number } | null;
   coins: { approved: number; pending: number };
+}
+
+/** At most this many rows in one My Activity list. */
+const ACTIVITY_ITEMS_CAP = 200;
+
+/** One row of a My Activity list. */
+export interface ActivityItem {
+  id: string;
+  title: string;
+  sub: string;
+  at: Date | null;
+  /** ₹ (orders, gigs) or coins; `null` = none. */
+  amount: number | null;
+  /** What the row opens: a farmer's `pii_id`, an order id, a meeting id; `null` = nothing. */
+  ref: string | null;
+}
+
+/** `GET /performance/activity/items`: the rows behind one card, newest first. */
+export interface ActivityItems {
+  kind: ActivityKind;
+  from: string;
+  to: string;
+  items: ActivityItem[];
 }
 
 /**
@@ -415,6 +439,146 @@ export class PerformanceService {
       lifecycle_stage: standing.lifecycle_stage,
       monthly_target: partner.monthly_target,
     };
+  }
+
+  async activityItems(
+    agentId: string,
+    period: ActivityPeriod,
+    kind: ActivityKind,
+    date?: string,
+    now = new Date(),
+  ): Promise<ActivityItems> {
+    const id = agentId.toUpperCase();
+    const range = activityRange(period, date ?? istDate(now));
+    const from = new Date(`${range.from}T00:00:00+05:30`);
+    const to = new Date(`${range.to}T00:00:00+05:30`);
+    const cap = ACTIVITY_ITEMS_CAP;
+    const inRange = (at: Date | null) => !!at && at >= from && at < to;
+    const rupees = (n: number) => `₹${n.toLocaleString('en-IN')}`;
+    const orderRow = (r: LedgerRow, at: Date, sub: string): ActivityItem => ({
+      id: r.order_id,
+      title: r.pii_id ? r.customer_name : 'Shop stock',
+      sub: `${r.order_id} · ${sub}`,
+      at,
+      amount: r.order_value,
+      ref: r.order_id,
+    });
+
+    let items: ActivityItem[];
+    switch (kind) {
+      case 'orders':
+      case 'customers':
+      case 'delivered': {
+        const { book } = await this.commission.bookOf(id, now);
+        if (kind === 'orders') {
+          items = book.rows
+            .filter((r) => inRange(r.placed_at))
+            .map((r) => orderRow(r, r.placed_at, r.stage));
+        } else if (kind === 'delivered') {
+          items = book.rows
+            .filter((r) => r.status !== 'reversed' && inRange(r.delivered_at))
+            .sort(
+              (a, b) => b.delivered_at!.getTime() - a.delivered_at!.getTime(),
+            )
+            .map((r) =>
+              orderRow(r, r.delivered_at!, `${rupees(r.amount)} commission`),
+            );
+        } else {
+          // Each farmer's first order that was not cancelled (rows are newest first).
+          const first = new Map<string, LedgerRow>();
+          for (const r of book.rows)
+            if (r.pii_id && r.stage !== 'cancelled') first.set(r.pii_id, r);
+          items = [...first.values()]
+            .filter((r) => inRange(r.placed_at))
+            .sort((a, b) => b.placed_at.getTime() - a.placed_at.getTime())
+            .map((r) => ({
+              id: r.pii_id!,
+              title: r.customer_name,
+              sub: `First order ${r.order_id}`,
+              at: r.placed_at,
+              amount: r.order_value,
+              ref: r.pii_id,
+            }));
+        }
+        break;
+      }
+      case 'leads':
+        items = (await this.leads.addedBetween(id, from, to, cap)).map((l) => ({
+          id: l.pii_id,
+          title: l.name,
+          sub: `${l.village} · ${l.stage}`,
+          at: l.created_at,
+          amount: null,
+          ref: l.pii_id,
+        }));
+        break;
+      case 'visits':
+        items = (await this.leads.activitiesBetween(id, from, to, cap)).map(
+          (a, i) => ({
+            id: `${a.pii_id}-${i}`,
+            title: a.name,
+            sub: a.text ? `${a.type} · ${a.text}` : a.type,
+            at: a.at,
+            amount: null,
+            ref: a.pii_id,
+          }),
+        );
+        break;
+      case 'attendance': {
+        const lastDay = istDate(new Date(to.getTime() - 1));
+        const days = await this.attendance.daysBetween(id, range.from, lastDay);
+        items = days.map((d) => ({
+          id: d.date,
+          title: d.date,
+          sub: [
+            `${Math.floor(d.worked_ms / 3_600_000)}h ${Math.floor((d.worked_ms % 3_600_000) / 60_000)}m worked`,
+            d.sessions[0]?.in_location.label,
+            d.punched_in ? 'not punched out' : null,
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          at: d.first_in_at,
+          amount: null,
+          ref: null,
+        }));
+        break;
+      }
+      case 'meetings':
+        items = (await this.meetings.briefsBetween(id, from, to, cap)).map(
+          (m) => ({
+            id: m._id,
+            title: m.title,
+            sub: `${m.village} · ${m.status} · ${m.counts.present} present · ${m.counts.leads} leads`,
+            at: m.starts_at,
+            amount: null,
+            ref: m._id,
+          }),
+        );
+        break;
+      case 'gigs':
+        items = (await this.gigs.heldBetween(id, from, to, cap)).map((g) => ({
+          id: g._id,
+          title: g.title,
+          sub: g.village,
+          at: g.starts_at,
+          amount: g.payout ?? 0,
+          ref: null,
+        }));
+        break;
+      case 'coins':
+        items = (await this.rewards.coinRowsBetween(id, from, to, cap)).map(
+          (c) => ({
+            id: c._id,
+            title: c.rule_name,
+            sub: [c.farmer_name, c.status].filter(Boolean).join(' · '),
+            at: c.created_at,
+            amount: c.amount,
+            ref: null,
+          }),
+        );
+        break;
+    }
+    return { kind, from: range.from, to: range.to, items: items.slice(0, cap) };
   }
 
   /** Home and Profile: tier, lifecycle stage, health score, target (cached 5 min). */

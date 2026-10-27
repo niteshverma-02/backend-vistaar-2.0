@@ -6,9 +6,14 @@ import {
   type PartnerRef,
 } from '@common/auth/current-partner.decorator';
 
-import { ActivityQueryDto, PerformanceQueryDto } from '../dto/performance.dto';
+import {
+  ActivityItemsQueryDto,
+  ActivityQueryDto,
+  PerformanceQueryDto,
+} from '../dto/performance.dto';
 import {
   PerformanceService,
+  type ActivityItems,
   type ActivityView,
   type PerformanceView,
   type Standing,
@@ -44,6 +49,23 @@ export class PerformanceController {
     return this.performance.activity(
       partner.agent_id,
       query.period,
+      query.date,
+    );
+  }
+
+  @Get('activity/items')
+  @ApiOperation({
+    summary:
+      'The rows behind one My Activity card (newest first, at most 200): who was added, who ordered, the visits …',
+  })
+  activityItems(
+    @CurrentPartner() partner: PartnerRef,
+    @Query() query: ActivityItemsQueryDto,
+  ): Promise<ActivityItems> {
+    return this.performance.activityItems(
+      partner.agent_id,
+      query.period,
+      query.kind,
       query.date,
     );
   }

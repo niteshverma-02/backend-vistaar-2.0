@@ -30,6 +30,20 @@ export const ACTIVITY_PERIODS = [
 ] as const;
 export type ActivityPeriod = (typeof ACTIVITY_PERIODS)[number];
 
+/** The lists behind My Activity's cards (`GET /performance/activity/items?kind=`). */
+export const ACTIVITY_KINDS = [
+  'leads',
+  'customers',
+  'orders',
+  'delivered',
+  'visits',
+  'attendance',
+  'meetings',
+  'gigs',
+  'coins',
+] as const;
+export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
+
 /**
  * IST days `[from, to)` (`YYYY-MM-DD`) of the day, week (Monday first), month,
  * quarter (Jan / Apr / Jul / Oct) or Indian FY (April) that `date` falls in.

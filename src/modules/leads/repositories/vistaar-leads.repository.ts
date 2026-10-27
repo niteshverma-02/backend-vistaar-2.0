@@ -556,6 +556,57 @@ export class VistaarLeadsRepository {
     };
   }
 
+  /** Leads added in `[from, to)`, newest first, at most [cap]. */
+  addedBetween(agentId: string, from: Date, to: Date, cap: number) {
+    return this.model
+      .find({ agent_id: agentId, created_at: { $gte: from, $lt: to } })
+      .select({ pii_id: 1, name: 1, village: 1, stage: 1, created_at: 1 })
+      .sort({ created_at: -1 })
+      .limit(cap)
+      .lean<
+        Pick<
+          VistaarLead,
+          'pii_id' | 'name' | 'village' | 'stage' | 'created_at'
+        >[]
+      >()
+      .exec();
+  }
+
+  /** The log entries behind [activityCounts], newest first, at most [cap]. */
+  activitiesBetween(agentId: string, from: Date, to: Date, cap: number) {
+    const at = { $gte: from, $lt: to };
+    return this.model
+      .aggregate<{
+        pii_id: string;
+        name: string;
+        type: (typeof ACTIVITY_TYPES)[number];
+        text: string;
+        at: Date;
+      }>([
+        { $match: { agent_id: agentId, 'activities.at': at } },
+        { $unwind: '$activities' },
+        {
+          $match: {
+            'activities.at': at,
+            'activities.type': { $in: [...ACTIVITY_TYPES] },
+          },
+        },
+        { $sort: { 'activities.at': -1 } },
+        { $limit: cap },
+        {
+          $project: {
+            _id: 0,
+            pii_id: 1,
+            name: 1,
+            type: '$activities.type',
+            text: '$activities.text',
+            at: '$activities.at',
+          },
+        },
+      ])
+      .exec();
+  }
+
   /** Call / visit / WhatsApp / note entries logged on the partner's farmers in `[from, to)`, by type. */
   async activityCounts(
     agentId: string,

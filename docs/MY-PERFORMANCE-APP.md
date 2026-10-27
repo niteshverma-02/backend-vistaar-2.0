@@ -11,6 +11,7 @@ when asked. Sales are **delivered** sales before GST — the same numbers commis
 | GET | `/performance?period=month\|3m\|fy` | My Performance |
 | GET | `/performance/standing` | Home, Profile (replaces the spec's "fields on the login object") |
 | GET | `/performance/activity?period=day\|week\|month\|quarter\|year&date=YYYY-MM-DD` | My Activity |
+| GET | `/performance/activity/items?kind=…&period=…&date=…` | My Activity — the list behind a card |
 
 `period`: `month` (this month) · `3m` (the last 3 months with this one) · `fy` (April →
 this month). Default `month`.
@@ -109,6 +110,25 @@ period before / after. Not cached.
 | `meetings` | the partner's meetings **starting** in the period: `held` = completed, `farmers` = present, `leads` = captured |
 | `gigs` | approved meeting gigs held in the period, Σ payout ₹, farmers present |
 | `coins` | coin rewards made in the period — HO-approved, and waiting for HO |
+
+## `GET /performance/activity/items?kind=orders&period=week&date=2026-10-27`
+
+The rows behind one card, newest first, **at most 200** (the card's count can be higher).
+`kind`: `leads` (added) · `customers` (first order) · `orders` (placed) · `delivered`
+(sales + commission) · `visits` (call / visit / WhatsApp / note) · `attendance` · `meetings`
+· `gigs` · `coins`. Same rules as the counts above.
+
+```jsonc
+{ "kind": "orders", "from": "2026-10-26", "to": "2026-11-02",
+  "items": [
+    { "id": "KSV-120", "title": "Ramesh Patel", "sub": "KSV-120 · delivered",
+      "at": "2026-10-27T05:10:00Z", "amount": 4200, "ref": "KSV-120" }
+  ] }
+```
+
+`ref` = what the row opens: the farmer's `pii_id` (leads, customers, visits), the order id
+(orders, delivered), the meeting id (meetings); `null` = nothing. `amount` = ₹ (orders,
+gigs) or coins; `null` = none. Shop-stock orders are titled "Shop stock".
 
 ## Not built yet
 

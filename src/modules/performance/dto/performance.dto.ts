@@ -16,7 +16,9 @@ import { PageQueryDto } from '@common/dto/page-query.dto';
 import { MONTH_PATTERN } from '@modules/attendance/attendance.domain';
 
 import {
+  ACTIVITY_KINDS,
   ACTIVITY_PERIODS,
+  type ActivityKind,
   PERIODS,
   type ActivityPeriod,
   type Period,
@@ -50,6 +52,12 @@ export class ActivityQueryDto {
     message: 'Please send the date as YYYY-MM-DD.',
   })
   date?: string;
+}
+
+export class ActivityItemsQueryDto extends ActivityQueryDto {
+  @ApiProperty({ enum: ACTIVITY_KINDS })
+  @IsIn(ACTIVITY_KINDS, { message: 'Please choose which list to show.' })
+  kind!: ActivityKind;
 }
 
 export class PerformanceAgentParamDto {
