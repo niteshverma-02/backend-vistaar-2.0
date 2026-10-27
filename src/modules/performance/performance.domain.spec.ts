@@ -32,6 +32,14 @@ describe('activityRange', () => {
       from: '2027-01-01',
       to: '2027-04-01',
     });
+    expect(activityRange('custom', '2026-10-05', '2026-10-09')).toEqual({
+      from: '2026-10-05',
+      to: '2026-10-10',
+    });
+    expect(activityRange('custom', '2026-10-05')).toEqual({
+      from: '2026-10-05',
+      to: '2026-10-06',
+    });
     expect(activityRange('year', '2027-02-10')).toEqual({
       from: '2026-04-01',
       to: '2027-04-01',

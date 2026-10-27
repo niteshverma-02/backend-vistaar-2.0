@@ -50,6 +50,7 @@ export class PerformanceController {
       partner.agent_id,
       query.period,
       query.date,
+      query.to,
     );
   }
 
@@ -67,6 +68,7 @@ export class PerformanceController {
       query.period,
       query.kind,
       query.date,
+      query.to,
     );
   }
 

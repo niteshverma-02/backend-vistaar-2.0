@@ -27,6 +27,7 @@ export const ACTIVITY_PERIODS = [
   'month',
   'quarter',
   'year',
+  'custom',
 ] as const;
 export type ActivityPeriod = (typeof ACTIVITY_PERIODS)[number];
 
@@ -46,14 +47,16 @@ export type ActivityKind = (typeof ACTIVITY_KINDS)[number];
 
 /**
  * IST days `[from, to)` (`YYYY-MM-DD`) of the day, week (Monday first), month,
- * quarter (Jan / Apr / Jul / Oct) or Indian FY (April) that `date` falls in.
+ * quarter (Jan / Apr / Jul / Oct) or Indian FY (April) that `date` falls in;
+ * `custom` = `date` to `last` (both included; `last` left out = that day).
  */
 export function activityRange(
   period: ActivityPeriod,
   date: string,
+  last?: string,
 ): { from: string; to: string } {
-  const day = (n: number) => {
-    const d = new Date(`${date}T00:00:00Z`);
+  const day = (n: number, from = date) => {
+    const d = new Date(`${from}T00:00:00Z`);
     d.setUTCDate(d.getUTCDate() + n);
     return d.toISOString().slice(0, 10);
   };
@@ -75,6 +78,8 @@ export function activityRange(
       return months(addMonths(month, -((Number(date.slice(5, 7)) - 1) % 3)), 3);
     case 'year':
       return months(fyStart(month), 12);
+    case 'custom':
+      return { from: date, to: day(1, last ?? date) };
   }
 }
 
