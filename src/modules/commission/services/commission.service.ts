@@ -5,6 +5,7 @@ import { TtlCache } from '@common/utils/ttl-cache';
 import {
   addMonths,
   istDate,
+  istDayRange,
   istMonthKey,
   istMonthStart,
 } from '@common/utils/ist-day.util';
@@ -423,15 +424,24 @@ export class CommissionService {
 
   async ledger(agentId: string, query: LedgerQueryDto): Promise<LedgerPage> {
     const { book } = await this.bookOf(agentId);
-    const rows = query.status
-      ? book.rows.filter((r) => r.status === query.status)
-      : book.rows;
+    const { from, to } = istDayRange(query.from, query.to);
+    const dated =
+      from || to
+        ? book.rows.filter(
+            (r) => (!from || r.placed_at >= from) && (!to || r.placed_at < to),
+          )
+        : null;
+    const rows = (dated ?? book.rows).filter(
+      (r) => !query.status || r.status === query.status,
+    );
     const page = new PageResult(
       rows.slice(query.skip, query.skip + query.limit).map(itemOf),
       rows.length,
       query,
     );
-    return Object.assign(page, { totals: book.totals });
+    return Object.assign(page, {
+      totals: dated ? periodTotals(dated) : book.totals,
+    });
   }
 
   /**
@@ -668,4 +678,19 @@ function itemOf(r: LedgerRow): LedgerItem {
     delivered_at: r.delivered_at,
     ...commissionOf(r),
   };
+}
+
+/** A dated ledger's tiles: that period's orders by status (count, Σ commission). */
+function periodTotals(rows: readonly LedgerRow[]): StatusTotals {
+  const totals: StatusTotals = {
+    pending: { count: 0, amount: 0 },
+    confirmed: { count: 0, amount: 0 },
+    paid: { count: 0, amount: 0 },
+    reversed: { count: 0, amount: 0 },
+  };
+  for (const r of rows) {
+    totals[r.status].count += 1;
+    totals[r.status].amount += r.amount;
+  }
+  return totals;
 }

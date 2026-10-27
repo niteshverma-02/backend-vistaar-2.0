@@ -25,7 +25,7 @@ Apr–Jun).
 | Method | Path | Screen |
 |---|---|---|
 | GET | `/commission/summary` | Home strip, Wallet, "Earn ~₹X" (Shop / Cart / Checkout / Pitch), Orders "Pending commission" |
-| GET | `/commission/ledger?status=&page=&limit=` | Commission → Ledger |
+| GET | `/commission/ledger?status=&from=&to=&page=&limit=` | Commission → Ledger |
 | GET | `/commission/plans` | Commission → My plan, Compare cohorts |
 | GET | `/orders`, `/orders/:id` | each order's `commission` + `delivered_at` (ORDERS-APP.md) |
 | GET | `/wallet` | Wallet: balance, bank, can I withdraw |
@@ -69,6 +69,8 @@ Refresh on app open, after an order, on pull-to-refresh.
 
 ## `GET /commission/ledger`
 
+`from` / `to` (optional, `YYYY-MM-DD`, IST days placed, both included) date the ledger (the app's period filter).
+
 `status` optional; newest order first; `limit` ≤ 200.
 
 ```jsonc
@@ -93,7 +95,7 @@ Refresh on app open, after an order, on pull-to-refresh.
     }
   ],
   "page": 1, "limit": 50, "total": 15, "has_more": false,
-  "totals": { … }                          // the whole ledger, as in summary
+  "totals": { … }                          // the whole ledger, as in summary; with from/to: that period's rows by status (count, Σ amount)
 }
 ```
 
