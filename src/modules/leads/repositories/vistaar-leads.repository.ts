@@ -154,6 +154,31 @@ export class VistaarLeadsRepository {
     return row !== null;
   }
 
+  /**
+   * Every farmer some partner holds — for the radar's pools, once an hour.
+   * With the unique `{pii_id}` index (prod) the planner reads it alone; no
+   * hint, since a host without it (beta) would refuse the query.
+   */
+  async heldPiis(): Promise<Set<string>> {
+    const held = new Set<string>();
+    const cursor = this.model
+      .find({}, { _id: 0, pii_id: 1 })
+      .lean<{ pii_id: string }>()
+      .cursor({ batchSize: 5_000 });
+    for await (const row of cursor) held.add(row.pii_id);
+    return held;
+  }
+
+  /** Which of these farmers some partner holds now; rides `{pii_id}`. */
+  async heldAmong(piiIds: readonly string[]): Promise<Set<string>> {
+    if (!piiIds.length) return new Set();
+    const rows = await this.model
+      .find({ pii_id: { $in: piiIds } }, { _id: 0, pii_id: 1 })
+      .lean<{ pii_id: string }[]>()
+      .exec();
+    return new Set(rows.map((r) => r.pii_id));
+  }
+
   /** `false` when the farmer already has a row — the unique `pii_id` decides a race. */
   async insert(
     row: Omit<VistaarLead, 'created_at' | 'updated_at'>,

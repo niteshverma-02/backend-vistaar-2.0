@@ -25,6 +25,7 @@ What must exist in production before the matching feature is switched on.
 | `B2B_MARKETPLACE_CODE` | `MKTP-1` unless the partner marketplace changes |
 | `CATALOG_CACHE_TTL_SECONDS` | `60` default |
 | `ORDER_EVENTS_SECRET` | 24+ random characters (`openssl rand -base64 32`), shared **only** with the order service (`POST /hooks/orders/confirmed`). Unset = the route answers 503 and leads never turn into customers. Set it when the TL's order API is ready |
+| `RADAR_POOLS_ENABLED` | `true` (default). Each process reads the radar's pincode pools — KKD leads and org customers — from `leads_v2` and `customers` once an hour, on a secondary (~10–40 s of aggregation by the cluster's load on 2026-10-27; ~6–10 MB held per process; no table written). `false` = the radar shows the partner's own farmers and the stores only |
 
 ## Indexes (create by hand on prod)
 
@@ -149,6 +150,7 @@ Nothing to build: the lookups use the existing `pii_id`, `phone_number`,
 ## Farmer leads — before switching on
 
 - [ ] Radar: `node dist/scripts/backfill-lead-location.js` (dry run), then `--apply` — farmers saved before 2026-10-14 get their pincode's centre. Safe to run again
+- [ ] Radar stores come from the offline franchise master (active only; one store per spot, the oldest record). StockShip's test franchise **FR-101** ("Beta Franchise Warehouse", same address and GPS as FR-100) is hidden by that rule — ask StockShip to switch its warehouse off so every portal agrees
 - [ ] HO adds the farm location to the farmer-consent wording (DPDP) — `PUT /admin/settings { farmer_consent_text }`
 
 - [ ] One active Offline Head (USR-1037) in `agents_v2`, or `lead_owner_agent_id` set

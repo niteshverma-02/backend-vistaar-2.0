@@ -14,6 +14,16 @@ import {
 
 export type { PincodeInfo } from '../repositories/pincode.repository';
 
+/** A pincode area's centre and how far it is from a point. */
+export interface PincodeSpot {
+  pincode: string;
+  state: string | null;
+  district: string | null;
+  lat: number;
+  lng: number;
+  distance_km: number;
+}
+
 /** Pincodes do not move; a daily refresh picks up India Post additions. */
 const REFRESH_MS = 24 * 60 * 60 * 1000;
 /** After a failed load, wait this long before trying the whole book again. */
@@ -107,6 +117,36 @@ export class PincodeService implements OnApplicationBootstrap {
     return row?.lat != null && row.lng != null
       ? { lat: row.lat, lng: row.lng }
       : null;
+  }
+
+  /**
+   * Pincodes whose centre lies within `km` of a point, nearest first — or,
+   * when none does, the nearest one (a small ring can fall between centres;
+   * Raisen at 5 km has none). One pass over the book in memory, a few ms.
+   * `[]` when the book is not loaded.
+   */
+  async around(lat: number, lng: number, km: number): Promise<PincodeSpot[]> {
+    const book = await this.current();
+    if (!book) return [];
+    const spots: PincodeSpot[] = [];
+    let nearest: PincodeSpot | null = null;
+    for (const row of book.values()) {
+      if (row.lat == null || row.lng == null) continue;
+      const spot: PincodeSpot = {
+        pincode: row.pincode,
+        state: row.state,
+        district: row.district,
+        lat: row.lat,
+        lng: row.lng,
+        distance_km: haversineKm(lat, lng, row.lat, row.lng),
+      };
+      if (spot.distance_km <= km) spots.push(spot);
+      else if (!nearest || spot.distance_km < nearest.distance_km) {
+        nearest = spot;
+      }
+    }
+    if (!spots.length && nearest) spots.push(nearest);
+    return spots.sort((a, b) => a.distance_km - b.distance_km);
   }
 
   private async current(): Promise<Map<string, PincodeRow> | null> {

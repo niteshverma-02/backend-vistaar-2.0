@@ -152,6 +152,11 @@ export class PiiService {
     return this.piis.findIdByPhone(phone);
   }
 
+  /** Each person's mobile, for the people that have one. */
+  phonesOf(piiIds: readonly string[]): Promise<Map<string, string>> {
+    return this.piis.phonesOf(piiIds);
+  }
+
   /**
    * Read-then-insert, like ko-sales' own `create`: there is no unique phone
    * index on beta to upsert against, and Vistaar may not add one to a shared

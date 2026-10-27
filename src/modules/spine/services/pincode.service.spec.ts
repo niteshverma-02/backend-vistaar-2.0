@@ -34,6 +34,31 @@ describe('PincodeService', () => {
     expect(repo.find).not.toHaveBeenCalled();
   });
 
+  it('lists the pincodes in a ring nearest first, or the nearest one when the ring holds none', async () => {
+    const repo = {
+      all: jest
+        .fn()
+        .mockResolvedValue([
+          row('462003', 23.3),
+          row('462001', 23.21),
+          row('462002', 23.25),
+        ]),
+      find: jest.fn(),
+    };
+    const service = new PincodeService(repo as unknown as PincodeRepository);
+    const ring = await service.around(23.2, 77.4, 6);
+    expect(ring.map((p) => p.pincode)).toEqual(['462001', '462002']);
+    expect(ring[0]).toMatchObject({
+      district: 'BHOPAL',
+      lat: 23.21,
+      lng: 77.4,
+    });
+    expect(ring[0].distance_km).toBeCloseTo(1.11, 1);
+
+    const tiny = await service.around(23.0, 77.4, 1);
+    expect(tiny.map((p) => p.pincode)).toEqual(['462001']);
+  });
+
   it('loads once for callers that arrive together', async () => {
     const repo = {
       all: jest.fn().mockResolvedValue([row('462026', 23.2)]),
