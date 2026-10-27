@@ -118,6 +118,11 @@ export class MeetingsService {
     return new PageResult(rows.map(viewOf), total, query);
   }
 
+  /** The partner's meetings starting in `[from, to)`, by status, with the farmers they reached — My Activity. */
+  totalsMine(agentId: string, from: Date, to: Date): Promise<MeetingTotals> {
+    return this.meetings.totals({ agent_id: agentId, from, to });
+  }
+
   async get(agentId: string, id: string): Promise<MeetingDetail> {
     return this.detail(await this.mine(agentId, id));
   }

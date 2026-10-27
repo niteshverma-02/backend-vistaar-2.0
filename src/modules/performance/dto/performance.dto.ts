@@ -15,7 +15,12 @@ import {
 import { PageQueryDto } from '@common/dto/page-query.dto';
 import { MONTH_PATTERN } from '@modules/attendance/attendance.domain';
 
-import { PERIODS, type Period } from '../performance.domain';
+import {
+  ACTIVITY_PERIODS,
+  PERIODS,
+  type ActivityPeriod,
+  type Period,
+} from '../performance.domain';
 
 export class PerformanceQueryDto {
   @ApiPropertyOptional({
@@ -26,6 +31,25 @@ export class PerformanceQueryDto {
   @IsOptional()
   @IsIn(PERIODS, { message: 'Please choose month, 3m or fy.' })
   period: Period = 'month';
+}
+
+export class ActivityQueryDto {
+  @ApiPropertyOptional({ enum: ACTIVITY_PERIODS, default: 'day' })
+  @IsOptional()
+  @IsIn(ACTIVITY_PERIODS, {
+    message: 'Please choose day, week, month, quarter or year.',
+  })
+  period: ActivityPeriod = 'day';
+
+  @ApiPropertyOptional({
+    example: '2026-10-27',
+    description: 'Any IST day inside the period; default today',
+  })
+  @IsOptional()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'Please send the date as YYYY-MM-DD.',
+  })
+  date?: string;
 }
 
 export class PerformanceAgentParamDto {

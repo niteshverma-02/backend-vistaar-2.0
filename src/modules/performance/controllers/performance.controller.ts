@@ -6,9 +6,10 @@ import {
   type PartnerRef,
 } from '@common/auth/current-partner.decorator';
 
-import { PerformanceQueryDto } from '../dto/performance.dto';
+import { ActivityQueryDto, PerformanceQueryDto } from '../dto/performance.dto';
 import {
   PerformanceService,
+  type ActivityView,
   type PerformanceView,
   type Standing,
 } from '../services/performance.service';
@@ -29,6 +30,22 @@ export class PerformanceController {
     @Query() query: PerformanceQueryDto,
   ): Promise<PerformanceView> {
     return this.performance.performance(partner.agent_id, query.period);
+  }
+
+  @Get('activity')
+  @ApiOperation({
+    summary:
+      'My Activity for a day / week / month / quarter / FY: leads, customers, orders, attendance, visits, meetings, gigs, coins',
+  })
+  activity(
+    @CurrentPartner() partner: PartnerRef,
+    @Query() query: ActivityQueryDto,
+  ): Promise<ActivityView> {
+    return this.performance.activity(
+      partner.agent_id,
+      query.period,
+      query.date,
+    );
   }
 
   @Get('standing')

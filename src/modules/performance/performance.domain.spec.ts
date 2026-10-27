@@ -1,4 +1,5 @@
 import {
+  activityRange,
   healthOf,
   lifecycleOf,
   periodMonths,
@@ -6,6 +7,37 @@ import {
   shares,
   tierOf,
 } from './performance.domain';
+
+describe('activityRange', () => {
+  it('finds the day, Monday week, month, quarter or FY a date falls in', () => {
+    const d = '2026-10-27'; // a Tuesday
+    expect(activityRange('day', d)).toEqual({ from: d, to: '2026-10-28' });
+    expect(activityRange('week', d)).toEqual({
+      from: '2026-10-26',
+      to: '2026-11-02',
+    });
+    expect(activityRange('week', '2026-11-01')).toEqual({
+      from: '2026-10-26',
+      to: '2026-11-02',
+    });
+    expect(activityRange('month', d)).toEqual({
+      from: '2026-10-01',
+      to: '2026-11-01',
+    });
+    expect(activityRange('quarter', d)).toEqual({
+      from: '2026-10-01',
+      to: '2027-01-01',
+    });
+    expect(activityRange('quarter', '2027-03-31')).toEqual({
+      from: '2027-01-01',
+      to: '2027-04-01',
+    });
+    expect(activityRange('year', '2027-02-10')).toEqual({
+      from: '2026-04-01',
+      to: '2027-04-01',
+    });
+  });
+});
 
 describe('periods', () => {
   it('covers this month, the last three, or April to now', () => {

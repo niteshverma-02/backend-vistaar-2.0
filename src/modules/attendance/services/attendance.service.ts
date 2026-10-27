@@ -130,6 +130,11 @@ export class AttendanceService {
     return this.days.countDays(agentId, from, to);
   }
 
+  /** Days present and hours worked between two IST day keys, both included — My Activity. */
+  async between(agentId: string, from: string, to: string) {
+    return summarize(await this.days.range(agentId, from, to));
+  }
+
   async month(agentId: string, month?: string): Promise<AttendanceMonthView> {
     const now = new Date();
     const today = istDate(now);

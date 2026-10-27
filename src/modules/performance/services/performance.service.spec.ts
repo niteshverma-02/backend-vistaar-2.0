@@ -16,6 +16,8 @@ import type {
 } from '@modules/commission/services/commission.service';
 import type { GigReadsService } from '@modules/gigs/services/gig-reads.service';
 import type { LeadsService } from '@modules/leads/services/leads.service';
+import type { MeetingsService } from '@modules/meetings/services/meetings.service';
+import type { RewardsService } from '@modules/rewards/services/rewards.service';
 import type { ProductFactsService } from '@modules/spine/services/product-facts.service';
 
 import { AdminPerformanceQueryDto } from '../dto/performance.dto';
@@ -96,13 +98,24 @@ describe('PerformanceService', () => {
           conversion_pct: 60,
           overdue_follow_ups: 1,
         }),
+        activityBetween: jest.fn().mockResolvedValue({
+          added: 3,
+          won: 1,
+          lost: 0,
+          activities: { call: 4, visit: 2, whatsapp: 1, note: 0 },
+        }),
         countsByPartner: jest
           .fn()
           .mockResolvedValue(
             new Map([['VST-000001', { farmers: 12, customers: 4 }]]),
           ),
       } as unknown as LeadsService,
-      { fieldDays } as unknown as AttendanceService,
+      {
+        fieldDays,
+        between: jest
+          .fn()
+          .mockResolvedValue({ present_days: 1, worked_ms: 3_600_000 }),
+      } as unknown as AttendanceService,
       {
         facts: jest.fn().mockResolvedValue(
           new Map([
@@ -154,7 +167,20 @@ describe('PerformanceService', () => {
       } as unknown as AgentsService,
       {
         monthStats: jest.fn().mockResolvedValue(GIGS),
+        statsBetween: jest.fn().mockRejectedValue(new Error('down')),
       } as unknown as GigReadsService,
+      {
+        totalsMine: jest.fn().mockResolvedValue({
+          by_status: { scheduled: 1, completed: 2, cancelled: 0 },
+          present: 30,
+          leads: 5,
+        }),
+      } as unknown as MeetingsService,
+      {
+        coinsBetween: jest
+          .fn()
+          .mockResolvedValue({ approved: 50, pending: 10 }),
+      } as unknown as RewardsService,
     );
   });
 
@@ -172,6 +198,43 @@ describe('PerformanceService', () => {
     });
     expect(view.gigs).toEqual(GIGS);
     expect(view.from).toBe(`${addMonths(THIS, -2)}-01`);
+  });
+
+  it("counts one day's or one month's activity from the book and the other modules", async () => {
+    const day = await service.activity('vst-000001', 'day', '2026-10-02', NOW);
+    expect(day).toMatchObject({
+      period: 'day',
+      from: '2026-10-02',
+      to: '2026-10-03',
+      leads: { added: 3, won: 1, lost: 0 },
+      customers: { new: 2, active: 2 },
+      orders: { placed: 2, value: 40_000, delivered: 2, sales: 40_000 },
+      attendance: { present_days: 1, worked_ms: 3_600_000 },
+      activities: { call: 4, visit: 2, whatsapp: 1, note: 0 },
+      meetings: { held: 2, scheduled: 1, farmers: 30, leads: 5 },
+      gigs: null,
+      coins: { approved: 50, pending: 10 },
+    });
+    const month = await service.performance('VST-000001', 'month', NOW);
+    expect(day.commission).toBe(month.commission.value);
+
+    const quiet = await service.activity(
+      'VST-000001',
+      'day',
+      '2026-10-03',
+      NOW,
+    );
+    expect(quiet.orders).toEqual({
+      placed: 0,
+      value: 0,
+      delivered: 0,
+      sales: 0,
+    });
+    expect(quiet.customers).toEqual({ new: 0, active: 0 });
+
+    const year = await service.activity('VST-000001', 'year', undefined, NOW);
+    expect([year.from, year.to]).toEqual(['2026-04-01', '2027-04-01']);
+    expect(year.orders.placed).toBe(6); // June to October
   });
 
   it('splits delivered lines by category and names the top packs', async () => {

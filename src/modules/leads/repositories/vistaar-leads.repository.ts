@@ -8,6 +8,7 @@ import { isDuplicateKey } from '@common/utils/mongo-error.util';
 import { escapeRegex } from '@common/utils/regex.util';
 
 import {
+  ACTIVITY_TYPES,
   CLOSED_STAGES,
   type LeadStage,
   type LocationSource,
@@ -553,6 +554,29 @@ export class VistaarLeadsRepository {
       lost: added?.lost ?? 0,
       overdue: out?.overdue[0]?.n ?? 0,
     };
+  }
+
+  /** Call / visit / WhatsApp / note entries logged on the partner's farmers in `[from, to)`, by type. */
+  async activityCounts(
+    agentId: string,
+    from: Date,
+    to: Date,
+  ): Promise<Partial<Record<(typeof ACTIVITY_TYPES)[number], number>>> {
+    const at = { $gte: from, $lt: to };
+    const rows = await this.model
+      .aggregate<{ _id: (typeof ACTIVITY_TYPES)[number]; n: number }>([
+        { $match: { agent_id: agentId, 'activities.at': at } },
+        { $unwind: '$activities' },
+        {
+          $match: {
+            'activities.at': at,
+            'activities.type': { $in: [...ACTIVITY_TYPES] },
+          },
+        },
+        { $group: { _id: '$activities.type', n: { $sum: 1 } } },
+      ])
+      .exec();
+    return Object.fromEntries(rows.map((r) => [r._id, r.n]));
   }
 
   /**

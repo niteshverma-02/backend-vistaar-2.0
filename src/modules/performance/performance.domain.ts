@@ -21,6 +21,49 @@ export function periodMonths(period: Period, thisMonth: string): string[] {
   return out;
 }
 
+export const ACTIVITY_PERIODS = [
+  'day',
+  'week',
+  'month',
+  'quarter',
+  'year',
+] as const;
+export type ActivityPeriod = (typeof ACTIVITY_PERIODS)[number];
+
+/**
+ * IST days `[from, to)` (`YYYY-MM-DD`) of the day, week (Monday first), month,
+ * quarter (Jan / Apr / Jul / Oct) or Indian FY (April) that `date` falls in.
+ */
+export function activityRange(
+  period: ActivityPeriod,
+  date: string,
+): { from: string; to: string } {
+  const day = (n: number) => {
+    const d = new Date(`${date}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + n);
+    return d.toISOString().slice(0, 10);
+  };
+  const month = date.slice(0, 7);
+  const months = (first: string, n: number) => ({
+    from: `${first}-01`,
+    to: `${addMonths(first, n)}-01`,
+  });
+  switch (period) {
+    case 'day':
+      return { from: date, to: day(1) };
+    case 'week': {
+      const back = (new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7;
+      return { from: day(-back), to: day(7 - back) };
+    }
+    case 'month':
+      return months(month, 1);
+    case 'quarter':
+      return months(addMonths(month, -((Number(date.slice(5, 7)) - 1) % 3)), 3);
+    case 'year':
+      return months(fyStart(month), 12);
+  }
+}
+
 /** The same number of months just before; `null` for a financial year (no "previous" shown). */
 export function previousMonths(
   period: Period,

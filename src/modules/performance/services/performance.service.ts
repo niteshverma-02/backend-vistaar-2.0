@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { PageResult } from '@common/http/page-result';
 import {
   addMonths,
+  istDate,
   istDaysBetween,
   istMonthKey,
   istMonthStart,
@@ -20,16 +21,20 @@ import {
   type GigMonthStats,
 } from '@modules/gigs/services/gig-reads.service';
 import { LeadsService } from '@modules/leads/services/leads.service';
+import { MeetingsService } from '@modules/meetings/services/meetings.service';
 import { firstUrl } from '@modules/orders/orders.domain';
+import { RewardsService } from '@modules/rewards/services/rewards.service';
 import { ProductFactsService } from '@modules/spine/services/product-facts.service';
 
 import {
+  activityRange,
   healthOf,
   lifecycleOf,
   periodMonths,
   previousMonths,
   shares,
   tierOf,
+  type ActivityPeriod,
   type HealthFactor,
   type LifecycleStage,
   type Period,
@@ -163,6 +168,28 @@ export interface PerformanceView {
   monthly_target: number;
 }
 
+/** My Activity: what the partner did in one day / week / month / quarter / FY. */
+export interface ActivityView {
+  period: ActivityPeriod;
+  /** First IST day of the period, and the day after it ends. */
+  from: string;
+  to: string;
+  /** Leads added in the period; won / lost = of those, now. */
+  leads: { added: number; won: number; lost: number };
+  /** `new` = farmers whose first (not cancelled) order was placed in the period. */
+  customers: { new: number; active: number };
+  /** `placed` / `value` by placed day (value: not cancelled); `delivered` / `sales` by delivered day, reversed left out. */
+  orders: { placed: number; value: number; delivered: number; sales: number };
+  /** Σ commission of the orders delivered in the period. */
+  commission: number;
+  attendance: { present_days: number; worked_ms: number };
+  activities: { call: number; visit: number; whatsapp: number; note: number };
+  meetings: { held: number; scheduled: number; farmers: number; leads: number };
+  /** Approved meeting gigs held in the period; `null` when gigs could not be read. */
+  gigs: { done: number; earnings: number; farmers: number } | null;
+  coins: { approved: number; pending: number };
+}
+
 /**
  * My Performance and the partner's standing, from the commission book (the
  * same orders, read once a minute), leads, attendance and the catalogue in
@@ -183,7 +210,78 @@ export class PerformanceService {
     private readonly products: ProductFactsService,
     private readonly agents: AgentsService,
     private readonly gigs: GigReadsService,
+    private readonly meetings: MeetingsService,
+    private readonly rewards: RewardsService,
   ) {}
+
+  async activity(
+    agentId: string,
+    period: ActivityPeriod,
+    date?: string,
+    now = new Date(),
+  ): Promise<ActivityView> {
+    const id = agentId.toUpperCase();
+    const range = activityRange(period, date ?? istDate(now));
+    const from = new Date(`${range.from}T00:00:00+05:30`);
+    const to = new Date(`${range.to}T00:00:00+05:30`);
+    const lastDay = istDate(new Date(to.getTime() - 1));
+
+    const [{ book }, leads, attendance, meetings, gigs, coins] =
+      await Promise.all([
+        this.commission.bookOf(id, now),
+        this.leads.activityBetween(id, from, to),
+        this.attendance.between(id, range.from, lastDay),
+        this.meetings.totalsMine(id, from, to),
+        // A side block: the rest of the page must not fail with it.
+        this.gigs.statsBetween(id, from, to).catch(() => null),
+        this.rewards.coinsBetween(id, from, to),
+      ]);
+
+    const inRange = (at: Date | null) => !!at && at >= from && at < to;
+    const placed = book.rows.filter((r) => inRange(r.placed_at));
+    const live = placed.filter((r) => r.stage !== 'cancelled');
+    const delivered = book.rows.filter(
+      (r) => r.status !== 'reversed' && inRange(r.delivered_at),
+    );
+    // Each farmer's first order that was not cancelled (rows are newest first).
+    const firstOrder = new Map<string, Date>();
+    for (const r of book.rows)
+      if (r.pii_id && r.stage !== 'cancelled')
+        firstOrder.set(r.pii_id, r.placed_at);
+    const sum = (rows: LedgerRow[], f: (r: LedgerRow) => number) =>
+      rows.reduce((s, r) => s + f(r), 0);
+
+    return {
+      period,
+      from: range.from,
+      to: range.to,
+      leads: { added: leads.added, won: leads.won, lost: leads.lost },
+      customers: {
+        new: [...firstOrder.values()].filter(inRange).length,
+        active: new Set(live.filter((r) => r.pii_id).map((r) => r.pii_id)).size,
+      },
+      orders: {
+        placed: placed.length,
+        value: sum(live, (r) => r.order_value),
+        delivered: delivered.length,
+        sales: sum(delivered, (r) => r.order_value),
+      },
+      commission: sum(delivered, (r) => r.amount),
+      attendance: {
+        present_days: attendance.present_days,
+        worked_ms: attendance.worked_ms,
+      },
+      activities: leads.activities,
+      meetings: {
+        held: meetings.by_status.completed,
+        scheduled: meetings.by_status.scheduled,
+        farmers: meetings.present,
+        leads: meetings.leads,
+      },
+      gigs,
+      coins,
+    };
+  }
 
   async performance(
     agentId: string,
