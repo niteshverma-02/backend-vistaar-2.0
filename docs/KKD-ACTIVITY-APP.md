@@ -112,7 +112,7 @@ stores a farmer can be sent to.
 `centre: null` (partner signed up without GPS and has no known pincode) → `stores: []`;
 show "Add your pincode in Edit Profile to see stores near you". Only stores with a map
 point are placed; a store still being set up shows once it has one. Same store names as
-the Nearby radar (RADAR-APP.md).
+the Nearby radar (VISTAAR-RADAR-APP.md).
 
 ## Before production — no dummy data (must do)
 

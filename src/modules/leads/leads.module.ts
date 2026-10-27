@@ -18,6 +18,7 @@ import { OrderEventsController } from './controllers/order-events.controller';
 import { RadarController } from './controllers/radar.controller';
 import { OrderEventsGuard } from './guards/order-events.guard';
 import { KkdStoreRepository } from './repositories/kkd-store.repository';
+import { RadarPoolRepository } from './repositories/radar-pool.repository';
 import { OrgLeadsRepository } from './repositories/org-leads.repository';
 import { VistaarLeadsRepository } from './repositories/vistaar-leads.repository';
 import {
@@ -31,6 +32,7 @@ import { CustomersService } from './services/customers.service';
 import { LeadOtpService } from './services/lead-otp.service';
 import { LeadsService } from './services/leads.service';
 import { RadarService } from './services/radar.service';
+import { RadarPoolService } from './services/radar-pool.service';
 
 /**
  * Farmers partners add (PRD C2, C4, C9). The farmer is the org's record —
@@ -69,6 +71,8 @@ import { RadarService } from './services/radar.service';
     LeadOtpService,
     CustomersService,
     RadarService,
+    RadarPoolService,
+    RadarPoolRepository,
     KkdStoreRepository,
     OrderEventsGuard,
   ],

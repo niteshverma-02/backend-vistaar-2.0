@@ -54,7 +54,7 @@ response and never computes totals itself. The customer's name is not stored on
 the cart — show it from the app's own customer list by `pii_id`.
 
 `PUT /cart/customer` also takes an optional `location` (the phone's GPS now) — kept as a
-rough place for the farmer, never over one from a visit or an add (RADAR-APP.md).
+rough place for the farmer, never over one from a visit or an add (VISTAAR-RADAR-APP.md).
 
 The customer must be one of the partner's own farmers: a `pii_id` from the
 partner's leads (`GET /leads`, LEADS-APP.md), created or linked, in any stage —

@@ -123,6 +123,18 @@ export const envSchema = z.object({
     .min(24, 'ORDER_EVENTS_SECRET must be at least 24 characters')
     .optional(),
 
+  // ── Radar ──────────────────────────────────────────────────────────────
+  /**
+   * Kill switch for the radar's pincode pools (KKD leads, org customers):
+   * each process reads both org collections once an hour into memory
+   * (~2–4 s of aggregation on the database). `false` = the radar shows the
+   * partner's own farmers and the stores only.
+   */
+  RADAR_POOLS_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
+
   // ── Online payment ─────────────────────────────────────────────────────
   /**
    * Kill switch: off, `GET /payment-options` is empty whatever HO has switched

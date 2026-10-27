@@ -34,6 +34,27 @@ export class PiiRepository {
     return doc?.pii_id ?? null;
   }
 
+  /** Each person's first mobile; people without one are left out. Rides `{pii_id}`. */
+  async phonesOf(piiIds: readonly string[]): Promise<Map<string, string>> {
+    if (!piiIds.length) return new Map();
+    const docs = await this.piis
+      .find({ pii_id: { $in: piiIds } })
+      .select({ _id: 0, pii_id: 1, phone_number: 1 })
+      .lean<{ pii_id: string; phone_number?: unknown }[]>()
+      .exec();
+    const phones = new Map<string, string>();
+    for (const d of docs) {
+      const list: unknown[] = Array.isArray(d.phone_number)
+        ? d.phone_number
+        : [];
+      const first = list.find((p) => typeof p === 'string' && p);
+      if (typeof first === 'string' && !phones.has(d.pii_id)) {
+        phones.set(d.pii_id, first);
+      }
+    }
+    return phones;
+  }
+
   async hasAddresses(piiId: string): Promise<boolean> {
     const doc = await this.piis
       .findOne({ pii_id: piiId, 'addresses.0': { $exists: true } })
