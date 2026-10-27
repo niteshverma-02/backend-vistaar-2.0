@@ -98,6 +98,15 @@ describe('PerformanceService', () => {
           conversion_pct: 60,
           overdue_follow_ups: 1,
         }),
+        addedBetween: jest.fn().mockResolvedValue([
+          {
+            pii_id: 'PII-L1',
+            name: 'Ramesh',
+            village: 'Sehore',
+            stage: 'new',
+            created_at: NOW,
+          },
+        ]),
         activityBetween: jest.fn().mockResolvedValue({
           added: 3,
           won: 1,
@@ -235,6 +244,35 @@ describe('PerformanceService', () => {
     const year = await service.activity('VST-000001', 'year', undefined, NOW);
     expect([year.from, year.to]).toEqual(['2026-04-01', '2027-04-01']);
     expect(year.orders.placed).toBe(6); // June to October
+  });
+
+  it('lists the rows behind the cards: orders, first orders, delivered, leads', async () => {
+    const list = (kind: 'orders' | 'customers' | 'delivered' | 'leads') =>
+      service.activityItems('VST-000001', 'day', kind, '2026-10-02', NOW);
+
+    const orders = await list('orders');
+    expect(orders.items.map((i) => [i.title, i.ref, i.amount])).toEqual([
+      ['B', 'B', 10_000], // same moment: the book's order
+      ['A', 'A', 30_000],
+    ]);
+    expect((await list('customers')).items.map((i) => i.ref).sort()).toEqual([
+      'PII-A',
+      'PII-B',
+    ]);
+    expect((await list('delivered')).items).toHaveLength(2);
+    expect((await list('leads')).items[0]).toMatchObject({
+      title: 'Ramesh',
+      sub: 'Sehore · new',
+      ref: 'PII-L1',
+    });
+    const empty = await service.activityItems(
+      'VST-000001',
+      'day',
+      'orders',
+      '2026-10-03',
+      NOW,
+    );
+    expect(empty.items).toEqual([]);
   });
 
   it('splits delivered lines by category and names the top packs', async () => {

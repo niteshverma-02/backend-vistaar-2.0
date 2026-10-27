@@ -85,6 +85,18 @@ export class GigReadsService {
     return rows.map(briefOf);
   }
 
+  /** The approved gigs behind [statsBetween], newest first, at most [cap]. */
+  async heldBetween(agentId: string, from: Date, to: Date, cap: number) {
+    const rows = await this.gigs.forAgentBetween(
+      agentId,
+      ['approved'],
+      from,
+      to,
+      cap,
+    );
+    return rows.reverse();
+  }
+
   /** Approved gigs held in `[from, to)` — My Activity. */
   statsBetween(agentId: string, from: Date, to: Date) {
     return this.gigs.approvedStats(agentId, from, to);

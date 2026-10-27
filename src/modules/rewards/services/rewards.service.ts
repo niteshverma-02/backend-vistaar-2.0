@@ -562,6 +562,16 @@ export class RewardsService {
     return new PageResult(await this.adminViews(items), total, query);
   }
 
+  /** The coin rewards behind [coinsBetween], newest first, at most [cap]. */
+  async coinRowsBetween(agentId: string, from: Date, to: Date, cap: number) {
+    const { items } = await this.rewards.page(
+      { agent_id: agentId, kind: 'coin', from, to },
+      0,
+      cap,
+    );
+    return items;
+  }
+
   /** Coins the partner earned in `[from, to)`: HO-approved, and still waiting for HO — My Activity. */
   async coinsBetween(
     agentId: string,

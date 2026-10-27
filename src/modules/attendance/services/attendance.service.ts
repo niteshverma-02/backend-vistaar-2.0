@@ -130,6 +130,11 @@ export class AttendanceService {
     return this.days.countDays(agentId, from, to);
   }
 
+  /** The punched-in days between two IST day keys, newest first — My Activity's list. */
+  daysBetween(agentId: string, from: string, to: string) {
+    return this.days.range(agentId, from, to);
+  }
+
   /** Days present and hours worked between two IST day keys, both included — My Activity. */
   async between(agentId: string, from: string, to: string) {
     return summarize(await this.days.range(agentId, from, to));

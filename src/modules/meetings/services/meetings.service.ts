@@ -118,6 +118,17 @@ export class MeetingsService {
     return new PageResult(rows.map(viewOf), total, query);
   }
 
+  /** The partner's meetings starting in `[from, to)`, newest first, at most [cap]. */
+  async briefsBetween(agentId: string, from: Date, to: Date, cap: number) {
+    const { rows } = await this.meetings.page(
+      { agent_id: agentId, from, to },
+      0,
+      cap,
+      { starts_at: -1 },
+    );
+    return rows;
+  }
+
   /** The partner's meetings starting in `[from, to)`, by status, with the farmers they reached — My Activity. */
   totalsMine(agentId: string, from: Date, to: Date): Promise<MeetingTotals> {
     return this.meetings.totals({ agent_id: agentId, from, to });
