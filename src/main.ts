@@ -14,6 +14,7 @@ import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { corsOptions } from '@core/http/cors-options';
 import { allowEmptyJsonBody } from '@core/http/empty-json-body';
+import { registerAppLinks } from '@core/http/app-links';
 import { registerJsonEtag } from '@core/http/json-etag';
 import { TRUSTED_PROXIES } from '@core/http/trusted-proxies';
 import {
@@ -50,6 +51,15 @@ async function bootstrap(): Promise<void> {
   // onboarding config the app fetches on every launch is the main beneficiary.
   // The ETag hook is a root `onSend`, so it hashes the JSON before compress.
   registerJsonEtag(app.getHttpAdapter().getInstance());
+  // The app's share links (`/open/…`) and their Android App Links file, outside `/api/v2`.
+  registerAppLinks(
+    app.getHttpAdapter().getInstance(),
+    config
+      .get('ANDROID_APP_CERT_SHA256', { infer: true })
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
+  );
   await app.register(compress, { threshold: JSON_COMPRESS_THRESHOLD_BYTES });
   // KYC photos and PDFs — one file per request, 10 MB, enforced again per route.
   await app.register(multipart, {

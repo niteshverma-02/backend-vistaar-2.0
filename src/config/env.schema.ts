@@ -49,6 +49,12 @@ export const envSchema = z.object({
    *  works — native clients send no Origin header). `*` = any. */
   CORS_ORIGINS: z.string().default(''),
 
+  /** Comma-separated SHA-256 fingerprints (`AA:BB:…`) of the certificates the Android app
+   *  is signed with (Play Console → App integrity → App signing key; the upload key; a
+   *  debug key on beta). Listed in `/.well-known/assetlinks.json` so `/open/…` share links
+   *  open the app directly; empty = they still open it through the `/open` page. */
+  ANDROID_APP_CERT_SHA256: z.string().default(''),
+
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace'])
     .default('info'),
