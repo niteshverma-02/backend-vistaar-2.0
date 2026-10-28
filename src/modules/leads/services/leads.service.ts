@@ -1552,7 +1552,8 @@ export class LeadsService implements OnModuleInit {
 
   /**
    * The HO portal head owns a farmer lead (user, 2026-10-13): the owner HO
-   * named in the settings, else the one active Offline Head. With neither,
+   * named in the settings, else the Offline Head the POS and prasar file
+   * under — picked by head office, or the only one (2026-10-28). With neither,
    * the partner who added the farmer owns it (user, 2026-10-22) — adding a
    * farmer never waits on HO's setup.
    */

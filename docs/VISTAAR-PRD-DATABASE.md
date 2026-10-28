@@ -533,7 +533,7 @@ Lifecycle: rows created lazily on first use; never deleted. Not `app_counters`, 
 |---|---|---|---|---|
 | `_id` | String | – | `'vistaar'` | single row |
 | `default_owner_agent_id` | String | no | `null` | `agents_v2.agent_id` owning new signups |
-| `lead_owner_agent_id` | String | no | `null` | `null` = the one active Offline Head (USR-1037) |
+| `lead_owner_agent_id` | String | no | `null` | `null` = the Offline Head (USR-1037) head office picked in franchise-offline-hub (`franchise_v2_crm_settings`), or the only active one |
 | `farmer_consent` | Mixed | no | `null` | FarmerConsent; `null` = built-in v1 |
 | `lead_release_days` | Number | no | `15` | |
 | `customer_release_days` | Number | no | `45` | |

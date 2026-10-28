@@ -251,7 +251,7 @@ before 2026-10-16 reach `leads_v2` only on their next change.
 | `lead_id` | `L-(100000 + n)`, `n` from `app_counters._id: 'leads'` (as ko-sales) |
 | `source` | `vistaar` |
 | `created_by` | the partner's `VST-` id |
-| `lead_owner` | `{ agent_id, agent_ref }` (`agent_ref` = the account's `agents_v2._id`, ObjectId) of the one active Offline Head (USR-1037), or `settings.lead_owner_agent_id` when set; `assigned_by` the same, `assigned_date` now |
+| `lead_owner` | `{ agent_id, agent_ref }` (`agent_ref` = the account's `agents_v2._id`, ObjectId) of the Offline Head (USR-1037) head office picked in franchise-offline-hub (`franchise_v2_crm_settings`), or the only active one, or `settings.lead_owner_agent_id` when set; `assigned_by` the same, `assigned_date` now |
 | `first_name` / `last_name` | name split at the first space, lower case (ko-sales casing) |
 | `state` | from the pincode, else the partner's state — upper case. `pin_code` = pincode or `''` |
 | `status` / `is_profiled` | `contact_created` / `true`; `contact_profile: 'farmer'`, `agent_category: 'vistaar'`. **No `profiled_at`** — with it the lead matches sales-operation's "Profiled Farmer" cohort and would be routed to telecallers (prasar's leads carry none either) |

@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 
 import { AdminMeController } from './controllers/admin-me.controller';
 import { CapabilityGuard } from './guards/capability.guard';
+import { OfflineCrmSettingsRepository } from './repositories/offline-crm-settings.repository';
 import { StaffAccountRepository } from './repositories/staff-account.repository';
 import {
   StaffAccount,
@@ -17,7 +18,12 @@ import { AccessService } from './services/access.service';
     ]),
   ],
   controllers: [AdminMeController],
-  providers: [StaffAccountRepository, AccessService, CapabilityGuard],
+  providers: [
+    StaffAccountRepository,
+    OfflineCrmSettingsRepository,
+    AccessService,
+    CapabilityGuard,
+  ],
   exports: [AccessService, CapabilityGuard],
 })
 export class AccessModule {}

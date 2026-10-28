@@ -1656,7 +1656,7 @@ To re-run: build, `NODE_ENV=production` on `PORT=3100`, mint partner tokens with
 
 ### 30.1 Not built
 
-- **Not on beta yet: lead owner = approving Offline Head (branch `feat/lead-owner`).** On beta a new farmer lead is still owned by the one active Offline Head (USR-1037) unless `settings.lead_owner_agent_id` names another (section 25).
+- **Not on beta yet: lead owner = approving Offline Head (branch `feat/lead-owner`).** On beta a new farmer lead is still owned by the Offline Head (USR-1037) head office picked in franchise-offline-hub (`franchise_v2_crm_settings`), or the only active one unless `settings.lead_owner_agent_id` names another (section 25).
 - Checkout / order placement from the cart: this service reads orders and hands out `KSV-` numbers (`POST /orders/id`), but the order itself (through Katyayani Utils → Stockship) is not built; nor are the gateway order / verify / webhook for online payment (KO Utils creates Razorpay / Cashfree orders for the app; the payment webhook that would issue a prepaid order's number is not built).
 - Gig pay into the wallet — meeting gigs and approved gig (₹) rewards (built, switched off until Finance confirms TDS).
 - Coins: no redeem or spend; never money or wallet. HO can't create a reward by hand; an archived earning cohort can't be restored; a rule's trigger or cohort can't change; a new trigger needs code (the catalog now has 10: `lead_created`, `follow_up_done`, `lead_stage_advanced`, `reorder`, `meeting_attendee_captured`, `gig_approved`, `event_registered`, `attendance_streak`, `onboarding_approved`, `story_created`).
