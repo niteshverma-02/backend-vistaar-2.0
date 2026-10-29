@@ -133,7 +133,7 @@ channel's records are never changed. A GPS fix of the farm goes on that
 follow-up (`vistaar_v2_leads.next_follow_up`) is mirrored to
 `leads_v2.follow_up_date` on Vistaar's own lead rows only (filter `lead_id` +
 `source`, that one field), after the partner's row, a failure only logged
-(user's decision, 2026-10-16). Owner = the one active Offline Head
+(user's decision, 2026-10-16). Owner = the picked (or only) Offline Head
 (USR-1037) as `{agent_id, agent_ref}`, unless `settings.lead_owner_agent_id`
 names another. Never `profiled_at` (keeps the offline lead out of telecaller
 cohorts). No pipeline, LQS or webhook. See `docs/DATABASE.md`.

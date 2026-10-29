@@ -153,7 +153,7 @@ Nothing to build: the lookups use the existing `pii_id`, `phone_number`,
 - [ ] Radar stores come from the offline franchise master (active only; one store per spot, the oldest record). StockShip's test franchise **FR-101** ("Beta Franchise Warehouse", same address and GPS as FR-100) is hidden by that rule — ask StockShip to switch its warehouse off so every portal agrees
 - [ ] HO adds the farm location to the farmer-consent wording (DPDP) — `PUT /admin/settings { farmer_consent_text }`
 
-- [ ] One active Offline Head (USR-1037) in `agents_v2`, or `lead_owner_agent_id` set
+- [ ] A picked (HO → Roles) or single active Offline Head (USR-1037) in `agents_v2`, or `lead_owner_agent_id` set
 - [ ] `vistaar_v2_leads` indexes built — `{pii_id}` unique is what keeps one farmer with one partner
 - [ ] Optional: HO sets the farmer-consent wording (`PUT /admin/settings { farmer_consent_text }`); until then the app's own sentence is version 1
 - [ ] Sales-operation asked to add source `vistaar` to its cohort and profiled-router exclusions (offline channel — never telecaller-routed)

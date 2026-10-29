@@ -13,6 +13,7 @@ import {
   StaffAccountRepository,
   type StaffRecord,
 } from '../repositories/staff-account.repository';
+import { OfflineCrmSettingsRepository } from '../repositories/offline-crm-settings.repository';
 
 export interface AdminAccess {
   email: string;
@@ -38,7 +39,10 @@ export class AccessService {
     { exp: number; access: Promise<AdminAccess> }
   >();
 
-  constructor(private readonly staff: StaffAccountRepository) {}
+  constructor(
+    private readonly staff: StaffAccountRepository,
+    private readonly crmSettings: OfflineCrmSettingsRepository,
+  ) {}
 
   accessFor(admin: AdminPrincipal): Promise<AdminAccess> {
     const key = `${admin.email}|${admin.iat}`;
@@ -56,10 +60,20 @@ export class AccessService {
   }
 
   /**
-   * The one active Offline Head (`USR-1037`) — `null` when there is none or
-   * more than one, since a single owner cannot be told apart then.
+   * The Offline Head (`USR-1037`) who owns the offline leads — the same one
+   * the POS and prasar file under (user, 2026-10-28): the head head office
+   * picked in franchise-offline-hub, else the one active head. `null` when
+   * the pick is no longer an active head, or there are several and none is
+   * picked.
    */
   async offlineHead(): Promise<StaffRecord | null> {
+    const picked = await this.crmSettings.pickedLeadOwner();
+    if (picked) {
+      const head = (await this.staffByIds([picked])).get(picked);
+      return head?.is_active && head.user_role === OFFLINE_HEAD_ROLE
+        ? head
+        : null;
+    }
     const heads = await this.staff.findActiveByRole(OFFLINE_HEAD_ROLE, 2);
     return heads.length === 1 && heads[0].agent_id ? heads[0] : null;
   }
