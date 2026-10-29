@@ -1,3 +1,17 @@
+/** How many recent search terms a partner keeps; the oldest drops off. */
+export const RECENT_SEARCH_LIMIT = 10;
+
+/**
+ * `term` moves to the front of `terms`; an earlier case-insensitive match is
+ * dropped rather than kept in place, and the list is capped at
+ * `RECENT_SEARCH_LIMIT`.
+ */
+export function applyRecentSearch(terms: string[], term: string): string[] {
+  const needle = term.toLowerCase();
+  const rest = terms.filter((t) => t.toLowerCase() !== needle);
+  return [term, ...rest].slice(0, RECENT_SEARCH_LIMIT);
+}
+
 /**
  * One sellable pack of the B2B marketplace catalogue — the unit a cart line is
  * keyed and priced by.

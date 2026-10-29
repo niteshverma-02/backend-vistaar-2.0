@@ -73,6 +73,7 @@ export const API_ERROR_CODES = [
   'CART_BUSY',
   // catalog
   'CATALOG_UNAVAILABLE',
+  'SEARCH_TERM_REQUIRED',
   // draft orders
   'DRAFT_CART_EMPTY',
   'DRAFT_ID_UNAVAILABLE',

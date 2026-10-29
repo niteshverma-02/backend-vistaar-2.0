@@ -1,4 +1,8 @@
-import { variantsFromMarketplaceItem } from './catalog.domain';
+import {
+  RECENT_SEARCH_LIMIT,
+  applyRecentSearch,
+  variantsFromMarketplaceItem,
+} from './catalog.domain';
 
 const pack = (overrides: Record<string, unknown> = {}) => ({
   sku: 'K-350',
@@ -84,5 +88,35 @@ describe('variantsFromMarketplaceItem', () => {
 
     expect(v.product_image).toBe('https://img/variant.webp');
     expect(v.product_name).toBe('Display');
+  });
+});
+
+describe('applyRecentSearch', () => {
+  it('puts the new term first', () => {
+    expect(applyRecentSearch(['urea'], 'humic acid')).toEqual([
+      'humic acid',
+      'urea',
+    ]);
+  });
+
+  it('moves a repeated term to the front instead of duplicating it', () => {
+    expect(applyRecentSearch(['urea', 'humic acid'], 'urea')).toEqual([
+      'urea',
+      'humic acid',
+    ]);
+  });
+
+  it('matches a repeat case-insensitively', () => {
+    expect(applyRecentSearch(['Urea'], 'urea')).toEqual(['urea']);
+  });
+
+  it('caps the list at RECENT_SEARCH_LIMIT, dropping the oldest', () => {
+    const terms = Array.from({ length: RECENT_SEARCH_LIMIT }, (_, i) =>
+      String(i),
+    );
+    const result = applyRecentSearch(terms, 'new');
+    expect(result).toHaveLength(RECENT_SEARCH_LIMIT);
+    expect(result[0]).toBe('new');
+    expect(result).not.toContain(String(RECENT_SEARCH_LIMIT - 1));
   });
 });
